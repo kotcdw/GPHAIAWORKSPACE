@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GPHA AUDIT WORKSPACE</title>
+  <title>GPHA Audit Workspace</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link rel="stylesheet" href="/static/css/styles.css" />
   <link rel="stylesheet" href="/static/css/styles_print.css" media="print" />
@@ -107,7 +107,7 @@
               </div>
             </div>
 
-            <div class="row" style="text-align:left">
+            <div class="row name-row" style="text-align:left">
               <div class="col-lg-6 col-sm-6 col-md-6">
                 <div class="ant-form-item">
                   <div class="ant-form-item-control">
@@ -146,10 +146,9 @@
               </div>
             </div>
             <ul class="pw-hints">
-              <li>Your password can&rsquo;t be too similar to your other personal information.</li>
-              <li>Your password must contain at least 8 characters.</li>
-              <li>Your password can&rsquo;t be a commonly used password.</li>
-              <li>Your password can&rsquo;t be entirely numeric.</li>
+              <li>At least 8 characters.</li>
+              <li>Not entirely numeric, and not a commonly used password.</li>
+              <li>Must not contain your username.</li>
             </ul>
 
             <div class="row" style="text-align:left">
@@ -186,72 +185,46 @@
 
   <!-- Application ---------------------------------------------------------->
   <div id="appView" class="hidden">
-    <aside class="sidebar">
-      <div class="sidebar-brand">GPHA AUDIT WORKSPACE</div>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img src="/static/img/loginLogo.jpg" alt="" class="brand-logo" />
+        <div><div class="brand-name">GPHA Audit Workspace</div><div class="brand-sub">Internal Audit</div></div>
+      </div>
       <nav id="sidebarNav">
-        <button data-view="dashboard" class="active">
-          <i class="bi bi-grid-1x2-fill"></i>
-          Dashboard
-        </button>
-        <button data-view="drafts">
-          <i class="bi bi-pencil-square"></i>
-          My Drafts <span id="draftCount" class="count hidden"></span>
-        </button>
-        <button data-view="tasks">
-          <i class="bi bi-check2-square"></i>
-          Task Center
-        </button>
-        <button data-view="plans">
-          <i class="bi bi-calendar3"></i>
-          Assurance Plan
-        </button>
-        <button data-view="universe">
-          <i class="bi bi-diagram-3"></i>
-          Audit Universe
-        </button>
-        <button data-view="audits">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2h12v12H2z" stroke="currentColor" stroke-width="1.5"/><path d="M5 6h6M5 9h6M5 12h4" stroke="currentColor" stroke-width="1.5"/></svg>
-          Audits
-        </button>
-        <button data-view="capa">
-          <i class="bi bi-tools"></i>
-          CAPA
-        </button>
-        <button data-view="nonconformances">
-          <i class="bi bi-exclamation-triangle"></i>
-          Nonconformance
-        </button>
-        <button data-view="organizations">
-          <i class="bi bi-building"></i>
-          Organizations
-        </button>
-        <button data-view="stakeholders">
-          <i class="bi bi-people"></i>
-          Stakeholders
-        </button>
-        <button data-view="service-feedback">
-          <i class="bi bi-chat-left-text"></i>
-          Service Feedback
-        </button>
-        <button data-view="profile">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 14c0-3 3-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.5"/></svg>
-          User Management
-        </button>
-        <button data-view="logs" data-admin="1">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 2h10v12H3z" stroke="currentColor" stroke-width="1.5"/><path d="M6 5h4M6 8h4M6 11h2" stroke="currentColor" stroke-width="1.5"/></svg>
-          Audit Log
-        </button>
-        <button data-view="backups" data-admin="1">
-          <i class="bi bi-hdd-stack"></i>
-          Backups
-        </button>
+        <div class="nav-section">Overview</div>
+        <button data-view="dashboard" class="active"><i class="bi bi-grid-1x2"></i><span>Dashboard</span></button>
+        <button data-view="tasks"><i class="bi bi-check2-square"></i><span>Task Center</span></button>
+        <button data-view="drafts"><i class="bi bi-pencil-square"></i><span>My Drafts</span><span id="draftCount" class="count hidden"></span></button>
+
+        <div class="nav-section" data-staff="1">Planning</div>
+        <button data-view="plans"><i class="bi bi-calendar3"></i><span>Assurance Plan</span></button>
+        <button data-view="universe"><i class="bi bi-diagram-3"></i><span>Audit Universe</span></button>
+
+        <div class="nav-section">Audit work</div>
+        <button data-view="audits"><i class="bi bi-clipboard-check"></i><span>Audits</span></button>
+        <button data-view="capa"><i class="bi bi-tools"></i><span>CAPA</span></button>
+        <button data-view="nonconformances"><i class="bi bi-exclamation-triangle"></i><span>Nonconformance</span></button>
+
+        <div class="nav-section" data-staff="1">Registers</div>
+        <button data-view="organizations"><i class="bi bi-building"></i><span>Organizations</span></button>
+        <button data-view="stakeholders"><i class="bi bi-people"></i><span>Stakeholders</span></button>
+        <button data-view="service-feedback"><i class="bi bi-chat-left-text"></i><span>Service Feedback</span></button>
+
+        <div class="nav-section">Account</div>
+        <button data-view="profile"><i class="bi bi-person-gear"></i><span>Profile &amp; Users</span></button>
+        <button data-view="logs" data-admin="1"><i class="bi bi-journal-text"></i><span>Audit Log</span></button>
+        <button data-view="backups" data-admin="1"><i class="bi bi-hdd-stack"></i><span>Backups</span></button>
       </nav>
       <div class="sidebar-footer">
         <span class="who" id="whoami"></span>
-        <button class="btn secondary small" id="signOut">Sign out</button>
+        <button class="btn secondary small" id="signOut"><i class="bi bi-box-arrow-right"></i> Sign out</button>
       </div>
     </aside>
     <div class="main-col">
+      <header class="topbar">
+        <button class="nav-toggle" id="navToggle" aria-label="Open menu"><i class="bi bi-list"></i></button>
+        <span class="topbar-title">GPHA Audit Workspace</span>
+      </header>
       <div id="healthBar" class="health-bar hidden" role="alert"></div>
       <main id="viewRoot"></main>
     </div>

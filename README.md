@@ -105,6 +105,9 @@ with electronic attestations, and keep a strict, immutable audit trail.
   triggers (UPDATE/DELETE are rejected). Records that have progressed, been
   linked or been signed cannot be deleted; users with activity are deactivated,
   not deleted.
+- **Clean, responsive UI** — grouped navigation, standard page headers with
+  in-place status changes, KPI dashboards, and a drawer layout on phones and
+  small tablets.
 - **Sign-in protection** — account lockout after repeated failures (Admin can
   unlock); password change, deactivation, role change and password reset end
   the user's other sessions.

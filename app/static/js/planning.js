@@ -192,12 +192,12 @@ async function openPlan(id) {
   const approved = plan.status === "Approved";
   const s = plan.summary;
 
-  viewRoot.append(viewHeader(plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`, el("div", { class: "view-actions" },
-    el("span", { class: "ref" }, plan.plan_ref), badge(plan.status),
-    draft ? btn("Edit", () => editPlanModal(plan), "secondary") : null,
+  setActiveNav("plans");
+  viewRoot.append(viewHeader(plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`, [
     isAdmin() && draft ? btn("Approve (e-sign)", () => eSignModal({
       title: "Approve Assurance Plan", pathOverride: `/api/assurance-plans/${id}/approve`, actionLabel: "Sign & Approve",
       allowReject: true, onDone: () => openPlan(id) })) : null,
+    draft ? btn("Edit", () => editPlanModal(plan), "secondary") : null,
     isAdmin() && approved ? btn("Reopen", async () => {
       try { await API.post(`/api/assurance-plans/${id}/reopen`); toast("Plan reopened"); openPlan(id); }
       catch (err) { toast(err.message, "error"); }
@@ -206,26 +206,36 @@ async function openPlan(id) {
       try { await API.post(`/api/assurance-plans/${id}/close`); toast("Plan closed"); openPlan(id); }
       catch (err) { toast(err.message, "error"); }
     }, "secondary") : null,
-    btn("Print", () => window.print(), "secondary"),
-    btn("Back", () => navigate("plans"), "secondary"))));
+    iconBtn("printer", "Print", () => window.print()),
+  ], {
+    back: () => navigate("plans"),
+    meta: [el("span", { class: "ref" }, plan.plan_ref), badge(plan.status), el("span", { class: "muted" }, `FY${plan.fiscal_year}`)],
+    sub: plan.approved_at ? `Approved ${fmtDate(plan.approved_at)}` : null,
+  }));
 
-  viewRoot.append(el("div", { class: "grid cols-3" },
-    stat(s.engagements - s.cancelled, "Engagements planned"),
-    stat(s.started, "Started (projects)"),
-    stat(`${s.planned_hours} / ${s.budget_hours || "-"}`, "Hours planned / budget"),
-    stat(`${s.coverage_pct}%`, `Universe coverage (${s.covered_units}/${s.universe_units} units)`),
-    stat(QUARTERS.map((q) => `${q}:${s.by_quarter[q] || 0}`).join("  "), "By quarter"),
-    stat(s.uncovered_high_risk.length, "High-risk units not planned"),
+  const hoursPct = s.budget_hours ? Math.round((100 * s.planned_hours) / s.budget_hours) : null;
+  const maxQ = Math.max(1, ...QUARTERS.map((q) => s.by_quarter[q] || 0));
+  viewRoot.append(el("div", { class: "stats" },
+    stat(s.engagements - s.cancelled, "Planned engagements", `${s.started} started · ${s.planned} not started`),
+    stat(`${s.planned_hours}h`, "Hours planned", s.budget_hours ? `${hoursPct}% of ${s.budget_hours}h budget` : "No budget set",
+      hoursPct !== null && hoursPct > 100 ? "danger" : ""),
+    stat(`${s.coverage_pct}%`, "Universe coverage", `${s.covered_units} of ${s.universe_units} entity units`),
+    el("div", { class: "stat" }, el("div", { class: "l" }, "By quarter"),
+      el("div", { class: "qbars" }, ...QUARTERS.map((q) => el("div", { class: "qbar" },
+        el("div", { class: "qbar-fill", style: `height:${Math.round(((s.by_quarter[q] || 0) / maxQ) * 100)}%` }),
+        el("div", { class: "qbar-n" }, String(s.by_quarter[q] || 0)), el("div", { class: "qbar-l" }, q))))),
+    stat(s.uncovered_high_risk.length, "High-risk units not planned", s.uncovered_high_risk.length ? "Review before approval" : "All covered",
+      s.uncovered_high_risk.length ? "warn" : "ok"),
   ));
   if (s.uncovered_high_risk.length) {
-    viewRoot.append(el("div", { class: "card warn" }, el("h3", null, "High-risk entities not in the plan"),
-      el("ul", null, ...s.uncovered_high_risk.map((u) =>
-        el("li", null, `${u.location_name} / ${u.name} `, heat(u.risk_score))))));
+    viewRoot.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
+      el("div", null, el("strong", null, "High-risk entities not in the plan: "),
+        ...s.uncovered_high_risk.flatMap((u, i) => [i ? ", " : "", `${u.location_name} / ${u.name} `, heat(u.risk_score)]))));
   }
-  if (plan.description) viewRoot.append(el("div", { class: "card" }, el("p", null, plan.description)));
+  if (plan.description) viewRoot.append(el("div", { class: "card" }, el("div", { class: "lf-label" }, "Basis of the plan"), el("div", { class: "lf-value" }, plan.description)));
 
   const tabs = [{ key: "eng", label: "Engagements" }, { key: "history", label: "History" },
-    { key: "approvals", label: "Approval Cycles" }];
+    { key: "approvals", label: "Approval cycles" }];
   let active = "eng";
   const detail = el("div");
   viewRoot.append(detail);
@@ -264,12 +274,12 @@ async function renderEngagements(panel, plan) {
         approved && e.status === "Planned" && isAdmin() ? btn("Cancel", async () => {
           try { await API.post(`/api/plan-engagements/${e.id}/cancel`); toast("Cancelled"); openPlan(plan.id); }
           catch (err) { toast(err.message, "error"); }
-        }, "secondary") : null,
+        }, "danger-ghost") : null,
         draft ? btn("Edit", () => addEngagement(plan, e), "secondary") : null,
         draft ? btn("Remove", async () => {
           try { await API.del(`/api/plan-engagements/${e.id}`); toast("Removed"); openPlan(plan.id); }
           catch (err) { toast(err.message, "error"); }
-        }, "secondary") : null)))))));
+        }, "danger-ghost") : null)))))));
   if (draft) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement", () => addEngagement(plan))));
   else if (approved) card.append(el("p", { class: "muted" }, "The plan is approved and frozen. Reopen it (Admin) to change engagements; it must then be re-approved."));
 }
@@ -311,20 +321,22 @@ async function renderRcm(panel, auditId) {
   const s = rcm.summary;
   const open = !rcm.locked;
 
-  panel.append(el("div", { class: "grid cols-3" },
+  const eff = s.controls_by_effectiveness;
+  panel.append(el("div", { class: "stats" },
     stat(s.objectives, "Objectives"),
-    stat(`${s.risks} (H${s.risks_by_rating.High} M${s.risks_by_rating.Medium} L${s.risks_by_rating.Low})`, "Risks"),
-    stat(`${s.controls} (${s.key_controls} key)`, "Controls"),
-    stat(`${s.controls_by_effectiveness.Effective} / ${s.controls_by_effectiveness.Ineffective}`, "Controls effective / ineffective"),
-    stat(s.tests_awaiting_review, "Tests awaiting review"),
-    stat(s.open_issues, "Open issues"),
+    stat(s.risks, "Risks", `${s.risks_by_rating.High} high · ${s.risks_by_rating.Medium} medium · ${s.risks_by_rating.Low} low`,
+      s.risks_by_rating.High ? "warn" : ""),
+    stat(s.controls, "Controls", `${s.key_controls} key`),
+    stat(`${eff.Effective}/${eff.Ineffective}`, "Effective / ineffective", `${eff["Not Tested"]} not tested`, eff.Ineffective ? "danger" : ""),
+    stat(s.tests_awaiting_review, "Tests awaiting review", null, s.tests_awaiting_review ? "warn" : ""),
+    stat(s.open_issues, "Open issues", null, s.open_issues ? "danger" : ""),
   ));
   const gaps = [
     ...s.risks_without_controls.map((r) => `Risk without a mitigating control: ${r}`),
     ...s.key_controls_untested.map((c) => `Key control not yet tested: ${c}`),
   ];
-  if (gaps.length) panel.append(el("div", { class: "card warn" }, el("h3", null, "Coverage gaps"),
-    el("ul", null, ...gaps.map((g) => el("li", null, g)))));
+  if (gaps.length) panel.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
+    el("div", null, el("strong", null, "Coverage gaps"), el("ul", null, ...gaps.map((g) => el("li", null, g))))));
   if (rcm.locked) panel.append(el("p", { class: "muted" }, "The audit is closed - the matrix is read-only."));
 
   rcm.objectives.forEach((o) => panel.append(objectiveCard(o, open, reload)));
@@ -355,13 +367,13 @@ function objectiveCard(o, open, reload) {
   card.append(el("div", { class: "view-head" },
     el("h3", null, el("span", { class: "ref" }, o.ref), " ", o.title),
     open ? el("div", { class: "actions" },
-      btn("Add risk", () => riskModal(o, null, reload)),
-      btn("Add control", () => controlModal(o, null, reload)),
+      btn("+ Risk", () => riskModal(o, null, reload), "secondary"),
+      btn("+ Control", () => controlModal(o, null, reload), "secondary"),
       btn("Edit", () => objectiveForm(o.audit_id, o, reload), "secondary"),
       btn("Delete", async () => {
         try { await API.del(`/api/objectives/${o.id}`); toast("Objective deleted"); reload(); }
         catch (err) { toast(err.message, "error"); }
-      }, "secondary")) : null));
+      }, "danger-ghost")) : null));
   if (o.description) card.append(el("p", { class: "muted" }, o.description));
 
   const riskRef = Object.fromEntries(o.risks.map((r) => [r.id, r.ref]));
@@ -387,9 +399,9 @@ function objectiveCard(o, open, reload) {
           c.owner_email ? ` · owner ${c.owner_email}` : "",
           ` · mitigates ${c.risk_ids.map((id) => riskRef[id] || `#${id}`).join(", ") || "no risk"}`)),
       open ? el("div", { class: "actions" },
-        btn("Add test", () => testCreateModal({ ...c, audit_id: o.audit_id }, reload)),
+        btn("+ Test", () => testCreateModal({ ...c, audit_id: o.audit_id }, reload)),
         btn("Edit", () => controlModal(o, c, reload), "secondary")) : null));
-    if (c.tests.length) box.append(el("table", null,
+    if (c.tests.length) box.append(el("table", { class: "tests-table" },
       el("thead", null, el("tr", null, el("th", null, "Test"), el("th", null, "Type"), el("th", null, "Sample"),
         el("th", null, "Exceptions"), el("th", null, "Status"), el("th", null, "Conclusion"), el("th", null, ""))),
       el("tbody", null, ...c.tests.map((t) => el("tr", { class: "no-click" },

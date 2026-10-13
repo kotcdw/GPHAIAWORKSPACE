@@ -410,7 +410,7 @@ async function boot() {
 function showApp() {
   authView.classList.add("hidden");
   appView.classList.remove("hidden");
-  whoami.textContent = `${state.user.full_name || state.user.username} (${state.user.role})`;
+  whoami.replaceChildren(el("span", { class: "who-name" }, state.user.full_name || state.user.username), badge(state.user.role));
   document.querySelectorAll("#sidebarNav button[data-admin]").forEach((b) => {
     b.classList.toggle("hidden", !isAdmin());
   });
@@ -419,6 +419,7 @@ function showApp() {
     const b = document.querySelector(`#sidebarNav button[data-view="${v}"]`);
     if (b) b.classList.toggle("hidden", state.user.role === "Auditee");
   });
+  document.querySelectorAll("#sidebarNav [data-staff]").forEach((n) => n.classList.toggle("hidden", state.user.role === "Auditee"));
   checkHealth();
   refreshDraftCount();
   const adminOnly = ["logs", "backups"];
@@ -435,6 +436,8 @@ function setActiveNav(view) {
   document.querySelectorAll("#sidebarNav button").forEach((b) => {
     b.classList.toggle("active", b.dataset.view === view);
   });
+  document.body.classList.remove("nav-open");
+  window.scrollTo(0, 0);
 }
 
 function navigate(view) {
@@ -452,9 +455,14 @@ function navigate(view) {
   if (view === "backups") return renderBackups();
 }
 
-function viewHeader(title, actions = null) {
-  return el("div", { class: "view-head" }, el("h2", null, title),
-    actions ? el("div", { class: "view-actions" }, actions) : null);
+// Page header: title, optional subtitle / meta chips, and actions on the right.
+function viewHeader(title, actions = null, opts = {}) {
+  const left = el("div", { class: "view-title" },
+    opts.back ? el("button", { class: "back-link", onclick: opts.back, title: "Back" }, el("i", { class: "bi bi-arrow-left" })) : null,
+    el("div", null,
+      el("h2", null, title),
+      opts.sub || opts.meta ? el("div", { class: "view-meta" }, opts.meta || null, opts.sub ? el("span", { class: "muted" }, opts.sub) : null) : null));
+  return el("div", { class: "view-head" }, left, actions ? el("div", { class: "view-actions" }, actions) : null);
 }
 
 // ==================================================================== generic list
@@ -479,7 +487,7 @@ function moduleFormFields(m) {
     notPast: f.notPast,
     maxLength: f.type === "textarea" ? 20000 : 255,
     singleLine: !f.type || f.type === "text",
-    emptyLabel: f.type === "select" && !f.required ? "- default -" : undefined,
+    emptyLabel: f.type === "select" && !f.required ? "Select..." : undefined,
     ...(f.key === "contact_phone" ? { pattern: "^[0-9+()\\-\\s]{6,25}$", patternMessage: "Phone must be 6-25 digits, spaces, +, - or ()" } : {}),
   }));
 }
@@ -578,8 +586,26 @@ async function renderList(key) {
 
 // ==================================================================== generic detail
 
+// Compact "Move to <status>" control used in detail-card headers.
+function statusControl(current, options, onSave) {
+  const sel = el("select", { class: "compact", "aria-label": "New status" },
+    ...options.map((o) => el("option", { value: o, selected: o === current ? "1" : null }, o)));
+  const apply = el("button", { class: "btn small", disabled: "1" }, "Apply");
+  sel.addEventListener("change", () => { apply.disabled = sel.value === current; });
+  apply.addEventListener("click", async () => {
+    apply.disabled = true;
+    try { await onSave(sel.value); } catch (err) { toast(err.message, "error"); apply.disabled = false; }
+  });
+  return el("div", { class: "status-control" }, el("span", { class: "muted" }, "Move to"), sel, apply);
+}
+
+function iconBtn(icon, title, onclick) {
+  return el("button", { class: "btn secondary small icon", title, "aria-label": title, onclick }, el("i", { class: `bi bi-${icon}` }));
+}
+
 async function openRecord(key, id) {
   const m = MODULES[key];
+  setActiveNav(key);
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(msg);
@@ -590,23 +616,18 @@ async function openRecord(key, id) {
 
   const title = record[m.nameKey] || m.title;
   const canWrite = canWriteModule(key);
+  const allowedActions = canWrite ? m.actions.filter((act) => !act.adminOnly || isAdmin()) : [];
 
-  const head = viewHeader(String(title),
-    el("div", { class: "view-actions" },
-      el("span", { class: "ref" }, record[m.refKey] || ""),
-      el("button", { class: "btn secondary small", onclick: () => window.print() }, "Print"),
-      el("button", { class: "btn secondary small", onclick: () => navigate(key) }, "Back")));
-  viewRoot.append(head);
-
-  // Action bar (module workflow actions).
-  const allowedActions = m.actions.filter((act) => !act.adminOnly || isAdmin());
-  if (allowedActions.length && canWrite) {
-    const bar = el("div", { class: "view-actions", style: "margin-bottom:14px" });
-    allowedActions.forEach((act) => {
-      bar.append(el("button", { class: "btn small", onclick: () => runAction(key, id, act, openRecord) }, act.label));
-    });
-    viewRoot.append(bar);
-  }
+  viewRoot.append(viewHeader(String(title),
+    [
+      ...allowedActions.map((act) => el("button", {
+        class: `btn small ${act.kind === "esign" ? "" : "secondary"}`.trim(),
+        onclick: () => runAction(key, id, act, openRecord) }, act.label)),
+      canWrite && record.status !== "Closed" ? el("button", { class: "btn small secondary", onclick: () => editRecordModal(key, record) },
+        el("i", { class: "bi bi-pencil" }), " Edit") : null,
+      iconBtn("printer", "Print", () => window.print()),
+    ],
+    { back: () => navigate(key), meta: [el("span", { class: "ref" }, record[m.refKey] || ""), record.status ? badge(record.status) : null] }));
 
   const detail = el("div");
   viewRoot.append(detail);
@@ -614,7 +635,7 @@ async function openRecord(key, id) {
     { key: "info", label: "Information" },
     { key: "tasks", label: "Tasks" },
     { key: "history", label: "History" },
-    { key: "approvals", label: "Approval Cycles" },
+    { key: "approvals", label: "Approval cycles" },
   ];
   let active = "info";
 
@@ -631,39 +652,36 @@ async function openRecord(key, id) {
   paint();
 }
 
+function displayValue(f, value) {
+  if (value === null || value === undefined || value === "") return el("span", { class: "muted" }, "-");
+  if (f.type === "date") return fmtDate(value).split(",")[0];
+  if (f.type === "select") return badge(value);
+  if (f.type === "email") return el("a", { href: `mailto:${value}` }, value);
+  return String(value);
+}
+
 function renderInfoTab(panel, key, record, canWrite) {
   const m = MODULES[key];
-  const card = el("div", { class: "card" });
-  const dl = el("dl", { class: "kv" });
-  const rows = [
-    ["Reference", el("span", { class: "ref" }, record[m.refKey] || "-")],
-    ["Status", record.status ? badge(record.status) : "-"],
-    ...m.fields.map((f) => [f.label, String(record[f.key] ?? "-")]),
-    ["Created", fmtDate(record.created_at)],
-    ["Updated", fmtDate(record.updated_at)],
-  ];
-  rows.forEach(([k, v]) => { dl.append(el("dt", null, k), el("dd", null, v)); });
-  card.append(el("div", { class: "view-head" }, el("h3", null, "Details"),
-    canWrite && record.status !== "Closed" ? el("button", { class: "btn small", onclick: () => editRecordModal(key, record) }, "Edit") : null), dl);
+  const statusField = m.filters.find((f) => f.param === "status");
+  // CAPA is closed only through the e-signed "Close" action.
+  const options = ((statusField && statusField.options) || ["Open", "In Progress", "Closed"])
+    .filter((o) => !(key === "capa" && o === "Closed" && record.status !== "Closed"));
+  const control = canWrite && record.status !== undefined && record.status !== "Closed"
+    ? statusControl(record.status, options, async (v) => {
+      await API.patch(`${m.endpoint}/${record.id}`, { status: v });
+      toast("Status updated"); openRecord(key, record.id);
+    }) : null;
 
-  if (canWrite && record.status !== undefined) {
-    const statusField = m.filters.find((f) => f.param === "status");
-    // CAPA is closed only through the e-signed "Close" action.
-    const options = ((statusField && statusField.options) || ["Open", "In Progress", "Closed"])
-      .filter((o) => !(key === "capa" && o === "Closed" && record.status !== "Closed"));
-    const sel = el("select", null, ...options.map((o) =>
-      el("option", { value: o, selected: o === record.status ? "1" : null }, o)));
-    const upd = el("button", { class: "btn small" }, "Update status");
-    upd.addEventListener("click", async () => {
-      try {
-        await API.patch(`${m.endpoint}/${record.id}`, { status: sel.value });
-        toast("Status updated");
-        openRecord(key, record.id);
-      } catch (err) { toast(err.message, "error"); }
-    });
-    card.append(el("div", { class: "row", style: "margin-top:12px" },
-      el("div", null, el("label", null, "Status"), sel), el("div", { style: "flex:0" }, upd)));
-  }
+  const short = m.fields.filter((f) => f.type !== "textarea");
+  const long = m.fields.filter((f) => f.type === "textarea");
+  const dl = el("dl", { class: "kv two-col" },
+    ...short.flatMap((f) => [el("dt", null, f.label), el("dd", null, displayValue(f, record[f.key]))]),
+    el("dt", null, "Created"), el("dd", null, fmtDate(record.created_at)),
+    el("dt", null, "Updated"), el("dd", null, fmtDate(record.updated_at)));
+  const card = el("div", { class: "card" },
+    el("div", { class: "card-head" }, el("h3", null, "Details"), control), dl,
+    ...long.map((f) => el("div", { class: "long-field" }, el("div", { class: "lf-label" }, f.label),
+      el("div", { class: `lf-value ${record[f.key] ? "" : "muted"}`.trim() }, record[f.key] || "Not recorded"))));
   panel.append(card);
 }
 
@@ -759,67 +777,103 @@ async function linkPicker(title, endpoint, onPick, onDone) {
 
 // ==================================================================== dashboard
 
-function stat(number, label) {
-  return el("div", { class: "stat" }, el("div", { class: "n" }, number), el("div", { class: "l" }, label));
+function stat(number, label, sub = null, tone = "") {
+  return el("div", { class: `stat ${tone}`.trim() }, el("div", { class: "l" }, label), el("div", { class: "n" }, number),
+    sub ? el("div", { class: "s" }, sub) : null);
 }
 
 async function safeGet(path, fallback) {
   try { return await API.get(path); } catch { return fallback; }
 }
 
+function u_name() { return state.user.full_name || state.user.username; }
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+}
+
+function panel(title, body, action = null) {
+  return el("div", { class: "card panel" }, el("div", { class: "card-head" }, el("h3", null, title), action), body);
+}
+
 async function renderDashboard() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Dashboard"), msg);
+  const staff = state.user.role !== "Auditee";
+  viewRoot.append(viewHeader(`${greeting()}, ${(state.user.full_name || state.user.username).split(" ")[0]}`, null,
+    { sub: new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) }), msg);
   try {
-    const [audits, ncs, capa, feedback, tasks] = await Promise.all([
+    const [audits, ncs, capa, feedback, tasks, plans, drafts] = await Promise.all([
       safeGet("/api/audits", []),
       safeGet("/api/nonconformances", { items: [] }),
       safeGet("/api/capa", { items: [] }),
       safeGet("/api/service-feedback", { items: [] }),
       safeGet("/api/tasks?assigned_to_me=true", { items: [] }),
+      staff ? safeGet("/api/assurance-plans", []) : Promise.resolve([]),
+      safeGet("/api/drafts", []),
     ]);
     const ncItems = ncs.items || ncs;
     const capaItems = capa.items || capa;
     const fbItems = feedback.items || feedback;
-    const taskItems = tasks.items || tasks;
+    const myTasks = (tasks.items || tasks).filter((x) => x.status !== "Closed");
+    const openAudits = audits.filter((x) => x.status !== "Closed");
+    const inReview = audits.filter((x) => x.status === "Review").length;
+    const overdueCapa = capaItems.filter((c) => c.status !== "Closed" && c.due_date && new Date(c.due_date) < new Date()).length;
 
-    const openAudits = audits.filter((a) => a.status !== "Closed").length;
-    const openNc = ncItems.filter((n) => n.status !== "Closed").length;
-    const openCapa = capaItems.filter((c) => c.status !== "Closed").length;
-    const openFb = fbItems.filter((f) => f.status !== "Closed").length;
-
-    viewRoot.append(el("div", { class: "grid cols-3" },
-      stat(openAudits, "Audits open"),
-      stat(openNc, "NC open"),
-      stat(openCapa, "CAPA open"),
-      stat(openFb, "Feedback open"),
-      stat(taskItems.length, "My tasks"),
-      stat(audits.length, "Audits total"),
+    viewRoot.append(el("div", { class: "stats" },
+      stat(openAudits.length, "Open audits", `${inReview} in review · ${audits.length} total`),
+      stat(capaItems.filter((c) => c.status !== "Closed").length, "Open CAPA", overdueCapa ? `${overdueCapa} overdue` : "None overdue", overdueCapa ? "danger" : ""),
+      stat(ncItems.filter((n) => n.status !== "Closed").length, "Open nonconformances"),
+      stat(fbItems.filter((f) => f.status !== "Closed").length, "Open feedback"),
+      stat(myTasks.length, "My open tasks", null, myTasks.length ? "warn" : ""),
+      stat(drafts.length, "Unfinished drafts", drafts.length ? "Continue in My Drafts" : "All saved"),
     ));
 
-    const recent = el("div", { class: "card" }, el("h3", null, "Recent audits"));
-    if (!audits.length) recent.append(el("div", { class: "empty" }, "No audits yet."));
-    else recent.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "Title"), el("th", null, "Status"), el("th", null, "Created"))),
-      el("tbody", null, ...audits.slice(0, 5).map((a) => el("tr", { onclick: () => openAudit(a.id) },
-        el("td", null, a.title), el("td", null, badge(a.status)),
-        el("td", { class: "muted" }, fmtDate(a.created_at)))))));
-    viewRoot.append(recent);
+    const grid = el("div", { class: "dash-grid" });
+    viewRoot.append(grid);
 
-    if (taskItems.length) {
-      const t = el("div", { class: "card" }, el("h3", null, "My open tasks"));
-      t.append(el("table", null,
-        el("thead", null, el("tr", null, el("th", null, "Title"), el("th", null, "Status"), el("th", null, "Due"))),
-        el("tbody", null, ...taskItems.filter((x) => x.status !== "Closed").slice(0, 5).map((x) =>
-          el("tr", { class: "no-click" }, el("td", null, x.title), el("td", null, badge(x.status)),
-            el("td", { class: "muted" }, fmtDate(x.due_date)))))));
-      viewRoot.append(t);
+    grid.append(panel("Recent audits", !audits.length ? el("div", { class: "empty" }, "No audits yet.")
+      : el("table", null,
+        el("thead", null, el("tr", null, el("th", null, "Audit"), el("th", null, "Status"), el("th", { class: "num" }, "Updated"))),
+        el("tbody", null, ...audits.slice(0, 6).map((x) => el("tr", { onclick: () => openAudit(x.id) },
+          el("td", null, x.title), el("td", null, badge(x.status)),
+          el("td", { class: "muted num" }, fmtDate(x.updated_at).split(",")[0]))))),
+    el("button", { class: "btn small secondary", onclick: () => navigate("audits") }, "View all")));
+
+    grid.append(panel("My open tasks", !myTasks.length ? el("div", { class: "empty" }, "Nothing assigned to you.")
+      : el("table", null,
+        el("thead", null, el("tr", null, el("th", null, "Task"), el("th", null, "Status"), el("th", { class: "num" }, "Due"))),
+        el("tbody", null, ...myTasks.slice(0, 6).map((x) => el("tr", { onclick: () => navigate("tasks") },
+          el("td", null, x.title), el("td", null, badge(x.status)),
+          el("td", { class: "muted num" }, x.due_date ? fmtDate(x.due_date).split(",")[0] : "-"))))),
+    el("button", { class: "btn small secondary", onclick: () => navigate("tasks") }, "Task Center")));
+
+    if (staff) {
+      const plan = plans.find((x) => x.status !== "Closed") || plans[0];
+      let body = el("div", { class: "empty" }, "No Assurance Plan yet.");
+      if (plan) {
+        const detail = await safeGet(`/api/assurance-plans/${plan.id}`, null);
+        if (detail) {
+          const sm = detail.summary;
+          const live = sm.engagements - sm.cancelled;
+          const pct = live ? Math.round((100 * sm.started) / live) : 0;
+          body = el("div", { class: "plan-snap", onclick: () => openPlan(plan.id) },
+            el("div", { class: "plan-snap-head" }, el("strong", null, plan.title), badge(plan.status)),
+            el("div", { class: "progress" }, el("div", { class: "progress-fill", style: `width:${pct}%` })),
+            el("div", { class: "muted small" }, `${sm.started} of ${live} engagements started (${pct}%) · ${sm.coverage_pct}% universe coverage · ${sm.planned_hours}h planned`));
+        }
+      }
+      grid.append(panel("Assurance Plan", body, el("button", { class: "btn small secondary", onclick: () => navigate("plans") }, "Open plans")));
+    }
+    if (drafts.length) {
+      grid.append(panel("Continue where you left off", el("ul", { class: "plain-list" },
+        ...drafts.slice(0, 5).map((d) => el("li", null, el("i", { class: "bi bi-pencil-square muted" }), ` ${d.title || d.form_key}`,
+          el("span", { class: "muted small" }, ` · ${fmtDate(`${d.updated_at}Z`)}`)))),
+      el("button", { class: "btn small secondary", onclick: () => navigate("drafts") }, "My Drafts")));
     }
   } catch (err) { notify(msg, err.message, "error"); }
 }
-
-// ==================================================================== task center
 
 async function renderTasks() {
   clear(viewRoot);
@@ -899,11 +953,12 @@ async function renderAudits() {
     const card = el("div", { class: "card" });
     if (!audits.length) card.append(el("div", { class: "empty" }, "No audits yet."));
     else card.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "Title"), el("th", null, "Scope"), el("th", null, "Status"), el("th", null, "Approval"))),
+      el("thead", null, el("tr", null, el("th", null, "Ref"), el("th", null, "Title"), el("th", { class: "hide-sm" }, "Scope"), el("th", null, "Status"), el("th", { class: "hide-sm" }, "Approval"))),
       el("tbody", null, ...audits.map((a) => el("tr", { onclick: () => openAudit(a.id) },
-        el("td", null, a.title), el("td", { class: "muted" }, a.scope || "-"),
+        el("td", { class: "ref" }, `AUD-${String(a.id).padStart(4, "0")}`),
+        el("td", null, a.title), el("td", { class: "muted hide-sm" }, (a.scope || "-").replace(/\s+/g, " ")),
         el("td", null, badge(a.status)),
-        el("td", null, a.approval_status ? badge(a.approval_status) : "-"))))));
+        el("td", { class: "hide-sm" }, a.approval_status ? badge(a.approval_status) : "-"))))));
     viewRoot.append(card);
   } catch (err) { notify(msg, err.message, "error"); }
 }
@@ -941,6 +996,7 @@ function editAuditModal(audit) {
 }
 
 async function openAudit(id) {
+  setActiveNav("audits");
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(msg);
@@ -950,10 +1006,7 @@ async function openAudit(id) {
   const canWrite = canWriteModule("audits");
 
   viewRoot.append(viewHeader(audit.title,
-    el("div", { class: "view-actions" },
-      el("span", { class: "ref" }, `#${id}`),
-      el("button", { class: "btn secondary small", onclick: () => window.print() }, "Print"),
-      canWrite && audit.status !== "Closed" ? el("button", { class: "btn secondary small", onclick: () => editAuditModal(audit) }, "Edit") : null,
+    [
       canWrite && audit.status === "Review" && audit.approval_status !== "In Approval"
         ? el("button", { class: "btn small secondary", onclick: async () => {
           try { await API.post(`/api/audits/${id}/in-approval`); toast("Submitted for approval"); openAudit(id); }
@@ -962,33 +1015,41 @@ async function openAudit(id) {
       isAdmin() && audit.status === "Review" ? el("button", { class: "btn small", onclick: () => eSignModal({
         title: "Close audit (e-sign)", recordType: "audit", recordId: id,
         pathOverride: `/api/audits/${id}/close`, actionLabel: "Sign & Close",
-        onDone: () => openAudit(id) }) }, "Close (e-sign)") : null,
-      el("button", { class: "btn secondary small", onclick: () => navigate("audits") }, "Back"))));
+        onDone: () => openAudit(id) }) }, el("i", { class: "bi bi-pen" }), " Close (e-sign)") : null,
+      canWrite && audit.status !== "Closed" ? el("button", { class: "btn secondary small", onclick: () => editAuditModal(audit) },
+        el("i", { class: "bi bi-pencil" }), " Edit") : null,
+      iconBtn("printer", "Print", () => window.print()),
+    ],
+    {
+      back: () => navigate("audits"),
+      meta: [el("span", { class: "ref" }, `AUD-${String(id).padStart(4, "0")}`), badge(audit.status),
+        audit.approval_status ? badge(audit.approval_status) : null],
+    }));
 
+  const control = canWrite && audit.status !== "Closed"
+    ? statusControl(audit.status, AUDIT_STATUSES.filter((x) => x !== "Closed"), async (v) => {
+      await API.patch(`/api/audits/${id}`, { status: v });
+      toast("Status updated"); openAudit(id);
+    }) : null;
   const info = el("div", { class: "card" },
-    el("h3", null, "Details"),
-    el("dl", { class: "kv" },
-      el("dt", null, "Status"), el("dd", null, badge(audit.status)),
-      el("dt", null, "Approval"), el("dd", null, audit.approval_status ? badge(audit.approval_status) : "-"),
-      el("dt", null, "Description"), el("dd", null, audit.description || "-"),
-      el("dt", null, "Scope"), el("dd", null, audit.scope || "-"),
+    el("div", { class: "card-head" }, el("h3", null, "Overview"), control),
+    el("dl", { class: "kv two-col" },
       el("dt", null, "Assurance Plan"), el("dd", null, audit.plan_id
-        ? el("a", { href: "#", onclick: (e) => { e.preventDefault(); openPlan(audit.plan_id); } }, `Plan #${audit.plan_id}`) : "-"),
-      el("dt", null, "Created"), el("dd", null, fmtDate(audit.created_at))));
-  if (canWrite && audit.status !== "Closed") {
-    // "Closed" is reached only through the e-signed sign-off.
-    const sel = el("select", null, ...AUDIT_STATUSES.filter((s) => s !== "Closed").map((s) =>
-      el("option", { value: s, selected: s === audit.status ? "1" : null }, s)));
-    const upd = el("button", { class: "btn small" }, "Update status");
-    upd.addEventListener("click", async () => {
-      try { await API.patch(`/api/audits/${id}`, { status: sel.value }); toast("Status updated"); openAudit(id); }
-      catch (err) { toast(err.message, "error"); }
-    });
-    info.append(el("div", { class: "row", style: "margin-top:12px" },
-      el("div", null, el("label", null, "Status"), sel), el("div", { style: "flex:0" }, upd)));
-  }
+        ? (() => {
+          const a = el("a", { href: "#", onclick: (e) => { e.preventDefault(); openPlan(audit.plan_id); } }, `Plan #${audit.plan_id}`);
+          API.get(`/api/assurance-plans/${audit.plan_id}`).then((p) => { a.textContent = `FY${p.fiscal_year} · ${p.title}`; }).catch(() => {});
+          return a;
+        })()
+        : el("span", { class: "muted" }, "Not linked")),
+      el("dt", null, "Created"), el("dd", null, fmtDate(audit.created_at)),
+      el("dt", null, "Last updated"), el("dd", null, fmtDate(audit.updated_at))),
+    el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Scope"),
+      el("div", { class: `lf-value ${audit.scope ? "" : "muted"}`.trim() }, audit.scope || "Not recorded")),
+    audit.description ? el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Description"),
+      el("div", { class: "lf-value" }, audit.description)) : null);
+  if (canWrite) info.append(el("div", { class: "auditee-strip" }));
   viewRoot.append(info);
-  if (canWrite) renderAuditees(viewRoot, id);
+  if (canWrite) renderAuditees(info.querySelector(".auditee-strip"), id);
 
   const tabs = [
     ...(canWrite ? [{ key: "rcm", label: "Risk & Control Matrix" }] : []),
@@ -1017,37 +1078,36 @@ async function openAudit(id) {
   paint();
 }
 
+// Auditee access, shown as removable chips inside the audit overview card.
 async function renderAuditees(container, auditId) {
-  const card = el("div", { class: "card" }, el("h3", null, "Auditees with access"));
-  container.append(card);
-  const body = el("div");
-  card.append(body);
   async function paint() {
-    clear(body);
+    clear(container);
+    container.append(el("div", { class: "lf-label" }, "Auditees with access"));
     try {
       const [assigned, candidates] = await Promise.all([
         API.get(`/api/audits/${auditId}/auditees`), API.get("/api/audits/auditee-candidates")]);
-      if (!assigned.length) body.append(el("div", { class: "empty" }, "No auditee has access to this audit yet."));
-      else body.append(el("table", null,
-        el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Email"), el("th", null, ""))),
-        el("tbody", null, ...assigned.map((a) => el("tr", { class: "no-click" },
-          el("td", null, a.full_name ? `${a.full_name} (${a.username})` : a.username),
-          el("td", { class: "muted" }, a.email || "-"),
-          el("td", null, el("button", { class: "btn small secondary", onclick: async () => {
-            try { await API.del(`/api/audits/${auditId}/auditees/${a.user_id}`); toast("Access removed"); paint(); }
-            catch (err) { toast(err.message, "error"); }
-          } }, "Remove")))))));
-      const free = candidates.filter((c) => !assigned.some((a) => a.user_id === c.user_id));
+      const chips = el("div", { class: "chips" });
+      if (!assigned.length) chips.append(el("span", { class: "muted" }, "No auditee has access yet."));
+      assigned.forEach((a) => chips.append(el("span", { class: "chip", title: a.email || "" },
+        el("i", { class: "bi bi-person" }), ` ${a.full_name || a.username}`,
+        el("button", { class: "chip-x", title: "Remove access", "aria-label": `Remove ${a.username}`, onclick: async () => {
+          try { await API.del(`/api/audits/${auditId}/auditees/${a.user_id}`); toast("Access removed"); paint(); }
+          catch (err) { toast(err.message, "error"); }
+        } }, "×"))));
+      const free = candidates.filter((c) => !assigned.some((x) => x.user_id === c.user_id));
       if (free.length) {
-        const sel = el("select", null, ...free.map((c) => el("option", { value: c.user_id }, `${c.username}${c.email ? ` - ${c.email}` : ""}`)));
-        body.append(el("div", { class: "row", style: "margin-top:12px" },
-          el("div", null, el("label", null, "Give access to"), sel),
-          el("div", { style: "flex:0" }, el("button", { class: "btn small", onclick: async () => {
-            try { await API.post(`/api/audits/${auditId}/auditees`, { user_id: Number(sel.value) }); toast("Access granted"); paint(); }
-            catch (err) { toast(err.message, "error"); }
-          } }, "Add"))));
+        const sel = el("select", { class: "compact", "aria-label": "Auditee to add" },
+          el("option", { value: "" }, "Add auditee..."),
+          ...free.map((c) => el("option", { value: c.user_id }, c.full_name ? `${c.full_name} (${c.username})` : c.username)));
+        sel.addEventListener("change", async () => {
+          if (!sel.value) return;
+          try { await API.post(`/api/audits/${auditId}/auditees`, { user_id: Number(sel.value) }); toast("Access granted"); paint(); }
+          catch (err) { toast(err.message, "error"); }
+        });
+        chips.append(sel);
       }
-    } catch (err) { body.append(el("div", { class: "empty" }, err.message)); }
+      container.append(chips);
+    } catch (err) { container.append(el("span", { class: "muted" }, err.message)); }
   }
   paint();
 }
@@ -1084,7 +1144,7 @@ async function renderPapers(panel, id, canWrite) {
       el("td", { class: "muted", title: p.sha256 || "" }, p.sha256 ? `${p.sha256.slice(0, 12)}\u2026` : "-"),
       el("td", null, el("div", { class: "actions" },
         el("a", { href: `/api/working-papers/${p.id}/download` }, "Download"),
-        isAdmin() ? el("button", { class: "btn small secondary", onclick: async () => {
+        isAdmin() ? el("button", { class: "btn small danger-ghost", onclick: async () => {
           try { await API.del(`/api/working-papers/${p.id}`); toast("Withdrawn (file retained)"); openAudit(id); }
           catch (err) { toast(err.message, "error"); }
         } }, "Withdraw") : null)))))));
@@ -1110,18 +1170,14 @@ async function renderPapers(panel, id, canWrite) {
 async function renderProfile() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("User Management"), msg);
+  viewRoot.append(viewHeader(isAdmin() ? "Profile & users" : "My profile", null,
+    { meta: [el("span", { class: "muted" }, `Signed in as ${u_name()}`), badge(state.user.role)] }), msg);
   const u = state.user;
+  const cols = el("div", { class: "two-cols" });
+  viewRoot.append(cols);
 
-  viewRoot.append(el("div", { class: "card" },
-    el("h3", null, "My Account"),
-    el("dl", { class: "kv" },
-      el("dt", null, "Username"), el("dd", null, u.username),
-      el("dt", null, "Role"), el("dd", null, badge(u.role)),
-      el("dt", null, "Status"), el("dd", null, u.is_active ? badge("Active") : badge("Pending")))));
-
-  const edit = el("div", { class: "card" }, el("h3", null, "Edit My Profile"));
-  viewRoot.append(edit);
+  const edit = el("div", { class: "card" }, el("h3", null, "My details"));
+  cols.append(edit);
   inlineForm(edit, {
     key: "profile:me",
     meta: { title: "My profile" },
@@ -1134,19 +1190,19 @@ async function renderProfile() {
     onSubmit: (v) => API.patch("/api/auth/me", v),
     onDone: (res) => {
       state.user = res.user; API.csrf = res.csrf_token; state.csrf = res.csrf_token;
-      whoami.textContent = `${state.user.full_name || state.user.username} (${state.user.role})`;
+      whoami.replaceChildren(el("span", { class: "who-name" }, state.user.full_name || state.user.username), badge(state.user.role));
       toast("Profile updated");
     },
   });
 
-  const pw = el("div", { class: "card" }, el("h3", null, "Change My Password"));
-  viewRoot.append(pw);
+  const pw = el("div", { class: "card" }, el("h3", null, "Change password"));
+  cols.append(pw);
   const pwForm = inlineForm(pw, {
     draftable: false,
     fields: [
       { name: "current_password", label: "Current password", type: "password", required: true },
       { name: "new_password", label: "New password", type: "password", required: true, minLength: 8, maxLength: 128,
-        help: "At least 8 characters; use letters, numbers and a symbol." },
+        help: "At least 8 characters, not all numbers, not a common password, and not containing your username." },
       { name: "confirm_password", label: "Confirm new password", type: "password", required: true },
     ],
     validate: (v) => (v.new_password && v.confirm_password !== v.new_password ? { confirm_password: "Passwords do not match" } : {}),
@@ -1156,7 +1212,7 @@ async function renderProfile() {
   });
 
   if (isAdmin()) {
-    viewRoot.append(el("hr"));
+    viewRoot.append(el("h2", { class: "section-title" }, "User accounts"));
     await renderUserManagement(viewRoot, msg);
   }
 }
@@ -1170,51 +1226,62 @@ async function renderUsers() {
   await renderUserManagement(viewRoot, msg);
 }
 
-async function renderUserManagement(container, msg) {
-  const form = el("div", { class: "card" }, el("h3", null, "Create user"));
-  container.append(form);
-  inlineForm(form, {
+function newUserForm() {
+  openForm({
+    title: "New user account",
     key: "user:new",
     meta: { title: "New user account" },
     fields: [
+      { name: "full_name", label: "Full name", maxLength: 255, singleLine: true },
       { name: "username", label: "Username", required: true, minLength: 3, maxLength: 64, pattern: "^[A-Za-z0-9._-]+$",
         patternMessage: "Username may contain letters, digits, '.', '_' and '-' only" },
       { name: "email", label: "Email", type: "email", required: true },
-      { name: "full_name", label: "Full name", maxLength: 255, singleLine: true },
       { name: "role", label: "Role", type: "select", required: true, options: ROLES },
-      { name: "password", label: "Initial password", type: "password", required: true, minLength: 8, maxLength: 128 },
+      { name: "password", label: "Initial password", type: "password", required: true, minLength: 8, maxLength: 128,
+        help: "The user should change it after first sign-in." },
     ],
     initial: { role: "Auditor" },
     submitLabel: "Create user",
     onSubmit: (v) => API.post("/api/users", v),
-    onDone: () => { toast("User created"); renderUsers(); },
+    onDone: () => { toast("User created"); renderProfile(); },
   });
+}
 
+async function renderUserManagement(container, msg) {
   try {
     const users = await API.get("/api/users");
-    const card = el("div", { class: "card" }, el("h3", null, "All users"));
-    card.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "Username"), el("th", null, "Role"), el("th", null, "Status"), el("th", null, "Actions"))),
-      el("tbody", null, ...users.map((u) => {
-        const roleSelect = el("select", null, ...ROLES.map((r) => el("option", { value: r, selected: r === u.role ? "1" : null }, r)));
-        const toggle = el("button", { class: "btn small", onclick: async () => {
-          try { await API.patch(`/api/users/${u.id}`, { is_active: !u.is_active }); renderUsers(); }
-          catch (err) { notify(msg, err.message, "error"); }
-        } }, u.is_active ? "Deactivate" : "Approve");
-        const saveRole = el("button", { class: "btn small secondary", onclick: async () => {
-          try { await API.patch(`/api/users/${u.id}`, { role: roleSelect.value }); renderUsers(); }
-          catch (err) { notify(msg, err.message, "error"); }
-        } }, "Save role");
+    const pending = users.filter((u) => !u.is_active).length;
+    const card = el("div", { class: "card" },
+      el("div", { class: "card-head" },
+        el("h3", null, `${users.length} accounts`, pending ? el("span", { class: "muted" }, ` · ${pending} awaiting approval`) : null),
+        el("button", { class: "btn small", onclick: newUserForm }, el("i", { class: "bi bi-person-plus" }), " Add user")));
+    card.append(el("div", { class: "table-wrap" }, el("table", null,
+      el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Role"), el("th", null, "Status"), el("th", { class: "num" }, ""))),
+      el("tbody", null, ...users.sort((a, b) => Number(a.is_active) - Number(b.is_active)).map((u) => {
+        const self = u.id === state.user.id;
+        const roleSelect = el("select", { class: "compact", disabled: self ? "1" : null, "aria-label": `Role of ${u.username}` },
+          ...ROLES.map((r) => el("option", { value: r, selected: r === u.role ? "1" : null }, r)));
+        roleSelect.addEventListener("change", async () => {
+          try { await API.patch(`/api/users/${u.id}`, { role: roleSelect.value }); toast(`${u.username} is now ${roleSelect.value}`); renderProfile(); }
+          catch (err) { toast(err.message, "error"); roleSelect.value = u.role; }
+        });
         const locked = u.locked_until && new Date(`${u.locked_until}Z`) > new Date();
-        const unlock = locked ? el("button", { class: "btn small secondary", onclick: async () => {
-          try { await API.post(`/api/users/${u.id}/unlock`); toast("Account unlocked"); renderUsers(); }
-          catch (err) { notify(msg, err.message, "error"); }
-        } }, "Unlock") : null;
+        const actions = el("div", { class: "actions end" },
+          locked ? el("button", { class: "btn small secondary", onclick: async () => {
+            try { await API.post(`/api/users/${u.id}/unlock`); toast("Account unlocked"); renderProfile(); }
+            catch (err) { toast(err.message, "error"); }
+          } }, "Unlock") : null,
+          self ? null : el("button", { class: `btn small ${u.is_active ? "danger-ghost" : ""}`.trim(), onclick: async () => {
+            try { await API.patch(`/api/users/${u.id}`, { is_active: !u.is_active }); toast(u.is_active ? "Account deactivated" : "Account approved"); renderProfile(); }
+            catch (err) { toast(err.message, "error"); }
+          } }, u.is_active ? "Deactivate" : "Approve"));
         return el("tr", { class: "no-click" },
-          el("td", null, u.username), el("td", null, roleSelect),
+          el("td", null, el("div", { class: "cell-title" }, u.full_name || u.username),
+            el("div", { class: "muted small" }, `${u.username} · ${u.email}`)),
+          el("td", null, roleSelect),
           el("td", null, u.is_active ? badge("Active") : badge("Pending"), locked ? " " : null, locked ? badge("Locked") : null),
-          el("td", null, el("div", { class: "actions" }, toggle, saveRole, unlock)));
-      }))));
+          el("td", { class: "num" }, actions));
+      })))));
     container.append(card);
   } catch (err) { notify(msg, err.message, "error"); }
 }
@@ -1258,7 +1325,7 @@ async function renderBackups() {
         el("td", { class: "ref" }, b.filename),
         el("td", null, `${(b.size_bytes / 1024).toFixed(1)} KB`),
         el("td", { class: "muted" }, fmtDate(b.created_at)),
-        el("td", null, el("button", { class: "btn small danger", onclick: async () => {
+        el("td", null, el("button", { class: "btn small danger-ghost", onclick: async () => {
           try { await API.del(`/api/admin/backups/${encodeURIComponent(b.filename)}`); toast("Deleted"); renderBackups(); }
           catch (err) { notify(msg, err.message, "error"); }
         } }, "Delete")))))));
@@ -1283,11 +1350,13 @@ function registerAppOpeners() {
   });
   registerFormOpener("task:new", () => { navigate("tasks"); newTaskModal(); });
   registerFormOpener("profile:me", () => navigate("profile"));
-  registerFormOpener("user:new", () => navigate("profile"));
+  registerFormOpener("user:new", () => { navigate("profile"); newUserForm(); });
 }
 
 registerAppOpeners();
 registerPlanningOpeners();
 window.addEventListener("online", () => { checkHealth(); toast("Back online - drafts will sync as you type"); });
 setInterval(() => { if (state.user) checkHealth(); }, 60000);
+const navToggle = qs("#navToggle");
+if (navToggle) navToggle.addEventListener("click", () => document.body.classList.toggle("nav-open"));
 boot();

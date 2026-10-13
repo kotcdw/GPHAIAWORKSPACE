@@ -307,6 +307,21 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 ---
 
+## PHASE 11 — UI clean-up
+
+**Goal:** a clean, consistent, responsive interface.
+
+### Steps
+- [x] **11.1** `styles.css` rewritten: design tokens, Inter font, full-width content (was squeezed to ~860px), consistent cards, tables, badges, buttons (secondary / danger-ghost / icon), stat tiles, callouts, chips.
+- [x] **11.2** Navigation grouped into Overview / Planning / Audit work / Registers / Account; staff-only sections hidden from Auditees; active item follows the open record.
+- [x] **11.3** Standard page headers (back, title, ref + status badges, actions); in-place "Move to" status control; two-column detail layout with long text shown separately.
+- [x] **11.4** Dashboard redesigned (KPIs, recent audits, my tasks, plan progress, drafts); Profile split into My details / Change password / User accounts.
+- [x] **11.5** Plan, audit and RCM screens: KPI tiles, coverage callouts, secondary "+ Risk / + Control / + Test" buttons, aligned test tables, plan name shown on audits, Ref column on the audit list.
+- [x] **11.6** Responsive: drawer navigation and top bar below 860px, low-priority columns hidden below 560px; checked at 1440px and 390px.
+- [x] **11.7** Server password-strength rules (`password_problems`) matched by the on-screen hints.
+
+---
+
 ## Dependency / ordering notes
 
 - PHASE 0 must finish before anything touches the DB; run `init_db` + smoke.

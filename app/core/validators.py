@@ -70,3 +70,25 @@ def not_in_past(value: datetime | None) -> datetime | None:
 FutureDate = Annotated[datetime | None, AfterValidator(not_in_past)]
 
 __all__ = ["Code", "FutureDate", "OptEmail", "Text", "Title", "date", "not_in_past"]
+
+
+_COMMON_PASSWORDS = {
+    "password", "password1", "password12", "password123", "passw0rd", "p@ssw0rd", "p@ssword",
+    "12345678", "123456789", "1234567890", "87654321", "11111111", "00000000", "12341234",
+    "qwerty", "qwerty12", "qwerty123", "qwertyuiop", "asdfghjk", "abc12345", "abcd1234",
+    "admin123", "admin1234", "administrator", "letmein", "letmein1", "welcome", "welcome1",
+    "iloveyou", "changeme", "default1", "gpha1234", "ghana123", "football", "sunshine",
+}
+
+
+def password_problems(password: str, username: str | None = None) -> str | None:
+    """Return why ``password`` is too weak, or None. Matches the sign-up hints."""
+    if len(password) < 8:
+        return "must be at least 8 characters"
+    if password.isdigit():
+        return "must not be entirely numeric"
+    if password.lower() in _COMMON_PASSWORDS:
+        return "is too common; choose a less predictable password"
+    if username and len(username) >= 3 and username.lower() in password.lower():
+        return "must not contain your username"
+    return None

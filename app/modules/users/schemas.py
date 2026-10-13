@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.core.enums import Role
 from app.core.schemas import ORMModel
-from app.core.validators import OptEmail
+from app.core.validators import OptEmail, password_problems
 
 
 class UserOut(ORMModel):
@@ -28,6 +28,13 @@ class UserOut(ORMModel):
 class UserCreate(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def _strong_password(self) -> UserCreate:
+        problem = password_problems(self.password, self.username)
+        if problem:
+            raise ValueError(f"Password {problem}")
+        return self
     email: EmailStr
     full_name: str = Field(default="", max_length=255)
     first_name: str = Field(default="", max_length=255)
@@ -46,3 +53,11 @@ class UserUpdate(BaseModel):
     role: Role | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("password")
+    @classmethod
+    def _strong_password(cls, value: str | None) -> str | None:
+        problem = password_problems(value) if value else None
+        if problem:
+            raise ValueError(problem)
+        return value

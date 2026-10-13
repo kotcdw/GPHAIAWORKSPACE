@@ -151,6 +151,8 @@ def _field_errors(exc: RequestValidationError) -> list[dict[str, str]]:
             msg = _FRIENDLY[err["type"]]
         elif msg.startswith("Value error, "):
             msg = msg[len("Value error, ") :]
+        if name == "form" and msg.startswith("Password "):
+            name, msg = "password", msg[len("Password ") :]
         out.append({"field": name, "message": msg})
     return out
 
@@ -159,7 +161,9 @@ def _field_errors(exc: RequestValidationError) -> list[dict[str, str]]:
 async def validation_handler(request, exc: RequestValidationError):  # noqa: ANN001, ANN201
     """Return validation problems per field so the UI can highlight them."""
     errors = _field_errors(exc)
-    summary = "; ".join(f"{e['field'].replace('_', ' ')}: {e['message']}" for e in errors)
+    summary = "; ".join(
+        e["message"] if e["field"] == "form" else f"{e['field'].replace('_', ' ')}: {e['message']}" for e in errors
+    )
     return JSONResponse(status_code=422, content={"detail": f"Please correct: {summary}", "errors": errors})
 
 
