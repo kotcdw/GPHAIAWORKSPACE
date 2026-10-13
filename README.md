@@ -114,6 +114,9 @@ with electronic attestations, and keep a strict, immutable audit trail.
 
 ## Quick start
 
+> **Windows, easiest:** double-click `Start-GPHA.cmd`. It stops any old copy on
+> port 8001, starts Docker + MySQL, applies migrations and starts the app.
+
 ```powershell
 # 1. Start the MySQL server (Docker) - binds host port 3307
 docker compose up -d
