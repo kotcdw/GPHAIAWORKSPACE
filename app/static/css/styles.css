@@ -362,9 +362,10 @@ button.btn.icon { padding: 5px 8px; }
   gap: 12px;
   padding: 18px 20px 4px;
 }
-.sign-in-div .auth-head-logo { height: 72px; width: auto; flex: none; }
-.sign-in-div .auth-head-text { display: flex; flex-direction: column; text-align: left; }
-.sign-in-div .auth-head-title { font-weight: bold; color: #007fff; font-size: 1.2rem; line-height: 1.25; }
+.sign-in-div .auth-head-logo { height: 64px; width: auto; flex: none; }
+.sign-in-div .auth-head-text { display: flex; flex-direction: column; text-align: left; min-width: 0; }
+.sign-in-div .auth-head-title { font-weight: bold; color: #007fff; font-size: 1.1rem; line-height: 1.25; white-space: nowrap; letter-spacing: -.01em; }
+@media (max-width: 480px) { .sign-in-div .auth-head-logo { height: 42px; } .sign-in-div .auth-head { gap: 8px; padding: 18px 6px 4px; } .sign-in-div .auth-head-title { font-size: clamp(.7rem, 3.6vw, 1.1rem); } .sign-in-div .auth-head-sub { font-size: clamp(.65rem, 3vw, .95rem); white-space: nowrap; } }
 .sign-in-div .auth-head-sub { color: #007fff; font-style: italic; font-size: .95rem; line-height: 1.25; }
 
 .sign-in-div .row { display: flex; flex-wrap: wrap; margin-right: -15px; margin-left: -15px; }
