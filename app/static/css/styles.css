@@ -532,3 +532,6 @@ table.tests-table th:nth-child(6) { width: 120px; }
 table.tests-table td { overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 560px) { .hide-sm { display: none !important; } }
+
+/* Sign-in page: database outage warning */
+.auth-health { margin: 0 0 12px; padding: 10px 12px; border-radius: 4px; background: #fff4e5; border: 1px solid #f0b35b; color: #8a4b00; font-size: .85rem; line-height: 1.4; text-align: left; }

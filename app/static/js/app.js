@@ -349,7 +349,8 @@ qs("#loginForm").addEventListener("submit", async (ev) => {
     qs("#loginForm").reset();
     showApp();
   } catch (err) {
-    notify(authMsg, err.message, "error");
+    const text = authError(err, "sign in");
+    if (text) notify(authMsg, text, "error");
   }
 });
 
@@ -382,9 +383,39 @@ qs("#registerForm").addEventListener("submit", async (ev) => {
     showLogin();
     notify(authMsg, res.message, "ok");
   } catch (err) {
-    notify(regMsg, err.message, "error");
+    notify(regMsg, authError(err, "create your account"), "error");
   }
 });
+
+// Sign-in/registration never keep drafts (passwords are never stored), so say plainly what failed.
+function authError(err, action) {
+  if (err && (err.status === 503 || err.status === 0)) {
+    const warn = qs("#authHealth");
+    if (action === "sign in" && warn && !warn.classList.contains("hidden")) return "";  // already explained above
+    checkAuthHealth();
+    return `You can't ${action} right now because the database server is not running. `
+      + "Nothing you typed was stored. Ask the administrator to start it, then try again.";
+  }
+  return err.message;
+}
+
+// Warn on the sign-in page before anyone types, and clear the warning once the database is back.
+async function checkAuthHealth() {
+  if (!authView || authView.classList.contains("hidden")) return;
+  try {
+    const h = await fetch("/health", { cache: "no-store" }).then((r) => r.json());
+    let box = qs("#authHealth");
+    if (!box) {
+      box = el("div", { id: "authHealth", class: "auth-health hidden", role: "alert" });
+      authMsg.parentNode.insertBefore(box, authMsg);
+    }
+    box.classList.toggle("hidden", !!h.can_save);
+    box.textContent = h.can_save ? "" : "Sign-in is unavailable: the database server is not running. "
+      + "Ask the administrator to start it (run .\\run.ps1). This page will update automatically.";
+  } catch { /* server itself unreachable - the browser shows its own error */ }
+}
+checkAuthHealth();
+setInterval(checkAuthHealth, 10000);
 
 qs("#signOut").addEventListener("click", async () => {
   try { await API.post("/api/auth/logout"); } catch { /* ignore */ }

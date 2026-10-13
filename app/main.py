@@ -183,7 +183,11 @@ async def database_error_handler(request, exc: DBAPIError):  # noqa: ANN001, ANN
     logger.error("Database error on %s %s: %s", request.method, request.url.path, str(exc).splitlines()[0])
     return JSONResponse(
         status_code=503,
-        content={"detail": "The database is unavailable, so nothing could be saved. Your entries are kept as a draft."},
+        content={
+            "detail": "The database server is not running, so this request could not be completed. "
+            "An administrator needs to start it (run .\\run.ps1, or 'docker compose up -d').",
+            "code": "database_unavailable",
+        },
     )
 
 
