@@ -16,6 +16,7 @@ class ApiError extends Error {
     else if (status >= 500 && !(payload && payload.detail)) detail = `Server error (${status})`;
     super(detail);
     this.status = status;
+    this.code = (payload && payload.code) || null;
     this.payload = payload;
     // Field-level validation problems: [{field, message}, ...]
     this.errors = (payload && Array.isArray(payload.errors)) ? payload.errors : [];

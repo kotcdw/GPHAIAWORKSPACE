@@ -8,6 +8,8 @@ database cannot accept writes.
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from dataclasses import asdict, dataclass
 
 from sqlalchemy import text
@@ -106,3 +108,30 @@ def ensure_schema() -> DbStatus:
     if not status.up_to_date:
         logger.error("Database schema is not current (%s, expected %s)", status.revision, status.head)
     return status
+
+
+# --- self-healing --------------------------------------------------------------
+# If the app started while MySQL was down, start-up could not migrate. Rather
+# than needing a manual restart, re-check whenever someone asks (``/health``,
+# a schema error) or the background watcher ticks, and migrate once it is back.
+_heal_lock = threading.Lock()
+_last_heal_attempt = 0.0
+_HEAL_RETRY_SECONDS = 20
+
+
+def heal_if_needed() -> DbStatus:
+    """Return the database status, applying pending migrations if it is reachable but behind."""
+    global _last_heal_attempt
+    status = database_status()
+    if not status.ok or status.up_to_date or not settings.auto_migrate:
+        return status
+    if time.monotonic() - _last_heal_attempt < _HEAL_RETRY_SECONDS:
+        return status
+    if not _heal_lock.acquire(blocking=False):
+        return status  # another request is already migrating
+    try:
+        _last_heal_attempt = time.monotonic()
+        logger.warning("Database is reachable again - bringing the schema up to date")
+        return ensure_schema()
+    finally:
+        _heal_lock.release()

@@ -389,6 +389,10 @@ qs("#registerForm").addEventListener("submit", async (ev) => {
 
 // Sign-in/registration never keep drafts (passwords are never stored), so say plainly what failed.
 function authError(err, action) {
+  if (err && err.code === "database_updating") { checkAuthHealth(); return err.message; }
+  if (err && err.status >= 500 && err.status !== 503) {
+    return `Something went wrong on the server, so you could not ${action}. Please try again; if it keeps happening, tell the administrator.`;
+  }
   if (err && (err.status === 503 || err.status === 0)) {
     const warn = qs("#authHealth");
     if (action === "sign in" && warn && !warn.classList.contains("hidden")) return "";  // already explained above

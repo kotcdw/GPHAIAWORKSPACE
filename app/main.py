@@ -16,7 +16,7 @@ from sqlalchemy.exc import DBAPIError, OperationalError
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.dbcheck import database_status, ensure_schema
+from app.core.dbcheck import ensure_schema, heal_if_needed
 from app.core.deps import csrf_protect
 from app.core.errors import FieldValidationError
 from app.modules.approvals.router import router as approvals_router
@@ -99,16 +99,26 @@ async def lifespan(app: FastAPI):
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     # Make sure the database can accept writes (and is migrated) before serving.
     await asyncio.to_thread(ensure_schema)
-    task: asyncio.Task | None = None
+    tasks: list[asyncio.Task] = [asyncio.create_task(_schema_watcher())]
     if settings.backup_interval_hours > 0:
-        task = asyncio.create_task(_backup_scheduler())
+        tasks.append(asyncio.create_task(_backup_scheduler()))
     try:
         yield
     finally:
-        if task is not None:
+        for task in tasks:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+
+
+async def _schema_watcher() -> None:
+    """Every 30 s: if the database came back after an outage, migrate it without a restart."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await asyncio.to_thread(heal_if_needed)
+        except Exception:  # noqa: BLE001 - never let the watcher die
+            logger.exception("Schema watcher check failed")
 
 
 app = FastAPI(
@@ -169,6 +179,8 @@ async def validation_handler(request, exc: RequestValidationError):  # noqa: ANN
 
 # MySQL client errors meaning "cannot reach / lost the server".
 _CONNECTION_ERRORS = {2002, 2003, 2005, 2006, 2013, 2055}
+# Unknown column / unknown table: the database schema is behind the code.
+_SCHEMA_ERRORS = {1054, 1146}
 
 
 @app.exception_handler(DBAPIError)
@@ -178,6 +190,17 @@ async def database_error_handler(request, exc: DBAPIError):  # noqa: ANN001, ANN
     unavailable = exc.connection_invalidated or (
         isinstance(exc, OperationalError) and (code in _CONNECTION_ERRORS or "unable to open database" in str(exc))
     )
+    if code in _SCHEMA_ERRORS:
+        # The code is newer than the database (e.g. it was down when the app started): migrate now.
+        logger.error("Schema out of date on %s %s: %s", request.method, request.url.path, str(exc).splitlines()[0])
+        await asyncio.to_thread(heal_if_needed)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "The database was just updated to the latest version. Please try again.",
+                "code": "database_updating",
+            },
+        )
     if not unavailable:
         raise exc
     logger.error("Database error on %s %s: %s", request.method, request.url.path, str(exc).splitlines()[0])
@@ -221,7 +244,7 @@ for router in _ROUTERS:
 @app.get("/health", tags=["meta"])
 def health() -> dict:
     """Liveness plus database status; the UI warns users when saving is impossible."""
-    db = database_status()
+    db = heal_if_needed()
     return {
         "status": "ok" if db.ok and db.up_to_date else "degraded",
         "app": settings.app_name,
