@@ -337,6 +337,20 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 ---
 
+## PHASE 13 — Configuration, lifecycle enforcement, committee reporting
+
+**Goal:** configure the workflows and business rules to AMS / IIA practice.
+
+### Steps
+- [x] **13.1** System Configuration: `app_config` table (migration 0009), rule registry `app/core/appconfig.py`, Admin screen; consumers (escalation, MFA, throttle, reports, closure gates) read live values.
+- [x] **13.2** Audit lifecycle: closure-readiness checklist + gated e-signed close; fieldwork-start notification to auditees and entity owner; Word engagement letter.
+- [x] **13.3** Action SLAs: default due date by severity for CAPA created manually or raised from a finding.
+- [x] **13.4** Audit Committee pack page + Word export (plan delivery, reports and ratings, findings by risk/age, actions, top overdue).
+- [x] **13.5** Lists: sortable columns, paging, keyboard rows, CSV export.
+- [x] **13.6** Tests `tests/test_configuration_lifecycle.py`; browser walkthrough.
+
+---
+
 ## Dependency / ordering notes
 
 - PHASE 0 must finish before anything touches the DB; run `init_db` + smoke.

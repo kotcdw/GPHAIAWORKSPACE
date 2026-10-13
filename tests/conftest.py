@@ -42,6 +42,9 @@ os.environ["GPHA_ADMIN_PASSWORD"] = "Admin@12345"
 os.environ["GPHA_COOKIE_SECURE"] = "false"
 os.environ["GPHA_LOGIN_RATE_LIMIT_PER_MINUTE"] = "0"  # tests sign in many times from one client
 os.environ["GPHA_ESCALATION_CHECK_MINUTES"] = "0"
+# Older tests close audits without a report; the closure gates have their own tests.
+os.environ["GPHA_REQUIRE_REPORT_TO_CLOSE"] = "false"
+os.environ["GPHA_REQUIRE_FINDINGS_ACTIONED_TO_CLOSE"] = "false"
 
 import pytest  # noqa: E402
 from alembic.config import Config  # noqa: E402

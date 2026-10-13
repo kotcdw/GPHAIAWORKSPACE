@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     escalate_cae_days: int = 30
     escalation_check_minutes: int = 60
 
+    # Audit closure gates (also editable on the Configuration screen).
+    require_report_to_close: bool = True
+    require_findings_actioned_to_close: bool = True
+
     # Per-IP throttle on sign-in attempts (in addition to account lockout).
     login_rate_limit_per_minute: int = 10
 

@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core import totp
+from app.core.appconfig import cfg
 from app.core.audit import log_action
 from app.core.config import settings
 from app.core.database import get_db
@@ -48,7 +49,7 @@ _ATTEMPTS_LOCK = threading.Lock()
 
 
 def _throttle(request: Request) -> None:
-    limit = settings.login_rate_limit_per_minute
+    limit = cfg("login_rate_limit_per_minute")
     if limit <= 0:
         return
     ip = request.client.host if request.client else "unknown"
@@ -281,8 +282,7 @@ def mfa_enable(payload: MfaCode, request: Request, db: DBSession = Depends(get_d
 def mfa_disable(payload: MfaDisable, request: Request, db: DBSession = Depends(get_db),
                 user: User = Depends(get_current_user),
                 session: UserSession = Depends(get_current_session)) -> MeOut:
-    required = {r.strip() for r in settings.mfa_required_roles.split(",") if r.strip()}
-    if user.role.value in required:
+    if user.role.value in cfg("mfa_required_roles"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Two-step verification is required for your role and cannot be turned off")
     if not user.mfa_enabled or not user.mfa_secret:

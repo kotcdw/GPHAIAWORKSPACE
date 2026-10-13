@@ -18,6 +18,7 @@ from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.core.schemas import ESignRequest, MessageOut
 from app.core.tasksvc import auto_task_for_record
+from app.modules.audits.lifecycle import default_due_date
 from app.modules.capa.models import Capa
 from app.modules.capa.schemas import CapaCreate, CapaLink, CapaList, CapaOut, CapaUpdate
 from app.modules.nonconformances.models import Nonconformance
@@ -77,7 +78,7 @@ def create_capa(
         disposition=payload.disposition,
         status=payload.status,
         owner_email=payload.owner_email,
-        due_date=payload.due_date,
+        due_date=payload.due_date or default_due_date(payload.severity),
         linked_nc_id=payload.linked_nc_id,
         created_by=user.id,
     )

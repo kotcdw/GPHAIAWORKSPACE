@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.access import assigned_audit_ids, is_privileged
+from app.core.appconfig import cfg
 from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
@@ -65,7 +66,7 @@ def _blockers(db: DBSession, report: AuditReport) -> list[str]:
         problems.append("Write the overall opinion.")
     findings = db.execute(select(Finding).where(Finding.audit_id == report.audit_id)).scalars().all()
     no_response = [f.id for f in findings if not (f.management_response or "").strip()]
-    if no_response:
+    if no_response and cfg("require_management_response_for_review"):
         problems.append(f"{len(no_response)} finding(s) still need a management response.")
     return problems
 
@@ -126,11 +127,7 @@ def create_audit_report(audit_id: int, request: Request, db: DBSession = Depends
         status=ReportStatus.Draft,
         background=audit.description or "",
         scope_objectives=audit.scope or "",
-        methodology=(
-            "The audit was performed in accordance with the IIA Global Internal Audit Standards. "
-            "Work included walkthroughs, assessment of control design and testing of operating effectiveness "
-            "on a sample basis."
-        ),
+        methodology=cfg("report_methodology"),
         created_by=user.id,
     )
     db.add(report)

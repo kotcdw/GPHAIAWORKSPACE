@@ -10,6 +10,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core.appconfig import cfg
 from app.core.enums import RiskRating
 from app.modules.audits.models import Audit, Finding
 from app.modules.capa.models import Capa
@@ -109,7 +110,7 @@ def to_docx(db: DBSession, report: AuditReport) -> bytes:
 
     head = doc.add_paragraph()
     head.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = head.add_run("GHANA PORTS AND HARBOURS AUTHORITY\nINTERNAL AUDIT DEPARTMENT")
+    run = head.add_run(f"{cfg('org_name').upper()}\n{cfg('department_name').upper()}")
     run.bold = True
     run.font.size = Pt(13)
     if data["draft"]:
@@ -242,7 +243,7 @@ th{{background:#eef2f8}} dl{{margin:0}} dt{{font-weight:700;margin-top:6px}} dd{
 .finding{{page-break-inside:avoid}} .noprint{{text-align:right}} @media print{{.noprint{{display:none}} body{{margin:0}}}}
 </style></head><body>
 <div class='noprint'><button onclick='window.print()'>Print / Save as PDF</button></div>
-<header><b>GHANA PORTS AND HARBOURS AUTHORITY</b><b>INTERNAL AUDIT DEPARTMENT</b></header>
+<header><b>{e(cfg('org_name').upper())}</b><b>{e(cfg('department_name').upper())}</b></header>
 {banner}<h1>{e(report.title)}</h1>
 <table><tr><th>Report reference</th><td>{e(report.report_ref)}</td><th>Audit reference</th><td>{e(data['audit_ref'])}</td></tr>
 <tr><th>Overall rating</th><td>{e(rating)}</td><th>Date issued</th><td>{_fmt(report.issued_at) or 'Not issued'}</td></tr>

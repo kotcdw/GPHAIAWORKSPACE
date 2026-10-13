@@ -236,8 +236,8 @@ async function renderFollowup() {
   const lvl = (n) => overdue.filter((o) => o.escalation_level === n).length;
   viewRoot.append(el("div", { class: "stats" },
     stat(overdue.length, "Overdue actions", overdue.length ? "past their due date" : "none", overdue.length ? "danger" : "ok"),
-    stat(lvl(2), "With Audit Managers", "14+ days overdue", lvl(2) ? "warn" : ""),
-    stat(lvl(3), "With the CAE", "30+ days overdue", lvl(3) ? "danger" : ""),
+    stat(lvl(2), "With Audit Managers", "escalated after the manager threshold", lvl(2) ? "warn" : ""),
+    stat(lvl(3), "With the CAE", "escalated after the CAE threshold", lvl(3) ? "danger" : ""),
     stat(review.length, "Awaiting validation", "evidence submitted", review.length ? "warn" : "")));
 
   const table = (rows, cols) => (rows.length ? el("div", { class: "table-wrap" }, el("table", null,
@@ -398,4 +398,204 @@ function mfaEnrol(card, setup) {
       paintMfa(card);
     },
   });
+}
+
+// ==================================================================== data table: sort, page, export, keyboard
+
+function csvCell(v) {
+  const s = v === null || v === undefined ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCsv(filename, columns, items) {
+  const raw = (it, c) => (c.csv ? c.csv(it) : it[c.key]);
+  const lines = [columns.map((c) => csvCell(c.label)).join(","), ...items.map((it) => columns.map((c) => csvCell(raw(it, c))).join(","))];
+  const blob = new Blob([`﻿${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: filename });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// Sortable, paged, keyboard-accessible table with CSV export.
+// columns: [{ key, label, render(item) -> node|string, sortValue(item)?, csv(item)?, num? }]
+function dataTable(items, columns, { onRow = null, pageSize = 25, exportName = null, emptyText = "No records." } = {}) {
+  const wrap = el("div", { class: "data-table" });
+  let sortKey = null;
+  let dir = 1;
+  let page = 0;
+  const value = (it, c) => (c.sortValue ? c.sortValue(it) : it[c.key]);
+
+  function sorted() {
+    if (!sortKey) return items;
+    const c = columns.find((x) => x.key === sortKey);
+    return [...items].sort((a, b) => {
+      const va = value(a, c); const vb = value(b, c);
+      if (va === vb) return 0;
+      if (va === null || va === undefined || va === "") return 1;
+      if (vb === null || vb === undefined || vb === "") return -1;
+      return (typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), undefined, { numeric: true })) * dir;
+    });
+  }
+
+  function paint() {
+    clear(wrap);
+    if (!items.length) { wrap.append(el("div", { class: "empty" }, emptyText)); return; }
+    const rows = sorted();
+    const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    page = Math.min(page, pages - 1);
+    const slice = rows.slice(page * pageSize, page * pageSize + pageSize);
+    const head = el("tr", null, ...columns.map((c) => {
+      const active = sortKey === c.key;
+      const th = el("th", { class: c.num ? "num" : null, "aria-sort": active ? (dir > 0 ? "ascending" : "descending") : "none" },
+        el("button", { class: "th-sort", type: "button", title: `Sort by ${c.label}`, onclick: () => {
+          if (sortKey === c.key) dir = -dir; else { sortKey = c.key; dir = 1; }
+          paint();
+        } }, c.label, el("i", { class: `bi ${active ? (dir > 0 ? "bi-caret-up-fill" : "bi-caret-down-fill") : "bi-chevron-expand"} sort-ico` })));
+      return th;
+    }));
+    const body = el("tbody", null, ...slice.map((it) => {
+      const tr = el("tr", onRow ? { tabindex: "0", onclick: () => onRow(it), onkeydown: (e) => { if (e.key === "Enter") onRow(it); } } : { class: "no-click" },
+        ...columns.map((c) => el("td", { class: c.num ? "num" : null }, c.render ? c.render(it) : (it[c.key] ?? "-"))));
+      return tr;
+    }));
+    wrap.append(el("div", { class: "table-wrap" }, el("table", null, el("thead", null, head), body)));
+    wrap.append(el("div", { class: "table-foot" },
+      el("span", { class: "muted small" }, `${rows.length} record${rows.length === 1 ? "" : "s"}${pages > 1 ? ` · page ${page + 1} of ${pages}` : ""}`),
+      el("div", { class: "actions" },
+        pages > 1 ? el("button", { class: "btn small secondary", disabled: page === 0 ? "1" : null, onclick: () => { page -= 1; paint(); } }, el("i", { class: "bi bi-chevron-left" }), " Previous") : null,
+        pages > 1 ? el("button", { class: "btn small secondary", disabled: page >= pages - 1 ? "1" : null, onclick: () => { page += 1; paint(); } }, "Next ", el("i", { class: "bi bi-chevron-right" })) : null,
+        exportName ? el("button", { class: "btn small secondary", onclick: () => downloadCsv(exportName, columns, rows) },
+          el("i", { class: "bi bi-filetype-csv" }), " Export CSV") : null)));
+  }
+  paint();
+  return wrap;
+}
+
+// ==================================================================== System Configuration (Admin)
+
+const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text" };
+
+async function renderConfiguration() {
+  clear(viewRoot);
+  const msg = el("div");
+  viewRoot.append(viewHeader("Configuration", null,
+    { sub: "Business rules that drive the audit workflow. Changes apply immediately and are recorded in the audit log." }), msg);
+  let rules;
+  try { rules = await API.get("/api/config"); } catch (err) { notify(msg, err.message, "error"); return; }
+  const groups = [...new Set(rules.map((r) => r.group))];
+  const grid = el("div", { class: "config-grid" });
+  viewRoot.append(grid);
+  groups.forEach((g) => {
+    const items = rules.filter((r) => r.group === g);
+    const card = el("div", { class: "card" },
+      el("div", { class: "card-head" }, el("h3", null, el("i", { class: `bi bi-${CONFIG_GROUP_ICONS[g] || "gear"}` }), ` ${g}`),
+        items.some((r) => !r.is_default) ? el("span", { class: "chip-mini" }, "customised") : null));
+    grid.append(card);
+    const fields = items.map((r) => {
+      const f = { name: r.key, label: r.label, help: r.help || `Default: ${Array.isArray(r.default) ? (r.default.join(", ") || "none") : String(r.default)}` };
+      if (r.kind === "bool") return { ...f, type: "checkbox" };
+      if (r.kind === "int") return { ...f, type: "number", required: true, min: r.min ?? undefined, max: r.max ?? undefined };
+      if (r.kind === "roles") return { ...f, type: "checklist", options: r.options };
+      if (r.kind === "longtext") return { ...f, type: "textarea", rows: 4, maxLength: 5000 };
+      return { ...f, required: true, maxLength: 200, singleLine: true };
+    });
+    const initial = Object.fromEntries(items.map((r) => [r.key, r.value]));
+    const holder = el("div");
+    card.append(holder);
+    inlineForm(holder, {
+      draftable: false,
+      fields,
+      initial,
+      submitLabel: "Save",
+      onSubmit: (v) => API.put("/api/config", { values: Object.fromEntries(items.map((r) => [r.key, r.kind === "int" ? Number(v[r.key]) : v[r.key]])) }),
+      onDone: () => { toast(`${g} saved`); renderConfiguration(); },
+    });
+    const changed = items.filter((r) => !r.is_default);
+    if (changed.length) {
+      card.append(el("div", { class: "reset-list" }, el("span", { class: "muted small" }, "Changed from default: "),
+        ...changed.map((r) => el("button", { class: "linkish", title: `Reset "${r.label}" to its default`, onclick: async () => {
+          try { await API.post(`/api/config/${r.key}/reset`); toast("Reset to default"); renderConfiguration(); }
+          catch (err) { toast(err.message, "error"); }
+        } }, `reset ${r.label.split(" ").slice(0, 4).join(" ")}…`))));
+    }
+  });
+}
+
+// ==================================================================== audit closure readiness
+
+async function renderClosureCard(container, audit, canClose) {
+  const card = el("div", { class: "card closure-card" });
+  container.append(card);
+  let res;
+  try { res = await API.get(`/api/audits/${audit.id}/closure-check`); } catch { card.remove(); return; }
+  card.append(el("div", { class: "card-head" },
+    el("h3", null, "Closure readiness"),
+    res.ready ? el("span", { class: "rating rating-satisfactory" }, "Ready to close") : el("span", { class: "rating rating-needs-improvement" }, "Not ready")),
+  el("ul", { class: "checklist-view" }, ...res.checks.map((c) => el("li", { class: c.ok ? "ok" : (c.required ? "bad" : "warn") },
+    el("i", { class: `bi ${c.ok ? "bi-check-circle-fill" : (c.required ? "bi-x-circle-fill" : "bi-dash-circle")}`, "aria-hidden": "true" }),
+    el("div", null, el("span", null, c.label), !c.required && !c.ok ? el("span", { class: "muted small" }, " (not required by configuration)") : null,
+      c.detail ? el("div", { class: "muted small" }, c.detail) : null)))));
+  if (!res.ready && canClose) card.append(el("p", { class: "muted small" }, "The audit can be closed with an e-signature once every required item is ticked."));
+}
+
+// ==================================================================== Audit Committee pack
+
+async function renderCommittee(year = null) {
+  clear(viewRoot);
+  const msg = el("div");
+  let s;
+  try { s = await API.get(`/api/committee/summary${year ? `?fiscal_year=${year}` : ""}`); }
+  catch (err) { viewRoot.append(viewHeader("Audit Committee pack"), msg); notify(msg, err.message, "error"); return; }
+  const yearSel = el("select", { class: "compact", "aria-label": "Fiscal year" },
+    ...(s.fiscal_years.length ? s.fiscal_years : [s.plan.fiscal_year]).map((y) => el("option", { value: y, selected: y === s.plan.fiscal_year ? "1" : null }, `FY${y}`)));
+  yearSel.addEventListener("change", () => renderCommittee(Number(yearSel.value)));
+  viewRoot.append(viewHeader("Audit Committee pack", [yearSel,
+    el("a", { class: "btn small", href: `/api/committee/pack.docx?fiscal_year=${s.plan.fiscal_year}` }, el("i", { class: "bi bi-file-earmark-word" }), " Download Word pack")],
+  { sub: `Status of the Internal Audit Plan, reports and agreed actions · prepared ${fmtDate(s.generated_at)}` }), msg);
+
+  const p = s.plan;
+  const a = s.actions;
+  const openTotal = Object.values(s.open_findings_by_rating).reduce((x, y) => x + y, 0);
+  viewRoot.append(el("div", { class: "stats" },
+    stat(`${p.completed_pct}%`, "Plan completed", p.plan_ref ? `${p.engagements} engagements in ${p.plan_ref}` : "no plan this year", p.completed_pct >= 75 ? "ok" : ""),
+    stat(s.reports_issued.length, "Reports issued", Object.entries(s.ratings).map(([k, v]) => `${v} ${k}`).join(" · ") || "none yet"),
+    stat(openTotal, "Open findings", `${s.open_findings_by_rating.High || 0} high risk`, (s.open_findings_by_rating.High || 0) ? "danger" : ""),
+    stat(a.overdue, "Overdue actions", `${a.with_cae} with the CAE`, a.overdue ? "danger" : "ok")));
+
+  const bars = (obj, tone = () => "") => {
+    const max = Math.max(1, ...Object.values(obj));
+    return el("div", { class: "hbars" }, ...Object.entries(obj).map(([k, v]) => el("div", { class: "hbar" },
+      el("span", { class: "hbar-label" }, k),
+      el("span", { class: "hbar-track" }, el("span", { class: `hbar-fill ${tone(k)}`.trim(), style: `width:${Math.round((v / max) * 100)}%` })),
+      el("span", { class: "hbar-val" }, String(v)))));
+  };
+  const riskTone = (k) => ({ High: "danger", Medium: "warn", Low: "ok" }[k] || "");
+  const ageTone = (k) => (k.startsWith("Over") ? "danger" : (k.startsWith("91") ? "warn" : ""));
+  const two = el("div", { class: "two-cols" });
+  viewRoot.append(two);
+  two.append(panel("Plan delivery by stage", Object.keys(p.by_stage).length ? bars(p.by_stage) : el("div", { class: "empty" }, "No engagements.")),
+    panel("Agreed actions", el("dl", { class: "kv" },
+      el("dt", null, "Open"), el("dd", null, String(a.open)),
+      el("dt", null, "Overdue"), el("dd", null, String(a.overdue)),
+      el("dt", null, "Awaiting validation"), el("dd", null, String(a.awaiting_validation)),
+      el("dt", null, "Reopened after validation"), el("dd", null, String(a.reopened)),
+      el("dt", null, "Closed"), el("dd", null, String(a.closed)))));
+  const two2 = el("div", { class: "two-cols" });
+  viewRoot.append(two2);
+  two2.append(panel("Open findings by risk", bars(s.open_findings_by_rating, riskTone)),
+    panel("Open findings by age", bars(s.open_findings_by_age, ageTone)));
+
+  viewRoot.append(panel("Reports issued", dataTable(s.reports_issued, [
+    { key: "report_ref", label: "Report", render: (r) => el("span", { class: "ref" }, r.report_ref) },
+    { key: "title", label: "Title" },
+    { key: "rating", label: "Overall rating", render: (r) => (r.rating ? el("span", { class: `rating rating-${r.rating.toLowerCase().replace(/\s+/g, "-")}` }, r.rating) : "-") },
+    { key: "issued_at", label: "Issued", render: (r) => fmtDate(r.issued_at).split(",")[0] },
+  ], { onRow: (r) => openAudit(r.audit_id, "report"), exportName: `reports-issued-FY${p.fiscal_year}.csv`, emptyText: "No reports issued yet." })));
+  viewRoot.append(panel("Most overdue actions", dataTable(s.top_overdue, [
+    { key: "capa_ref", label: "Action", render: (r) => el("span", { class: "ref" }, r.capa_ref) },
+    { key: "title", label: "Description" },
+    { key: "owner", label: "Owner", render: (r) => r.owner || "-" },
+    { key: "days_overdue", label: "Days overdue", num: true },
+    { key: "escalated_to", label: "Escalated to", render: (r) => badge(r.escalated_to) },
+  ], { onRow: (r) => openRecord("capa", r.id), exportName: `overdue-actions-FY${p.fiscal_year}.csv`, emptyText: "No overdue actions." })));
 }

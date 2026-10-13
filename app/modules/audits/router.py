@@ -133,7 +133,12 @@ def update_audit(
         _check_transition(audit.status, payload.status)
         if payload.status != audit.status:
             changes.append(f"status={payload.status.value}")
+            started = audit.status == AuditStatus.Planned and payload.status == AuditStatus.InProgress
             audit.status = payload.status
+            if started:
+                from app.modules.audits.lifecycle import notify_fieldwork_started
+
+                notify_fieldwork_started(db, audit, user)
 
     log_action(db, user_id=user.id, action=f"AUDIT_UPDATE id={audit.id} [{', '.join(changes)}]", request=request)
     log_record_history(
@@ -254,6 +259,9 @@ def close_audit(
         )
 
     _ensure_fieldwork_reviewed(db, audit)
+    from app.modules.audits.lifecycle import ensure_closable
+
+    ensure_closable(db, audit)
 
     def _on_approve(session: DBSession) -> None:
         audit.status = AuditStatus.Closed

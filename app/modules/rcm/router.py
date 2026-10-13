@@ -42,6 +42,7 @@ from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.core.schemas import ESignRequest, MessageOut
 from app.core.tasksvc import auto_task_for_record
+from app.modules.audits.lifecycle import default_due_date
 from app.modules.audits.models import Audit, Finding
 from app.modules.audits.schemas import FindingOut
 from app.modules.capa.models import Capa
@@ -718,6 +719,7 @@ def raise_action(finding_id: int, request: Request, db: DBSession = Depends(get_
         severity=_SEVERITY[finding.risk_rating],
         status=CapaStatus.Open,
         owner_email=finding.assigned_owner_email,
+        due_date=default_due_date(_SEVERITY[finding.risk_rating]),
         source_type="finding",
         source_id=finding.id,
         created_by=user.id,

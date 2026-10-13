@@ -483,7 +483,7 @@ function showApp() {
   // Deep link from an e-mail: #open/<type>/<id>
   const link = /^#open\/([a-z_]+)\/(\d+)$/.exec(window.location.hash);
   if (link) { history.replaceState(null, "", window.location.pathname); openLink(link[1], Number(link[2])); return; }
-  const adminOnly = ["logs", "backups"];
+  const adminOnly = ["logs", "backups", "configuration"];
   const requested = isAdmin() ? state.view : (adminOnly.includes(state.view) ? "dashboard" : state.view);
   navigate(requested);
 }
@@ -509,6 +509,8 @@ function navigate(view) {
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "followup") return renderFollowup();
+  if (view === "committee") return renderCommittee();
+  if (view === "configuration") return renderConfiguration();
   if (view === "plans") return renderPlans();
   if (view === "drafts") return renderDrafts();
   if (view === "universe") return renderUniverse();
@@ -635,12 +637,19 @@ async function renderList(key) {
       const data = await API.get(`${m.endpoint}${params.toString() ? `?${params}` : ""}`);
       const items = m.wrapped ? data.items : data;
       const total = m.wrapped ? data.total : data.length;
-      if (!items.length) { card.append(el("div", { class: "empty" }, "No records.")); return; }
-      card.append(el("table", null,
-        el("thead", null, el("tr", null, ...m.columns.map((c) => el("th", null, c.label)))),
-        el("tbody", null, ...items.map((it) => el("tr", { onclick: () => openRecord(key, it.id) },
-          ...m.columns.map((c) => el("td", null, renderCell(it, c))))))));
-      card.append(el("p", { class: "muted small" }, `Showing ${items.length} of ${total}`));
+      card.append(dataTable(items, m.columns.map((c) => ({
+        key: c.key, label: c.label, render: (it) => renderCell(it, c),
+        // Rank severities/statuses in their business order, not alphabetically.
+        sortValue: (it) => {
+          const v = it[c.key];
+          const rank = { Low: 1, Medium: 2, High: 3 }[v];
+          if (rank) return rank;
+          const statusOpts = ((m.filters || []).find((f) => f.param === c.key) || {}).options;
+          return statusOpts && statusOpts.includes(v) ? statusOpts.indexOf(v) : v;
+        },
+        csv: (it) => (c.date && it[c.key] ? String(it[c.key]).slice(0, 10) : it[c.key]),
+      })), { onRow: (it) => openRecord(key, it.id), exportName: `${key}-${new Date().toISOString().slice(0, 10)}.csv` }));
+      if (total > items.length) card.append(el("p", { class: "muted small" }, `Showing ${items.length} of ${total}`));
     } catch (err) { notify(msg, err.message, "error"); }
   }
   load();
@@ -1083,6 +1092,8 @@ async function openAudit(id, startTab = null) {
         onDone: () => openAudit(id) }) }, el("i", { class: "bi bi-pen" }), " Close (e-sign)") : null,
       canWrite && audit.status !== "Closed" ? el("button", { class: "btn secondary small", onclick: () => editAuditModal(audit) },
         el("i", { class: "bi bi-pencil" }), " Edit") : null,
+      canWrite ? el("a", { class: "btn secondary small", href: `/api/audits/${id}/engagement-letter.docx`, title: "Engagement letter to the auditee (Word)" },
+        el("i", { class: "bi bi-envelope-paper" }), " Engagement letter") : null,
       iconBtn("printer", "Print", () => window.print()),
     ],
     {
@@ -1115,6 +1126,11 @@ async function openAudit(id, startTab = null) {
   if (canWrite) info.append(el("div", { class: "auditee-strip" }));
   viewRoot.append(info);
   if (canWrite) renderAuditees(info.querySelector(".auditee-strip"), id);
+  if (canWrite && ["In Progress", "Review"].includes(audit.status)) {
+    const slot = el("div");
+    viewRoot.append(slot);
+    renderClosureCard(slot, audit, isAdmin());
+  }
 
   const tabs = [
     ...(canWrite ? [{ key: "rcm", label: "Risk & Control Matrix" }] : []),

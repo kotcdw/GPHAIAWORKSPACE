@@ -45,10 +45,9 @@ def get_current_user(
 
 def mfa_setup_required(user: User) -> bool:
     """True when the user's role must use MFA but it is not set up yet."""
-    from app.core.config import settings
+    from app.core.appconfig import cfg
 
-    required = {r.strip() for r in settings.mfa_required_roles.split(",") if r.strip()}
-    return user.role.value in required and not user.mfa_enabled
+    return user.role.value in cfg("mfa_required_roles") and not user.mfa_enabled
 
 
 def require_active_user(user: User = Depends(get_current_user)) -> User:

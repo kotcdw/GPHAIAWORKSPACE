@@ -21,11 +21,14 @@ from app.core.deps import csrf_protect
 from app.core.errors import FieldValidationError
 from app.modules.approvals.router import router as approvals_router
 from app.modules.audits.findings import router as findings_router
+from app.modules.audits.lifecycle import router as lifecycle_router
 from app.modules.audits.router import router as audits_router
 from app.modules.audits.working_papers import router as working_papers_router
 from app.modules.auth.router import router as auth_router
 from app.modules.backups.router import router as backups_router
 from app.modules.capa.router import router as capa_router
+from app.modules.committee.router import router as committee_router
+from app.modules.configuration.router import router as configuration_router
 from app.modules.drafts.router import router as drafts_router
 from app.modules.followup.router import router as followup_router
 from app.modules.history.router import records_router
@@ -66,6 +69,9 @@ _ROUTERS = (
     notifications_router,
     followup_router,
     reports_router,
+    lifecycle_router,
+    configuration_router,
+    committee_router,
 )
 
 

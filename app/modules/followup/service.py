@@ -14,8 +14,8 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core.appconfig import cfg
 from app.core.audit import log_action
-from app.core.config import settings
 from app.core.enums import CapaStatus, ReviewLevel, utcnow
 from app.modules.capa.models import Capa
 from app.modules.notifications.service import notify_many, user_id_by_email, user_ids_with_level
@@ -33,9 +33,9 @@ class OverdueItem:
 def due_level(days_overdue: int) -> int:
     if days_overdue <= 0:
         return 0
-    if days_overdue >= settings.escalate_cae_days:
+    if days_overdue >= cfg("escalate_cae_days"):
         return 3
-    if days_overdue >= settings.escalate_manager_days:
+    if days_overdue >= cfg("escalate_manager_days"):
         return 2
     return 1
 
@@ -57,6 +57,8 @@ def overdue_actions(db: DBSession, now: datetime | None = None) -> list[OverdueI
 
 def run_escalations(db: DBSession, now: datetime | None = None) -> int:
     """Raise each overdue action to its due level once; return how many moved."""
+    if not cfg("escalation_enabled"):
+        return 0
     now = now or utcnow()
     moved = 0
     for item in overdue_actions(db, now):

@@ -117,6 +117,21 @@ with electronic attestations, and keep a strict, immutable audit trail.
 - **Review levels** — Admin assigns Audit Manager / CAE review levels to staff.
 - **Two-step verification** — optional TOTP (authenticator app) per user,
   mandatory per role via `GPHA_MFA_REQUIRED_ROLES`; admin can reset it.
+- **System Configuration** (Admin) — business rules editable on screen, no
+  restart: closure gates, management-response rule, fieldwork notices, action
+  due-date SLAs by severity, escalation thresholds, MFA roles, sign-in
+  throttle, report letterhead and default methodology. Every change is logged.
+- **Audit lifecycle enforcement** — closure-readiness checklist on each audit
+  (in Review, tests reviewed, report issued, responses and agreed actions);
+  the e-signed close is refused until it passes. Auditees and the entity owner
+  are notified when fieldwork starts; one-click Word engagement letter.
+- **Action SLAs** — actions raised without a due date get one from the
+  configured SLA (High 30 / Medium 60 / Low 90 days by default).
+- **Audit Committee pack** — plan delivery, reports issued and ratings, open
+  findings by risk and age, action status and the most overdue actions, with
+  a Word pack for the committee.
+- **Lists** — sortable columns (business order for risk/status), paging,
+  keyboard-accessible rows and CSV export on every register.
 - **Clean, responsive UI** — grouped navigation, standard page headers with
   in-place status changes, KPI dashboards, and a drawer layout on phones and
   small tablets.
@@ -189,6 +204,10 @@ Copy `.env.example` to `.env` and adjust. Settings use the `GPHA_` prefix:
 | `GPHA_ESCALATION_CHECK_MINUTES` | `60`                 | How often overdue actions are checked (0 disables) |
 | `GPHA_LOGIN_RATE_LIMIT_PER_MINUTE` | `10`              | Sign-in attempts per computer per minute (0 disables) |
 | `GPHA_MFA_REQUIRED_ROLES` | empty                      | e.g. `Admin,Auditor` to make two-step verification mandatory |
+| `GPHA_REQUIRE_REPORT_TO_CLOSE` / `GPHA_REQUIRE_FINDINGS_ACTIONED_TO_CLOSE` | `true` / `true` | Audit closure gates |
+
+> Most business rules can also be changed by an Admin on the **Configuration**
+> screen; a value saved there overrides the `.env` default.
 
 ## API overview
 
