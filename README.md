@@ -1,7 +1,7 @@
-# GPHA Audit Workspace
+# GPHA Internal Audit Workspace
 
 An enterprise audit-management workspace (FastAPI + MySQL) with a plain
-HTML/JavaScript single-page front end. It combines the AVCS sign-in shell with
+HTML/JavaScript single-page front end. It combines a GPHA-branded sign-in shell with
 the FreeQMS-style audit module set: schedule audits, capture findings and
 working papers, raise nonconformances and CAPA, manage organizations and
 stakeholders, log service feedback, drive a unified task center, sign records

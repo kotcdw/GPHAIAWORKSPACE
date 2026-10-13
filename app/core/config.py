@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "GPHA Audit Workspace"
+    app_name: str = "GPHA Internal Audit Workspace"
     # "development" (default) or "production". Production refuses to start with
     # insecure defaults (see ``insecure_settings``).
     environment: str = "development"

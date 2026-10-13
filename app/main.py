@@ -201,6 +201,10 @@ async def security_headers(request, call_next):  # noqa: ANN001, ANN201
     response.headers.setdefault("Referrer-Policy", "same-origin")
     if settings.cookie_secure:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    path = request.url.path
+    if path == "/" or path.startswith("/static/"):
+        # Always revalidate the UI so a browser never mixes old scripts with a new stylesheet.
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 
