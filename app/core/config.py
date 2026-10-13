@@ -71,6 +71,29 @@ class Settings(BaseSettings):
         ".png,.jpg,.jpeg,.gif,.bmp,.tif,.tiff,.msg,.eml,.zip,.mp3,.m4a,.wav,.mp4"
     )
 
+    # E-mail notifications (optional). Leave smtp_host empty to keep the in-app
+    # bell only. app_base_url is used for links in e-mails.
+    smtp_host: str = ""
+    smtp_port: int = 25
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "gpha-audit@localhost"
+    smtp_starttls: bool = False
+    app_base_url: str = "http://127.0.0.1:8001"
+
+    # Follow-up: overdue actions escalate to the owner straight away, then to
+    # Audit Managers after N days, then to the CAE. The watcher runs hourly.
+    escalate_manager_days: int = 14
+    escalate_cae_days: int = 30
+    escalation_check_minutes: int = 60
+
+    # Per-IP throttle on sign-in attempts (in addition to account lockout).
+    login_rate_limit_per_minute: int = 10
+
+    # Roles that must use multi-factor authentication (comma separated,
+    # e.g. "Admin,Auditor"). Empty = optional for everyone.
+    mfa_required_roles: str = ""
+
     # Bootstrap administrator (created by scripts/init_db.py if missing)
     admin_username: str = "admin"
     admin_password: str = "Admin@12345"

@@ -46,6 +46,17 @@ def create_task(
     )
     db.add(task)
     db.flush()
+    if assignee_id is not None and assignee_id != assignor_id:
+        from app.modules.notifications.service import notify
+
+        notify(
+            db,
+            assignee_id,
+            f"New task: {task.title}",
+            description or "A task has been assigned to you.",
+            link_type="task",
+            link_id=task.id,
+        )
     return task
 
 

@@ -147,8 +147,20 @@ def test_capa_close_with_esign(client, client2, db):
     # Closing through PATCH is not allowed (e-sign only).
     patched = client.patch(f"/api/capa/{capa_id}", json={"status": "Closed"}, headers=csrf_headers(csrf))
     assert patched.status_code == 400
-    review = client.patch(f"/api/capa/{capa_id}", json={"status": "Review"}, headers=csrf_headers(csrf))
-    assert review.status_code == 200
+    # Follow-up: the owner records what was done, a different auditor validates it.
+    done = client.post(
+        f"/api/capa/{capa_id}/implement",
+        json={"evidence": "All 14 cashiers retrained on 12 Oct; attendance sheet uploaded."},
+        headers=csrf_headers(csrf),
+    )
+    assert done.status_code == 200, done.text
+    assert done.json()["status"] == "Review"
+    unvalidated = client2.post(f"/api/capa/{capa_id}/close", json={"password": PASSWORD}, headers=csrf_headers(admin))
+    assert unvalidated.status_code == 409 and "validate" in unvalidated.json()["detail"]
+    own = client.post(f"/api/capa/{capa_id}/validate", json={"result": "Effective"}, headers=csrf_headers(csrf))
+    assert own.status_code == 403, "the implementer cannot validate their own work"
+    ok = client2.post(f"/api/capa/{capa_id}/validate", json={"result": "Effective"}, headers=csrf_headers(admin))
+    assert ok.status_code == 200, ok.text
 
     closed = client2.post(
         f"/api/capa/{capa_id}/close",

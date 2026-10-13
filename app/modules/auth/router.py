@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import threading
+import time
+from collections import deque
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core import totp
 from app.core.audit import log_action
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import CSRF_COOKIE, SESSION_COOKIE, get_current_session, get_current_user
+from app.core.deps import CSRF_COOKIE, SESSION_COOKIE, get_current_session, get_current_user, mfa_setup_required
 from app.core.enums import Role, utcnow
 from app.core.schemas import MessageOut
 from app.core.security import hash_password, hash_token, new_csrf_token, new_token, verify_password
@@ -19,6 +23,9 @@ from app.modules.auth.models import Session as UserSession
 from app.modules.auth.schemas import (
     LoginRequest,
     MeOut,
+    MfaCode,
+    MfaDisable,
+    MfaSetupOut,
     PasswordChange,
     ProfileUpdate,
     RegisterRequest,
@@ -33,6 +40,34 @@ _LOCKED_MESSAGE = (
     "Account temporarily locked after repeated failed sign-in attempts. "
     "Try again later or ask an administrator to unlock it."
 )
+
+
+# --- per-IP throttle on sign-in / registration (in addition to account lockout)
+_ATTEMPTS: dict[str, deque] = {}
+_ATTEMPTS_LOCK = threading.Lock()
+
+
+def _throttle(request: Request) -> None:
+    limit = settings.login_rate_limit_per_minute
+    if limit <= 0:
+        return
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    with _ATTEMPTS_LOCK:
+        window = _ATTEMPTS.setdefault(ip, deque())
+        while window and now - window[0] > 60:
+            window.popleft()
+        if len(window) >= limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many sign-in attempts from this computer. Wait a minute and try again.",
+            )
+        window.append(now)
+
+
+def _me(user: User, csrf_token: str) -> MeOut:
+    return MeOut(user=UserOut.model_validate(user), csrf_token=csrf_token,
+                 mfa_setup_required=mfa_setup_required(user))
 
 
 def _set_auth_cookies(response: Response, raw_token: str, csrf_token: str, max_age: int) -> None:
@@ -64,6 +99,7 @@ def _clear_auth_cookies(response: Response) -> None:
 
 @router.post("/register", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, request: Request, db: DBSession = Depends(get_db)) -> MessageOut:
+    _throttle(request)
     exists = db.execute(select(User).where(func.lower(User.username) == payload.username.lower())).scalar_one_or_none()
     if exists is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
@@ -93,6 +129,7 @@ def register(payload: RegisterRequest, request: Request, db: DBSession = Depends
 
 @router.post("/login", response_model=MeOut)
 def login(payload: LoginRequest, request: Request, response: Response, db: DBSession = Depends(get_db)) -> MeOut:
+    _throttle(request)
     user = db.execute(select(User).where(func.lower(User.username) == payload.username.lower())).scalar_one_or_none()
     now = utcnow()
     if user is not None and user.locked_until is not None and user.locked_until > now:
@@ -109,6 +146,20 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DBSes
                 log_action(db, user_id=user.id, action="ACCOUNT_LOCKED too_many_failed_logins", request=request)
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+    if user.mfa_enabled and user.mfa_secret:
+        if not payload.otp:
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="MFA_REQUIRED: enter the 6-digit code from your authenticator app")
+        if not totp.verify(totp.unseal(user.mfa_secret), payload.otp):
+            log_action(db, user_id=user.id, action="LOGIN_FAILED bad_mfa_code", request=request)
+            user.failed_login_count = (user.failed_login_count or 0) + 1
+            if user.failed_login_count >= settings.login_max_attempts:
+                user.locked_until = now + timedelta(minutes=settings.login_lockout_minutes)
+                user.failed_login_count = 0
+                log_action(db, user_id=user.id, action="ACCOUNT_LOCKED too_many_failed_logins", request=request)
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication code")
     user.failed_login_count = 0
     user.locked_until = None
     if not user.is_active:
@@ -135,7 +186,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DBSes
     db.commit()
 
     _set_auth_cookies(response, raw_token, csrf_token, ttl_seconds)
-    return MeOut(user=UserOut.model_validate(user), csrf_token=csrf_token)
+    return _me(user, csrf_token)
 
 
 @router.post("/logout", response_model=MessageOut)
@@ -158,7 +209,7 @@ def me(
     user: User = Depends(get_current_user),
     session: UserSession = Depends(get_current_session),
 ) -> MeOut:
-    return MeOut(user=UserOut.model_validate(user), csrf_token=session.csrf_token)
+    return _me(user, session.csrf_token)
 
 
 @router.patch("/me", response_model=MeOut)
@@ -195,3 +246,53 @@ def change_password(
     log_action(db, user_id=user.id, action=f"PASSWORD_CHANGE other_sessions_revoked={revoked}", request=request)
     db.commit()
     return MessageOut(message="Password changed successfully")
+
+# --- two-step verification (TOTP) --------------------------------------------
+
+
+@router.post("/mfa/setup", response_model=MfaSetupOut)
+def mfa_setup(request: Request, db: DBSession = Depends(get_db), user: User = Depends(get_current_user)) -> MfaSetupOut:
+    """Start enrolment: a new secret to add to the authenticator app (not active until confirmed)."""
+    if user.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Two-step verification is already on")
+    secret = totp.new_secret()
+    user.mfa_secret = totp.seal(secret)
+    log_action(db, user_id=user.id, action="MFA_SETUP_STARTED", request=request)
+    db.commit()
+    return MfaSetupOut(secret=secret, otpauth_uri=totp.provisioning_uri(secret, user.username))
+
+
+@router.post("/mfa/enable", response_model=MeOut)
+def mfa_enable(payload: MfaCode, request: Request, db: DBSession = Depends(get_db),
+               user: User = Depends(get_current_user),
+               session: UserSession = Depends(get_current_session)) -> MeOut:
+    if not user.mfa_secret:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Start the set-up first")
+    if not totp.verify(totp.unseal(user.mfa_secret), payload.code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="That code is not right. Check the time on your phone and try the newest code.")
+    user.mfa_enabled = True
+    log_action(db, user_id=user.id, action="MFA_ENABLED", request=request)
+    db.commit()
+    return _me(user, session.csrf_token)
+
+
+@router.post("/mfa/disable", response_model=MeOut)
+def mfa_disable(payload: MfaDisable, request: Request, db: DBSession = Depends(get_db),
+                user: User = Depends(get_current_user),
+                session: UserSession = Depends(get_current_session)) -> MeOut:
+    required = {r.strip() for r in settings.mfa_required_roles.split(",") if r.strip()}
+    if user.role.value in required:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Two-step verification is required for your role and cannot be turned off")
+    if not user.mfa_enabled or not user.mfa_secret:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Two-step verification is not on")
+    if not verify_password(payload.password, user.password_hash) or not totp.verify(
+        totp.unseal(user.mfa_secret), payload.code
+    ):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password or code is not right")
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    log_action(db, user_id=user.id, action="MFA_DISABLED", request=request)
+    db.commit()
+    return _me(user, session.csrf_token)

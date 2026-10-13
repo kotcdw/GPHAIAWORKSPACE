@@ -40,6 +40,8 @@ os.environ["GPHA_BACKUP_INTERVAL_HOURS"] = "0"
 os.environ["GPHA_ADMIN_USERNAME"] = "admin"
 os.environ["GPHA_ADMIN_PASSWORD"] = "Admin@12345"
 os.environ["GPHA_COOKIE_SECURE"] = "false"
+os.environ["GPHA_LOGIN_RATE_LIMIT_PER_MINUTE"] = "0"  # tests sign in many times from one client
+os.environ["GPHA_ESCALATION_CHECK_MINUTES"] = "0"
 
 import pytest  # noqa: E402
 from alembic.config import Config  # noqa: E402

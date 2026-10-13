@@ -4,10 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GPHA Internal Audit Workspace</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="/static/vendor/inter.css" />
+  <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css" />
   <link rel="stylesheet" href="/static/css/styles.css" />
   <link rel="stylesheet" href="/static/css/styles_print.css" media="print" />
 </head>
@@ -22,7 +20,6 @@
             <img src="/static/img/loginLogo.jpg" alt="GPHA" class="auth-head-logo" />
             <div class="auth-head-text">
               <span class="auth-head-title">GPHA INTERNAL AUDIT WORKSPACE</span>
-              <span class="auth-head-sub">Ghana Ports &amp; Harbours Authority</span>
             </div>
           </div>
           <hr />
@@ -79,7 +76,6 @@
             <img src="/static/img/loginLogo.jpg" alt="GPHA" class="auth-head-logo" />
             <div class="auth-head-text">
               <span class="auth-head-title">GPHA INTERNAL AUDIT WORKSPACE</span>
-              <span class="auth-head-sub">Ghana Ports &amp; Harbours Authority</span>
             </div>
           </div>
           <hr />
@@ -188,7 +184,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <img src="/static/img/loginLogo.jpg" alt="" class="brand-logo" />
-        <div><div class="brand-name">GPHA Internal Audit</div><div class="brand-sub">Workspace</div></div>
+        <div><div class="brand-name">GPHA INTERNAL AUDIT</div><div class="brand-sub">WORKSPACE</div></div>
       </div>
       <nav id="sidebarNav">
         <div class="nav-section">Overview</div>
@@ -203,6 +199,7 @@
         <div class="nav-section">Audit work</div>
         <button data-view="audits"><i class="bi bi-clipboard-check"></i><span>Audits</span></button>
         <button data-view="capa"><i class="bi bi-tools"></i><span>CAPA</span></button>
+        <button data-view="followup" data-staff="1"><i class="bi bi-arrow-repeat"></i><span>Follow-up</span></button>
         <button data-view="nonconformances"><i class="bi bi-exclamation-triangle"></i><span>Nonconformance</span></button>
 
         <div class="nav-section" data-staff="1">Registers</div>
@@ -224,6 +221,12 @@
       <header class="topbar">
         <button class="nav-toggle" id="navToggle" aria-label="Open menu"><i class="bi bi-list"></i></button>
         <span class="topbar-title">GPHA Internal Audit Workspace</span>
+        <div class="topbar-right">
+          <button class="bell-btn" id="bellBtn" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+            <i class="bi bi-bell"></i><span id="bellCount" class="bell-count hidden"></span>
+          </button>
+          <div id="bellPanel" class="bell-panel hidden" role="dialog" aria-label="Notifications"></div>
+        </div>
       </header>
       <div id="healthBar" class="health-bar hidden" role="alert"></div>
       <main id="viewRoot"></main>
@@ -237,6 +240,7 @@
   <script src="/static/js/api.js"></script>
   <script src="/static/js/forms.js"></script>
   <script src="/static/js/planning.js"></script>
+  <script src="/static/js/workflow.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

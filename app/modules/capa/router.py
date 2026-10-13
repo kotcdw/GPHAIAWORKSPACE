@@ -13,7 +13,7 @@ from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_active_user, require_module_tier
-from app.core.enums import CapaStatus, NCStatus, Role, Severity
+from app.core.enums import CapaStatus, NCStatus, Role, Severity, ValidationResult
 from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.core.schemas import ESignRequest, MessageOut
@@ -241,6 +241,11 @@ def close_capa(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Only CAPA in Review can be closed (current status: {capa.status.value})",
+        )
+    if capa.validation_result != ValidationResult.Effective:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An auditor must validate the implementation as Effective before the action can be closed",
         )
 
     def _on_approve(session: DBSession) -> None:

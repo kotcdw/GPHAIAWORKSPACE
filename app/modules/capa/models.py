@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.core.enums import CapaStatus, Severity, _enum, utcnow
+from app.core.enums import CapaStatus, Severity, ValidationResult, _enum, utcnow
 
 if TYPE_CHECKING:
     from app.modules.nonconformances.models import Nonconformance
@@ -38,6 +38,17 @@ class Capa(Base):
     linked_nc_id: Mapped[int | None] = mapped_column(
         ForeignKey("nonconformances.id", ondelete="SET NULL"), nullable=True
     )
+    # Follow-up: the owner records what was done, an auditor validates it.
+    implementation_evidence: Mapped[str | None] = mapped_column(Text, nullable=True)
+    implemented_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    implemented_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    validation_result: Mapped[ValidationResult | None] = mapped_column(_enum(ValidationResult), nullable=True)
+    validation_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reopen_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    escalation_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_escalated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

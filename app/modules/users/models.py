@@ -14,7 +14,7 @@ from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.core.enums import Role, _enum, utcnow
+from app.core.enums import ReviewLevel, Role, _enum, utcnow
 
 if TYPE_CHECKING:  # pragma: no cover - resolved by the mapper registry at runtime
     from app.modules.audits.models import Audit
@@ -36,6 +36,11 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Supervisory level for the report review chain (None = preparer only).
+    review_level: Mapped[ReviewLevel | None] = mapped_column(_enum(ReviewLevel), nullable=True)
+    # Optional TOTP multi-factor authentication; the secret is stored encrypted.
+    mfa_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 

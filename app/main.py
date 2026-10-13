@@ -27,12 +27,15 @@ from app.modules.auth.router import router as auth_router
 from app.modules.backups.router import router as backups_router
 from app.modules.capa.router import router as capa_router
 from app.modules.drafts.router import router as drafts_router
+from app.modules.followup.router import router as followup_router
 from app.modules.history.router import records_router
 from app.modules.history.router import router as history_router
 from app.modules.nonconformances.router import router as nonconformances_router
+from app.modules.notifications.router import router as notifications_router
 from app.modules.organizations.router import router as organizations_router
 from app.modules.planning.router import router as planning_router
 from app.modules.rcm.router import router as rcm_router
+from app.modules.reports.router import router as reports_router
 from app.modules.service_feedback.router import router as service_feedback_router
 from app.modules.stakeholders.router import router as stakeholders_router
 from app.modules.tasks.router import router as tasks_router
@@ -60,6 +63,9 @@ _ROUTERS = (
     planning_router,
     rcm_router,
     drafts_router,
+    notifications_router,
+    followup_router,
+    reports_router,
 )
 
 
@@ -100,6 +106,8 @@ async def lifespan(app: FastAPI):
     # Make sure the database can accept writes (and is migrated) before serving.
     await asyncio.to_thread(ensure_schema)
     tasks: list[asyncio.Task] = [asyncio.create_task(_schema_watcher())]
+    if settings.escalation_check_minutes > 0:
+        tasks.append(asyncio.create_task(_escalation_watcher()))
     if settings.backup_interval_hours > 0:
         tasks.append(asyncio.create_task(_backup_scheduler()))
     try:
@@ -109,6 +117,25 @@ async def lifespan(app: FastAPI):
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+
+
+async def _escalation_watcher() -> None:
+    """Escalate overdue actions on a timer (owner -> Audit Manager -> CAE)."""
+    from app.modules.followup.service import run_escalations
+
+    def _tick() -> None:
+        db = SessionLocal()
+        try:
+            run_escalations(db)
+        finally:
+            db.close()
+
+    while True:
+        await asyncio.sleep(settings.escalation_check_minutes * 60)
+        try:
+            await asyncio.to_thread(_tick)
+        except Exception:  # noqa: BLE001 - never let the watcher die
+            logger.exception("Escalation check failed")
 
 
 async def _schema_watcher() -> None:
@@ -220,12 +247,22 @@ async def business_validation_handler(request, exc: FieldValidationError):  # no
     return JSONResponse(status_code=422, content={"detail": f"Please correct: {summary}", "errors": exc.errors})
 
 
+# Everything the UI loads is served from this app (fonts and icons are self-hosted).
+_CSP = (
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    "font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; "
+    "form-action 'self'"
+)
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):  # noqa: ANN001, ANN201
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Content-Security-Policy", _CSP)
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     if settings.cookie_secure:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
     path = request.url.path

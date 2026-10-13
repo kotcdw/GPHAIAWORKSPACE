@@ -43,11 +43,24 @@ def get_current_user(
     return user
 
 
+def mfa_setup_required(user: User) -> bool:
+    """True when the user's role must use MFA but it is not set up yet."""
+    from app.core.config import settings
+
+    required = {r.strip() for r in settings.mfa_required_roles.split(",") if r.strip()}
+    return user.role.value in required and not user.mfa_enabled
+
+
 def require_active_user(user: User = Depends(get_current_user)) -> User:
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is pending administrator approval",
+        )
+    if mfa_setup_required(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Set up two-step verification in your profile before continuing",
         )
     return user
 

@@ -322,6 +322,21 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 ---
 
+## PHASE 12 — Reporting, follow-up, notifications and security
+
+**Goal:** close the P1 gaps from the 13 Oct 2026 assessment.
+
+### Steps
+- [x] **12.1** Notifications: `notifications` table, bell with unread count, every task assignment notifies; optional SMTP e-mail sent only after commit.
+- [x] **12.2** Audit report module (`app/modules/reports`): draft → management comments → manager e-sign → CAE e-sign → issued; blockers (rating, summary, opinion, management responses); SoD; issued snapshot; Word (python-docx) and print/PDF export.
+- [x] **12.3** Review levels on users (Audit Manager / CAE), set by Admin in user management.
+- [x] **12.4** Follow-up (`app/modules/followup`): implementation evidence, auditor validation with SoD, reopen on Not Effective, CAPA close gated on Effective; hourly escalation owner → manager → CAE; Follow-up page.
+- [x] **12.5** Security: TOTP two-step verification (stdlib), role-mandatory MFA, per-IP sign-in throttle, CSP + Permissions-Policy, self-hosted Inter font and Bootstrap Icons.
+- [x] **12.6** Migration `0008_reports_followup`; tests `tests/test_reports_followup.py` (74 tests green); browser walkthrough of the full report and follow-up flow.
+- [ ] **12.7** Still open (need decisions): HTTPS + server host, GPHA SSO/AD, Exchange relay settings, GPHA report template wording.
+
+---
+
 ## Dependency / ordering notes
 
 - PHASE 0 must finish before anything touches the DB; run `init_db` + smoke.

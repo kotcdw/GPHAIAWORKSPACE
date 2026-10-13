@@ -1,0 +1,83 @@
+"""Overdue action escalation (IIA GIAS 15.2 - monitoring action plans).
+
+Levels, raised once each as an action stays overdue:
+  1 - overdue: the owner (and the auditor who raised it) are notified;
+  2 - ``escalate_manager_days`` overdue: Audit Managers are notified;
+  3 - ``escalate_cae_days`` overdue: the CAE is notified.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DBSession
+
+from app.core.audit import log_action
+from app.core.config import settings
+from app.core.enums import CapaStatus, ReviewLevel, utcnow
+from app.modules.capa.models import Capa
+from app.modules.notifications.service import notify_many, user_id_by_email, user_ids_with_level
+
+LEVEL_NAMES = {0: "Not overdue", 1: "Owner", 2: "Audit Manager", 3: "CAE"}
+
+
+@dataclass
+class OverdueItem:
+    capa: Capa
+    days_overdue: int
+    due_level: int
+
+
+def due_level(days_overdue: int) -> int:
+    if days_overdue <= 0:
+        return 0
+    if days_overdue >= settings.escalate_cae_days:
+        return 3
+    if days_overdue >= settings.escalate_manager_days:
+        return 2
+    return 1
+
+
+def overdue_actions(db: DBSession, now: datetime | None = None) -> list[OverdueItem]:
+    now = now or utcnow()
+    rows = db.execute(
+        select(Capa).where(
+            Capa.status != CapaStatus.Closed, Capa.due_date.is_not(None), Capa.due_date < now
+        ).order_by(Capa.due_date)
+    ).scalars().all()
+    items = []
+    for capa in rows:
+        days = (now - capa.due_date).days
+        days = max(days, 1)
+        items.append(OverdueItem(capa=capa, days_overdue=days, due_level=due_level(days)))
+    return items
+
+
+def run_escalations(db: DBSession, now: datetime | None = None) -> int:
+    """Raise each overdue action to its due level once; return how many moved."""
+    now = now or utcnow()
+    moved = 0
+    for item in overdue_actions(db, now):
+        capa = item.capa
+        if item.due_level <= (capa.escalation_level or 0):
+            continue
+        owner = user_id_by_email(db, capa.owner_email)
+        title = f"Overdue action {capa.capa_ref}: {item.days_overdue} days past due"
+        body = (
+            f"{capa.title}\nOwner: {capa.owner_email or 'not assigned'}\n"
+            f"Due: {capa.due_date:%d %b %Y}. Escalation level: {LEVEL_NAMES[item.due_level]}."
+        )
+        recipients: list[int | None] = [owner, capa.created_by]
+        if item.due_level >= 2:
+            recipients += user_ids_with_level(db, ReviewLevel.Manager)
+        if item.due_level >= 3:
+            recipients += user_ids_with_level(db, ReviewLevel.CAE)
+        notify_many(db, recipients, title, body, link_type="capa", link_id=capa.id)
+        capa.escalation_level = item.due_level
+        capa.last_escalated_at = now
+        log_action(db, user_id=None, action=f"CAPA_ESCALATED id={capa.id} level={item.due_level}")
+        moved += 1
+    db.commit()
+    return moved

@@ -64,6 +64,15 @@ class CapaOut(ORMModel):
     source_type: str | None
     source_id: int | None
     linked_nc_id: int | None
+    implementation_evidence: str | None = None
+    implemented_by: int | None = None
+    implemented_at: datetime | None = None
+    validation_result: str | None = None
+    validation_comment: str | None = None
+    validated_by: int | None = None
+    validated_at: datetime | None = None
+    reopen_count: int = 0
+    escalation_level: int = 0
     created_by: int | None
     created_at: datetime
     updated_at: datetime

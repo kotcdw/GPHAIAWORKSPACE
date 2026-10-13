@@ -161,6 +161,32 @@ def risk_level(score: int) -> str:
     return "Low"
 
 
+class ReviewLevel(str, enum.Enum):
+    """Supervisory level of a staff member in the report review chain."""
+
+    Manager = "Manager"
+    CAE = "CAE"
+
+
+class ReportStatus(str, enum.Enum):
+    Draft = "Draft"
+    ManagementReview = "Management Review"
+    ManagerReview = "Manager Review"
+    CAEApproval = "CAE Approval"
+    Issued = "Issued"
+
+
+class ReportRating(str, enum.Enum):
+    Satisfactory = "Satisfactory"
+    NeedsImprovement = "Needs Improvement"
+    Unsatisfactory = "Unsatisfactory"
+
+
+class ValidationResult(str, enum.Enum):
+    Effective = "Effective"
+    NotEffective = "Not Effective"
+
+
 def _enum(enum_cls: type[enum.Enum], length: int = 20) -> Enum:
     """Store Python enums as a VARCHAR column with a CHECK constraint.
 

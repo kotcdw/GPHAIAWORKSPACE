@@ -28,11 +28,29 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+    # 6-digit authenticator code, required when the account has MFA enabled.
+    otp: str | None = None
 
 
 class MeOut(BaseModel):
     user: UserOut
     csrf_token: str
+    # True when the role requires MFA and the user has not set it up yet.
+    mfa_setup_required: bool = False
+
+
+class MfaCode(BaseModel):
+    code: str = Field(min_length=6, max_length=8)
+
+
+class MfaDisable(BaseModel):
+    password: str
+    code: str = Field(min_length=6, max_length=8)
+
+
+class MfaSetupOut(BaseModel):
+    secret: str
+    otpauth_uri: str
 
 
 class ProfileUpdate(BaseModel):

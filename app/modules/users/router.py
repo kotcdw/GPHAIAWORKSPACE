@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_role
-from app.core.enums import Role
+from app.core.enums import ReviewLevel, Role
 from app.core.schemas import MessageOut
 from app.core.security import hash_password
 from app.modules.auth.service import revoke_sessions
@@ -113,6 +113,16 @@ def update_user(
             )
         user.is_active = payload.is_active
         changes.append(f"is_active={payload.is_active}")
+    if payload.review_level is not None:
+        if payload.review_level and user.role not in (Role.Admin, Role.Auditor):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Only Admin or Auditor accounts can hold a review level")
+        user.review_level = ReviewLevel(payload.review_level) if payload.review_level else None
+        changes.append(f"review_level={payload.review_level or 'none'}")
+    if payload.reset_mfa:
+        user.mfa_enabled = False
+        user.mfa_secret = None
+        changes.append("mfa_reset")
     if payload.password is not None:
         user.password_hash = hash_password(payload.password)
         user.failed_login_count = 0

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.core.enums import Role
+from app.core.enums import ReviewLevel, Role
 from app.core.schemas import ORMModel
 from app.core.validators import OptEmail, password_problems
 
@@ -22,6 +23,8 @@ class UserOut(ORMModel):
     company: str
     is_active: bool
     locked_until: datetime | None = None
+    review_level: ReviewLevel | None = None
+    mfa_enabled: bool = False
     created_at: datetime
 
 
@@ -53,6 +56,10 @@ class UserUpdate(BaseModel):
     role: Role | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
+    # "Manager" / "CAE" sets the report review level; "" clears it.
+    review_level: Literal["", "Manager", "CAE"] | None = None
+    # True clears the user's MFA enrolment (lost phone).
+    reset_mfa: bool | None = None
 
     @field_validator("password")
     @classmethod

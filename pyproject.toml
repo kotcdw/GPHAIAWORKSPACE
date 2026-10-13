@@ -15,6 +15,7 @@ dependencies = [
     "pydantic>=2.14.1",
     "pydantic-settings>=2.15.0",
     "pymysql>=1.1.0",
+    "python-docx>=1.1",
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.1.4",
     "uvicorn[standard]>=0.54.0",
@@ -36,6 +37,10 @@ addopts = "-q"
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+# HTML print template: long lines are markup, not code.
+"app/modules/reports/service.py" = ["E501"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

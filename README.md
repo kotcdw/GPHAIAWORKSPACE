@@ -105,17 +105,28 @@ with electronic attestations, and keep a strict, immutable audit trail.
   triggers (UPDATE/DELETE are rejected). Records that have progressed, been
   linked or been signed cannot be deleted; users with activity are deactivated,
   not deleted.
+- **Audit reports** — one report per audit: draft → management comments →
+  Audit Manager review (e-sign) → CAE approval (e-sign) → issued. Segregation
+  of duties at each level, findings frozen at issue, Word and print/PDF export.
+- **Follow-up** — action owners record implementation evidence, a different
+  auditor validates it (Effective / Not Effective → reopened); a CAPA can only
+  be closed once validated. Overdue actions escalate automatically: owner →
+  Audit Managers (14 days) → CAE (30 days). Follow-up page lists them.
+- **Notifications** — in-app bell for task assignments, reviews, report
+  stages, validations and escalations; optional e-mail through GPHA SMTP.
+- **Review levels** — Admin assigns Audit Manager / CAE review levels to staff.
+- **Two-step verification** — optional TOTP (authenticator app) per user,
+  mandatory per role via `GPHA_MFA_REQUIRED_ROLES`; admin can reset it.
 - **Clean, responsive UI** — grouped navigation, standard page headers with
   in-place status changes, KPI dashboards, and a drawer layout on phones and
   small tablets.
-- **Sign-in protection** — account lockout after repeated failures (Admin can
+- **Sign-in protection** — per-computer rate limiting, strict
+  Content-Security-Policy, self-hosted fonts and icons (no external CDNs),
+  account lockout after repeated failures (Admin can
   unlock); password change, deactivation, role change and password reset end
   the user's other sessions.
 
 ## Quick start
-
-> **Windows, easiest:** double-click `Start-GPHA.cmd`. It stops any old copy on
-> port 8001, starts Docker + MySQL, applies migrations and starts the app.
 
 ```powershell
 # 1. Start the MySQL server (Docker) - binds host port 3307
@@ -172,6 +183,12 @@ Copy `.env.example` to `.env` and adjust. Settings use the `GPHA_` prefix:
 | `GPHA_BACKUP_DIR`        | `./backups`                 | Snapshot directory            |
 | `GPHA_BACKUP_RETENTION`  | `7`                         | Snapshots to keep             |
 | `GPHA_BACKUP_INTERVAL_HOURS` | `24`                   | Scheduled backup interval (0 disables) |
+| `GPHA_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` / `_STARTTLS` | empty / `25` | E-mail notifications (empty host = in-app bell only) |
+| `GPHA_APP_BASE_URL`      | `http://127.0.0.1:8001`     | Link used in notification e-mails |
+| `GPHA_ESCALATE_MANAGER_DAYS` / `GPHA_ESCALATE_CAE_DAYS` | `14` / `30` | Overdue action escalation thresholds |
+| `GPHA_ESCALATION_CHECK_MINUTES` | `60`                 | How often overdue actions are checked (0 disables) |
+| `GPHA_LOGIN_RATE_LIMIT_PER_MINUTE` | `10`              | Sign-in attempts per computer per minute (0 disables) |
+| `GPHA_MFA_REQUIRED_ROLES` | empty                      | e.g. `Admin,Auditor` to make two-step verification mandatory |
 
 ## API overview
 

@@ -339,16 +339,33 @@ qs("#loginForm").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   notify(authMsg, "");
   try {
+    const otpInput = qs("#loginOtp");
     const me = await API.post("/api/auth/login", {
       username: qs("#loginUser").value.trim(),
       password: qs("#loginPass").value,
+      otp: otpInput ? otpInput.value.trim() : null,
     });
     state.user = me.user;
     state.csrf = me.csrf_token;
     API.csrf = me.csrf_token;
+    state.mfaSetupRequired = me.mfa_setup_required;
     qs("#loginForm").reset();
+    if (otpInput) otpInput.closest(".otp-row").remove();
     showApp();
   } catch (err) {
+    if (err.status === 401 && String(err.message).startsWith("MFA_REQUIRED")) {
+      if (!qs("#loginOtp")) {
+        const row = el("div", { class: "row otp-row" }, el("div", { class: "col-lg-12 col-sm-12 col-md-12" },
+          el("div", { class: "ant-form-item" }, el("div", { class: "ant-form-item-control" },
+            el("span", { class: "ant-input-affix-wrapper ant-input-affix-wrapper-lg" },
+              el("input", { id: "loginOtp", class: "ant-input ant-input-lg", inputmode: "numeric", autocomplete: "one-time-code",
+                maxlength: "6", placeholder: "6-digit code from your authenticator app", "aria-label": "Authentication code" }))))));
+        qs("#loginPass").closest(".row").after(row);
+      }
+      notify(authMsg, "Enter the 6-digit code from your authenticator app, then sign in.", "ok");
+      qs("#loginOtp").focus();
+      return;
+    }
     const text = authError(err, "sign in");
     if (text) notify(authMsg, text, "error");
   }
@@ -439,6 +456,7 @@ async function boot() {
     state.user = me.user;
     state.csrf = me.csrf_token;
     API.csrf = me.csrf_token;
+    state.mfaSetupRequired = me.mfa_setup_required;
     showApp();
   } catch {
     authView.classList.remove("hidden");
@@ -460,6 +478,11 @@ function showApp() {
   document.querySelectorAll("#sidebarNav [data-staff]").forEach((n) => n.classList.toggle("hidden", state.user.role === "Auditee"));
   checkHealth();
   refreshDraftCount();
+  initBell();
+  if (state.mfaSetupRequired) { navigate("profile"); toast("Set up two-step verification to continue", "error"); return; }
+  // Deep link from an e-mail: #open/<type>/<id>
+  const link = /^#open\/([a-z_]+)\/(\d+)$/.exec(window.location.hash);
+  if (link) { history.replaceState(null, "", window.location.pathname); openLink(link[1], Number(link[2])); return; }
   const adminOnly = ["logs", "backups"];
   const requested = isAdmin() ? state.view : (adminOnly.includes(state.view) ? "dashboard" : state.view);
   navigate(requested);
@@ -485,6 +508,7 @@ function navigate(view) {
   if (view === "dashboard") return renderDashboard();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
+  if (view === "followup") return renderFollowup();
   if (view === "plans") return renderPlans();
   if (view === "drafts") return renderDrafts();
   if (view === "universe") return renderUniverse();
@@ -654,7 +678,8 @@ async function openRecord(key, id) {
 
   const title = record[m.nameKey] || m.title;
   const canWrite = canWriteModule(key);
-  const allowedActions = canWrite ? m.actions.filter((act) => !act.adminOnly || isAdmin()) : [];
+  const allowedActions = (canWrite ? m.actions.filter((act) => !act.adminOnly || isAdmin()) : [])
+    .filter((act) => !(key === "capa" && act.key === "close" && !(record.status === "Review" && record.validation_result === "Effective")));
 
   viewRoot.append(viewHeader(String(title),
     [
@@ -703,8 +728,9 @@ function renderInfoTab(panel, key, record, canWrite) {
   const statusField = m.filters.find((f) => f.param === "status");
   // CAPA is closed only through the e-signed "Close" action.
   const options = ((statusField && statusField.options) || ["Open", "In Progress", "Closed"])
-    .filter((o) => !(key === "capa" && o === "Closed" && record.status !== "Closed"));
+    .filter((o) => !(key === "capa" && ["Closed", "Review"].includes(o) && record.status !== o));
   const control = canWrite && record.status !== undefined && record.status !== "Closed"
+    && !(key === "capa" && record.status === "Review")
     ? statusControl(record.status, options, async (v) => {
       await API.patch(`${m.endpoint}/${record.id}`, { status: v });
       toast("Status updated"); openRecord(key, record.id);
@@ -721,6 +747,7 @@ function renderInfoTab(panel, key, record, canWrite) {
     ...long.map((f) => el("div", { class: "long-field" }, el("div", { class: "lf-label" }, f.label),
       el("div", { class: `lf-value ${record[f.key] ? "" : "muted"}`.trim() }, record[f.key] || "Not recorded"))));
   panel.append(card);
+  if (key === "capa") renderCapaFollowup(panel, record, () => openRecord("capa", record.id));
 }
 
 async function renderTasksTab(panel, recordType, id) {
@@ -1033,7 +1060,7 @@ function editAuditModal(audit) {
   });
 }
 
-async function openAudit(id) {
+async function openAudit(id, startTab = null) {
   setActiveNav("audits");
   clear(viewRoot);
   const msg = el("div");
@@ -1092,12 +1119,13 @@ async function openAudit(id) {
   const tabs = [
     ...(canWrite ? [{ key: "rcm", label: "Risk & Control Matrix" }] : []),
     { key: "findings", label: "Findings / Issues" },
+    { key: "report", label: "Audit Report" },
     { key: "papers", label: "Working Papers" },
     { key: "tasks", label: "Tasks" },
     { key: "history", label: "History" },
     { key: "approvals", label: "Approval Cycles" },
   ];
-  let active = canWrite ? "rcm" : "findings";
+  let active = startTab || (canWrite ? "rcm" : "findings");
   const detail = el("div");
   viewRoot.append(detail);
 
@@ -1108,6 +1136,7 @@ async function openAudit(id) {
     detail.append(panel);
     if (active === "rcm") renderRcm(panel, id);
     if (active === "findings") renderFindings(panel, id, canWrite);
+    if (active === "report") renderReportTab(panel, id, canWrite);
     if (active === "papers") renderPapers(panel, id, canWrite);
     if (active === "tasks") renderTasksTab(panel, "audit", id);
     if (active === "history") renderHistoryTab(panel, "audit", id);
@@ -1249,6 +1278,10 @@ async function renderProfile() {
     onDone: () => { Object.values(pwForm.nodes).forEach((n) => { n.value = ""; }); toast("Password changed - other sessions were signed out"); },
   });
 
+  const sec = el("div", { class: "two-cols" });
+  viewRoot.append(sec);
+  renderMfaCard(sec);
+
   if (isAdmin()) {
     viewRoot.append(el("h2", { class: "section-title" }, "User accounts"));
     await renderUserManagement(viewRoot, msg);
@@ -1294,7 +1327,8 @@ async function renderUserManagement(container, msg) {
         el("h3", null, `${users.length} accounts`, pending ? el("span", { class: "muted" }, ` · ${pending} awaiting approval`) : null),
         el("button", { class: "btn small", onclick: newUserForm }, el("i", { class: "bi bi-person-plus" }), " Add user")));
     card.append(el("div", { class: "table-wrap" }, el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Role"), el("th", null, "Status"), el("th", { class: "num" }, ""))),
+      el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Role"), el("th", null, "Review level"),
+        el("th", null, "Status"), el("th", { class: "num" }, ""))),
       el("tbody", null, ...users.sort((a, b) => Number(a.is_active) - Number(b.is_active)).map((u) => {
         const self = u.id === state.user.id;
         const roleSelect = el("select", { class: "compact", disabled: self ? "1" : null, "aria-label": `Role of ${u.username}` },
@@ -1303,8 +1337,22 @@ async function renderUserManagement(container, msg) {
           try { await API.patch(`/api/users/${u.id}`, { role: roleSelect.value }); toast(`${u.username} is now ${roleSelect.value}`); renderProfile(); }
           catch (err) { toast(err.message, "error"); roleSelect.value = u.role; }
         });
+        const staffRole = ["Admin", "Auditor"].includes(u.role);
+        const levelSelect = el("select", { class: "compact", disabled: staffRole ? null : "1", "aria-label": `Review level of ${u.username}`,
+          title: staffRole ? "Audit Managers review reports; the CAE approves and issues them" : "Only Admin or Auditor accounts" },
+        ...[["", "-"], ["Manager", "Audit Manager"], ["CAE", "CAE"]].map(([v, t]) =>
+          el("option", { value: v, selected: (u.review_level || "") === v ? "1" : null }, t)));
+        levelSelect.addEventListener("change", async () => {
+          try { await API.patch(`/api/users/${u.id}`, { review_level: levelSelect.value }); toast("Review level saved"); }
+          catch (err) { toast(err.message, "error"); levelSelect.value = u.review_level || ""; }
+        });
         const locked = u.locked_until && new Date(`${u.locked_until}Z`) > new Date();
         const actions = el("div", { class: "actions end" },
+          u.mfa_enabled && !self ? el("button", { class: "btn small secondary", title: "Use when the user lost their phone",
+            onclick: async () => {
+              try { await API.patch(`/api/users/${u.id}`, { reset_mfa: true }); toast("Two-step verification reset"); renderProfile(); }
+              catch (err) { toast(err.message, "error"); }
+            } }, "Reset 2-step") : null,
           locked ? el("button", { class: "btn small secondary", onclick: async () => {
             try { await API.post(`/api/users/${u.id}/unlock`); toast("Account unlocked"); renderProfile(); }
             catch (err) { toast(err.message, "error"); }
@@ -1317,7 +1365,9 @@ async function renderUserManagement(container, msg) {
           el("td", null, el("div", { class: "cell-title" }, u.full_name || u.username),
             el("div", { class: "muted small" }, `${u.username} · ${u.email}`)),
           el("td", null, roleSelect),
-          el("td", null, u.is_active ? badge("Active") : badge("Pending"), locked ? " " : null, locked ? badge("Locked") : null),
+          el("td", null, levelSelect),
+          el("td", null, u.is_active ? badge("Active") : badge("Pending"), locked ? " " : null, locked ? badge("Locked") : null,
+            u.mfa_enabled ? " " : null, u.mfa_enabled ? el("span", { class: "chip-mini", title: "Two-step verification on" }, el("i", { class: "bi bi-shield-check" }), " 2-step") : null),
           el("td", { class: "num" }, actions));
       })))));
     container.append(card);
@@ -1387,6 +1437,19 @@ function registerAppOpeners() {
     editAuditModal(await API.get(`/api/audits/${id}`));
   });
   registerFormOpener("task:new", () => { navigate("tasks"); newTaskModal(); });
+  registerFormOpener("report:", async (formKey) => {
+    const r = await API.get(`/api/reports/${formKey.split(":")[1]}`);
+    await openAudit(r.audit_id, "report");
+    if (formKey.endsWith(":comments")) commentsForm(r, () => openAudit(r.audit_id, "report"));
+    else reportForm(r, () => openAudit(r.audit_id, "report"));
+  });
+  registerFormOpener("capa:", async (formKey) => {
+    const [, id, kind] = formKey.split(":");
+    if (!["implement", "validate"].includes(kind)) return;
+    const c = await API.get(`/api/capa/${id}`);
+    await openRecord("capa", Number(id));
+    (kind === "implement" ? implementForm : validateForm)(c, () => openRecord("capa", Number(id)));
+  });
   registerFormOpener("profile:me", () => navigate("profile"));
   registerFormOpener("user:new", () => { navigate("profile"); newUserForm(); });
 }
