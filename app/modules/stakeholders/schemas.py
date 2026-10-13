@@ -4,27 +4,28 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 from app.core.enums import StakeholderStatus
 from app.core.schemas import ORMModel
+from app.core.validators import OptEmail, Title
 
 
 class StakeholderCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
+    name: Title
     stakeholder_type: str | None = Field(default=None, max_length=100)
     contact_name: str | None = Field(default=None, max_length=255)
-    contact_email: EmailStr | None = None
+    contact_email: OptEmail = None
     contact_phone: str | None = Field(default=None, max_length=50)
     status: StakeholderStatus = StakeholderStatus.Active
     notes: str = ""
 
 
 class StakeholderUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
+    name: Title | None = None
     stakeholder_type: str | None = Field(default=None, max_length=100)
     contact_name: str | None = Field(default=None, max_length=255)
-    contact_email: EmailStr | None = None
+    contact_email: OptEmail = None
     contact_phone: str | None = Field(default=None, max_length=50)
     status: StakeholderStatus | None = None
     notes: str | None = None

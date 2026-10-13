@@ -37,6 +37,7 @@ from app.core.enums import (
     TestType,
     utcnow,
 )
+from app.core.errors import FieldValidationError, field_error
 from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.core.schemas import ESignRequest, MessageOut
@@ -544,16 +545,13 @@ def update_test(
     for key, value in changes.items():
         if key != "status":
             setattr(test, key, value)
+    _check_test_numbers(test)
     new_status = payload.status
     if new_status == TestStatus.Completed:
         if test.conclusion == TestConclusion.NotTested:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Record a conclusion before completing the test"
-            )
+            raise field_error("conclusion", "record a conclusion before completing the test")
         if test.conclusion == TestConclusion.Ineffective and not test.results.strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="Describe the exceptions found before completing"
-            )
+            raise field_error("results", "describe the exceptions found before completing")
         test.performed_by = user.id
         test.performed_at = utcnow()
     if new_status is not None:
@@ -565,6 +563,18 @@ def update_test(
     db.commit()
     db.refresh(test)
     return test
+
+
+def _check_test_numbers(test: ControlTest) -> None:
+    """Accuracy rules: sample <= population, exceptions <= sample."""
+    errors = []
+    if test.population_size is not None and test.sample_size is not None and test.sample_size > test.population_size:
+        errors.append({"field": "sample_size", "message": "cannot exceed the population size"})
+    limit = test.sample_size if test.sample_size is not None else test.population_size
+    if limit is not None and test.exceptions_found > limit:
+        errors.append({"field": "exceptions_found", "message": f"cannot exceed the number of items tested ({limit})"})
+    if errors:
+        raise FieldValidationError(errors)
 
 
 @router.post("/api/control-tests/{test_id}/review", response_model=TestOut)

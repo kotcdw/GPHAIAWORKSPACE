@@ -345,8 +345,12 @@ def _engagement_or_404(db: DBSession, eng_id: int) -> PlanEngagement:
 
 
 def _check_refs(db: DBSession, entity_unit_id: int | None, lead_auditor_id: int | None) -> None:
-    if entity_unit_id is not None and db.get(EntityUnit, entity_unit_id) is None:
-        raise _not_found("Entity unit")
+    if entity_unit_id is not None:
+        unit = db.get(EntityUnit, entity_unit_id)
+        if unit is None:
+            raise _not_found("Entity unit")
+        if not unit.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Entity unit is inactive")
     if lead_auditor_id is not None:
         lead = db.get(User, lead_auditor_id)
         if lead is None or lead.role not in (Role.Admin, Role.Auditor):
@@ -362,6 +366,18 @@ def add_engagement(
     plan = _plan_or_404(db, plan_id)
     _require_draft(plan)
     _check_refs(db, payload.entity_unit_id, payload.lead_auditor_id)
+    duplicate = next(
+        (
+            e
+            for e in plan.engagements
+            if e.status != EngagementStatus.Cancelled
+            and e.title.strip().lower() == payload.title.strip().lower()
+            and e.entity_unit_id == payload.entity_unit_id
+        ),
+        None,
+    )
+    if duplicate is not None:
+        raise _conflict(f"'{payload.title}' is already planned for this entity (engagement #{duplicate.id})")
     eng = PlanEngagement(plan_id=plan.id, created_by=user.id, **payload.model_dump())
     db.add(eng)
     db.flush()

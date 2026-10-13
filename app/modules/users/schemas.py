@@ -8,6 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.core.enums import Role
 from app.core.schemas import ORMModel
+from app.core.validators import OptEmail
 
 
 class UserOut(ORMModel):
@@ -37,7 +38,7 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    email: EmailStr | None = None
+    email: OptEmail = None
     full_name: str | None = Field(default=None, max_length=255)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)

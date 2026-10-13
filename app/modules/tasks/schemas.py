@@ -8,22 +8,23 @@ from pydantic import BaseModel, Field
 
 from app.core.enums import TaskStatus
 from app.core.schemas import ORMModel
+from app.core.validators import FutureDate, Title
 
 
 class TaskCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: Title
     description: str = ""
     assignee_id: int | None = None
-    due_date: datetime | None = None
+    due_date: FutureDate = None
     source_type: str | None = Field(default=None, max_length=50)
     source_id: int | None = None
 
 
 class TaskUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     description: str | None = None
     status: TaskStatus | None = None
-    due_date: datetime | None = None
+    due_date: FutureDate = None
     assignee_id: int | None = None
 
 

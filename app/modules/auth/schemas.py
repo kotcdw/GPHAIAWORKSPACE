@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.core.validators import OptEmail
 from app.modules.users.schemas import UserOut
 
 
@@ -28,7 +29,7 @@ class MeOut(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    email: EmailStr | None = None
+    email: OptEmail = None
     full_name: str | None = Field(default=None, max_length=255)
 
 

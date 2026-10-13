@@ -294,6 +294,19 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 ---
 
+## PHASE 10 — Reliable data entry & data accuracy
+
+**Goal:** users can always save what they type; data is validated for accuracy.
+
+### Steps
+- [x] **10.1** Root cause of "cannot save": the running server was still on the half-migrated SQLite file (500s in `server_stdout.log`). `run.ps1` now syncs deps + migrates and refuses to start without a database; start-up auto-migrates (`GPHA_AUTO_MIGRATE`); `/health` reports `can_save`; UI banner; DB outages -> 503 with a clear message; CSRF check no longer touches the DB on GET.
+- [x] **10.2** Drafts: migration `0007_form_drafts`, `/api/drafts` (private, 256 KB, secrets stripped), `static/js/forms.js` framework (device + server autosave, restore/discard, Save draft, keep-on-error, My Drafts with Continue).
+- [x] **10.3** Validation: `app/core/validators.py` (Title, OptEmail, Code, FutureDate), structured 422 `errors[]` (schema + business rules via `FieldValidationError`), fiscal-year/budget ranges, control-test number consistency, duplicate/inactive engagement checks.
+- [x] **10.4** All forms converted (records, audits, tasks, issues, plans, engagements, universe, RCM, users, profile, password) and new **Edit** forms for records, audits, plans, engagements and objectives.
+- [x] **10.5** Tests: `tests/test_data_entry.py` (68 tests green); browser-tested autosave, restore, inline + server errors, server outage, database outage, My Drafts resume.
+
+---
+
 ## Dependency / ordering notes
 
 - PHASE 0 must finish before anything touches the DB; run `init_db` + smoke.

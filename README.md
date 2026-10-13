@@ -47,6 +47,26 @@ with electronic attestations, and keep a strict, immutable audit trail.
   issues carry the IIA attributes (criteria, condition, cause, effect,
   recommendation), a 5 Whys root-cause analysis and the auditee's management
   response; "Raise action" creates the remediating CAPA.
+- **Never-lost data entry** — every form autosaves what you type as a draft:
+  instantly on your device and, a second later, on the server (so it follows
+  you to another computer). Drafts survive validation errors, closed windows,
+  network drops and database outages, are restored when you reopen the form
+  ("Restored your unsaved entries ... / Discard draft"), and are listed under
+  **My Drafts** with *Continue* / *Discard*. Only a successful save removes a
+  draft. Passwords are never stored in drafts.
+- **Data accuracy** — fields are validated as you type and again on the server:
+  required values, no blank/multi-line titles, valid e-mails (stored
+  lower-case, internal domains allowed), reference codes (upper-cased),
+  number ranges, due dates not in the past, sensible fiscal years, and
+  cross-field rules (sample <= population, exceptions <= items tested, an
+  "Effective" conclusion cannot have exceptions, duplicate plan engagements
+  are refused). Server errors come back per field (`422 {"errors": [{field,
+  message}]}`) and are shown under the offending field.
+- **Save safety net** — `run.ps1` installs dependencies and migrates the
+  database before starting (and refuses to start if MySQL is unreachable);
+  the app applies pending migrations at start-up, `/health` reports whether
+  saving is possible, and the UI shows a red banner when it is not. A database
+  outage returns `503` with a clear message instead of a bare `500`.
 - **Users & roles** — Admin, Auditor, Auditee. Self-registration captures
   FreeQMS fields (first/last name, company) and is approval-gated (new accounts
   are inactive until an Admin enables them). Per-module permission tiers are
@@ -101,7 +121,7 @@ uv sync
 # 3. Create the database schema and the bootstrap admin
 uv run python -m scripts.init_db
 
-# 4. Run the app  (http://127.0.0.1:8001)
+# 4. Run the app  (http://127.0.0.1:8001) - also syncs deps and migrates
 .\run.ps1
 # or: uv run uvicorn app.main:app --reload --port 8001
 ```
@@ -183,6 +203,8 @@ Copy `.env.example` to `.env` and adjust. Settings use the `GPHA_` prefix:
 | POST                         | `/api/control-tests/{id}/review` (e-sign) `/raise-issue` | Auditor/Admin |
 | POST                         | `/api/findings/{id}/raise-action` (CAPA)      | Auditor/Admin     |
 | POST                         | `/api/findings/{id}/response` (management response) | anyone who can see the finding |
+| GET/PUT/DELETE               | `/api/drafts` `/api/drafts/{form_key}`        | own drafts only   |
+| GET                          | `/health` (incl. database status, `can_save`) | public            |
 
 Read endpoints apply record-level scoping: Auditees get `404` for records
 outside their assignment.
@@ -232,6 +254,7 @@ app/
     users/         user admin + roles
     planning/      audit universe + Assurance Plan + engagements
     rcm/           objectives, risks, controls, tests, sampling, issues -> actions
+    drafts/        autosaved per-user form drafts
     audits/        audits + findings/issues + working papers (+ e-closure)
     nonconformances/  NC records + dispositions
     capa/          corrective/preventive actions
@@ -244,7 +267,7 @@ app/
     backups/       snapshot + scheduled backup admin
   main.py          explicit router registry + lifespan (backup scheduler)
   static/          HTML/CSS/JS front end (index.html, css/, js/, img/)
-alembic/versions/  migrations 0001 initial .. 0006 planning & risk-control layer
+alembic/versions/  migrations 0001 initial .. 0007 form drafts
 mysql/init/        init SQL mounted into the Docker container at first boot
 scripts/           init_db.py (migrate + seed admin), seed_demo.py, restore_backup.py
 tests/             pytest suite (runs on MySQL)

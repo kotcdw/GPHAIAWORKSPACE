@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 12
     cookie_secure: bool = False
 
+    # Apply pending database migrations automatically at start-up.
+    auto_migrate: bool = True
+
     # Brute-force protection: lock an account after N consecutive failures.
     login_max_attempts: int = 5
     login_lockout_minutes: int = 15

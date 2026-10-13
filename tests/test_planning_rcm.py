@@ -205,11 +205,12 @@ def test_rcm_test_issue_action_flow(client, client2, people):
     assert blocked.status_code == 409 and "not yet reviewed" in blocked.json()["detail"]
 
     no_conclusion = client.patch(f"/api/control-tests/{test['id']}", json={"status": "Completed"}, headers=aud)
-    assert no_conclusion.status_code == 400
+    assert no_conclusion.status_code == 422
+    assert no_conclusion.json()["errors"][0]["field"] == "conclusion"
     no_results = client.patch(
         f"/api/control-tests/{test['id']}", json={"conclusion": "Ineffective", "status": "Completed"}, headers=aud
     )
-    assert no_results.status_code == 400
+    assert no_results.status_code == 422
     done = client.patch(
         f"/api/control-tests/{test['id']}",
         json={"conclusion": "Ineffective", "exceptions_found": 1, "results": "March not reviewed",

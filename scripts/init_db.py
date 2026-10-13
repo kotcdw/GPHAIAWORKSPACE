@@ -19,6 +19,7 @@ from alembic import command  # noqa: E402
 from app.core.audit import log_action  # noqa: E402
 from app.core.config import BASE_DIR, settings  # noqa: E402
 from app.core.database import SessionLocal  # noqa: E402
+from app.core.dbcheck import database_status  # noqa: E402
 from app.core.enums import Role  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.modules.users.models import User  # noqa: E402
@@ -59,6 +60,10 @@ def seed_admin() -> None:
 
 def main() -> None:
     print(f"[init_db] database: {make_url(settings.database_url).render_as_string(hide_password=True)}")
+    status = database_status()
+    if not status.ok:
+        print(f"[init_db] ERROR: {status.error}")
+        sys.exit(2)
     run_migrations()
     seed_admin()
     for problem in settings.insecure_settings():

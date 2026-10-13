@@ -8,10 +8,11 @@ from pydantic import BaseModel, Field
 
 from app.core.enums import CapaStatus, Severity
 from app.core.schemas import ORMModel
+from app.core.validators import FutureDate, OptEmail, Title
 
 
 class CapaCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: Title
     description: str = ""
     root_cause: str = ""
     corrective_action: str = ""
@@ -20,13 +21,13 @@ class CapaCreate(BaseModel):
     severity: Severity = Severity.Medium
     disposition: str | None = Field(default=None, max_length=100)
     status: CapaStatus = CapaStatus.Open
-    owner_email: str | None = Field(default=None, max_length=255)
-    due_date: datetime | None = None
+    owner_email: OptEmail = None
+    due_date: FutureDate = None
     linked_nc_id: int | None = None
 
 
 class CapaUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     description: str | None = None
     root_cause: str | None = None
     corrective_action: str | None = None
@@ -35,8 +36,8 @@ class CapaUpdate(BaseModel):
     severity: Severity | None = None
     disposition: str | None = Field(default=None, max_length=100)
     status: CapaStatus | None = None
-    owner_email: str | None = Field(default=None, max_length=255)
-    due_date: datetime | None = None
+    owner_email: OptEmail = None
+    due_date: FutureDate = None
     linked_nc_id: int | None = None
 
 

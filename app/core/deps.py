@@ -82,11 +82,13 @@ def require_module_tier(module: str, *roles: Role) -> Callable[[User], User]:
     return dependency
 
 
-def csrf_protect(request: Request, session: UserSession | None = Depends(get_current_session)) -> None:
+def csrf_protect(request: Request, db: DBSession = Depends(get_db)) -> None:
     """Validate the CSRF token for state-changing authenticated requests.
 
     Unauthenticated requests (e.g. login/register) are skipped here; the auth
-    dependencies decide whether the route is allowed.
+    dependencies decide whether the route is allowed. Safe methods return
+    before touching the database, so read-only endpoints such as /health keep
+    working even when the database is down.
     """
     if request.method in ("GET", "HEAD", "OPTIONS"):
         return
@@ -94,6 +96,7 @@ def csrf_protect(request: Request, session: UserSession | None = Depends(get_cur
     # exists, so they are exempt from the double-submit check.
     if request.url.path in ("/api/auth/login", "/api/auth/register"):
         return
+    session = get_current_session(request, db)
     if session is None:
         return
     header = request.headers.get(CSRF_HEADER)

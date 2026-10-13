@@ -8,24 +8,25 @@ from pydantic import BaseModel, Field
 
 from app.core.enums import FeedbackStatus
 from app.core.schemas import ORMModel
+from app.core.validators import OptEmail, Title
 
 
 class SFCreate(BaseModel):
-    subject: str = Field(min_length=1, max_length=255)
+    subject: Title
     description: str = ""
     source: str | None = Field(default=None, max_length=100)
     received_date: datetime | None = None
     status: FeedbackStatus = FeedbackStatus.Open
-    owner_email: str | None = Field(default=None, max_length=255)
+    owner_email: OptEmail = None
 
 
 class SFUpdate(BaseModel):
-    subject: str | None = Field(default=None, min_length=1, max_length=255)
+    subject: Title | None = None
     description: str | None = None
     source: str | None = Field(default=None, max_length=100)
     received_date: datetime | None = None
     status: FeedbackStatus | None = None
-    owner_email: str | None = Field(default=None, max_length=255)
+    owner_email: OptEmail = None
 
 
 class SFLink(BaseModel):

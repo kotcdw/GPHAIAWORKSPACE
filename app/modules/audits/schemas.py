@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.enums import ApprovalStatus, AuditStatus, FindingStatus, RiskRating
 from app.core.schemas import ORMModel
+from app.core.validators import OptEmail, Title
 
 
 # --------------------------------------------------------------------------- audits
 class AuditCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: Title
     description: str = ""
     scope: str = ""
     status: AuditStatus = AuditStatus.Planned
@@ -21,7 +23,7 @@ class AuditCreate(BaseModel):
 
 
 class AuditUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     description: str | None = None
     scope: str | None = None
     status: AuditStatus | None = None
@@ -45,32 +47,32 @@ class AuditOut(ORMModel):
 
 # --------------------------------------------------------------------------- findings
 class FindingCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: Title
     description: str = ""
     risk_rating: RiskRating = RiskRating.Medium
     status: FindingStatus = FindingStatus.Open
-    assigned_owner_email: EmailStr | None = None
+    assigned_owner_email: OptEmail = None
     criteria: str | None = None
     condition: str | None = None
     cause: str | None = None
     effect: str | None = None
     recommendation: str | None = None
-    root_cause_whys: list[str] | None = Field(default=None, max_length=5)
+    root_cause_whys: list[Annotated[str, Field(max_length=1000)]] | None = Field(default=None, max_length=5)
     control_id: int | None = None
 
 
 class FindingUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     description: str | None = None
     risk_rating: RiskRating | None = None
     status: FindingStatus | None = None
-    assigned_owner_email: EmailStr | None = None
+    assigned_owner_email: OptEmail = None
     criteria: str | None = None
     condition: str | None = None
     cause: str | None = None
     effect: str | None = None
     recommendation: str | None = None
-    root_cause_whys: list[str] | None = Field(default=None, max_length=5)
+    root_cause_whys: list[Annotated[str, Field(max_length=1000)]] | None = Field(default=None, max_length=5)
     control_id: int | None = None
 
 

@@ -43,12 +43,16 @@ function toast(text, kind = "ok") {
 }
 
 // Generic modal. `body` is a node; `footer` optional node (buttons).
-function modal({ title, body, footer, width }) {
+function modal({ title, body, footer, width, onClose }) {
   const root = qs("#modalRoot");
   const backdrop = el("div", { class: "modal-backdrop" });
-  const close = () => {
+  let closed = false;
+  const close = (submitted = false) => {
+    if (closed) return;
+    closed = true;
     backdrop.remove();
     document.removeEventListener("keydown", onKey);
+    if (onClose) onClose(submitted === true);
   };
   const onKey = (e) => { if (e.key === "Escape") close(); };
   document.addEventListener("keydown", onKey);
@@ -56,7 +60,7 @@ function modal({ title, body, footer, width }) {
   backdrop.append(
     el("div", { class: "modal", style: width ? `width:${width}px` : null },
       el("div", { class: "modal-head" }, el("h3", null, title),
-        el("button", { class: "modal-close", onclick: close, title: "Close" }, "\u00d7")),
+        el("button", { class: "modal-close", onclick: () => close(), title: "Close" }, "\u00d7")),
       el("div", { class: "modal-body" }, body),
       footer ? el("div", { class: "modal-foot" }, footer) : null,
     ),
@@ -270,6 +274,7 @@ const MODULES = {
       { key: "effectiveness_check", label: "Effectiveness check", type: "textarea" },
       { key: "severity", label: "Severity", type: "select", options: SEVERITIES },
       { key: "owner_email", label: "Owner email", type: "email" },
+      { key: "due_date", label: "Due date", type: "date", notPast: true },
     ],
     actions: [
       { key: "copy", label: "Copy", kind: "post", path: (id) => `/api/capa/${id}/copy` },
@@ -414,6 +419,8 @@ function showApp() {
     const b = document.querySelector(`#sidebarNav button[data-view="${v}"]`);
     if (b) b.classList.toggle("hidden", state.user.role === "Auditee");
   });
+  checkHealth();
+  refreshDraftCount();
   const adminOnly = ["logs", "backups"];
   const requested = isAdmin() ? state.view : (adminOnly.includes(state.view) ? "dashboard" : state.view);
   navigate(requested);
@@ -438,6 +445,7 @@ function navigate(view) {
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "plans") return renderPlans();
+  if (view === "drafts") return renderDrafts();
   if (view === "universe") return renderUniverse();
   if (view === "profile") return renderProfile();
   if (view === "logs") return renderLogs();
@@ -460,31 +468,64 @@ function renderCell(item, col) {
   return String(value);
 }
 
+// Map a module's field definitions onto the data-entry framework.
+function moduleFormFields(m) {
+  return m.fields.map((f) => ({
+    name: f.key,
+    label: f.label,
+    type: f.type || "text",
+    required: !!f.required,
+    options: f.options,
+    notPast: f.notPast,
+    maxLength: f.type === "textarea" ? 20000 : 255,
+    singleLine: !f.type || f.type === "text",
+    emptyLabel: f.type === "select" && !f.required ? "- default -" : undefined,
+    ...(f.key === "contact_phone" ? { pattern: "^[0-9+()\\-\\s]{6,25}$", patternMessage: "Phone must be 6-25 digits, spaces, +, - or ()" } : {}),
+  }));
+}
+
+function formPayload(values, fields = []) {
+  // Optional single-value blanks are sent as null ("not set"); free text stays "".
+  const textareas = new Set(fields.filter((f) => f.type === "textarea").map((f) => f.key || f.name));
+  return Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v === "" && !textareas.has(k) ? null : v]));
+}
+
 function createModal(key) {
   const m = MODULES[key];
-  const form = el("form", { class: "form-grid" },
-    ...m.fields.map((f) => field(f.label + (f.required ? " *" : ""), inputFor(f, f.default))),
-    el("div", { class: "msg" }),
-  );
-  const instance = modal({
-    title: `New ${m.title.replace(/s$/, "")}`,
-    body: form,
-    footer: el("div", { class: "actions" },
-      el("button", { class: "btn secondary", type: "button", onclick: () => instance.close() }, "Cancel"),
-      el("button", { class: "btn", type: "button", onclick: submit }, "Create")),
+  const noun = m.title.replace(/s$/, "");
+  openForm({
+    title: `New ${noun}`,
+    key: `${key}:new`,
+    meta: { title: `New ${noun}` },
+    fields: moduleFormFields(m),
+    submitLabel: "Create",
+    onSubmit: (values) => {
+      const body = formPayload(values, m.fields);
+      if (body.due_date) body.due_date = `${body.due_date}T00:00:00`;
+      Object.keys(body).forEach((k) => { if (body[k] === null && m.fields.find((f) => f.key === k && f.type === "select")) delete body[k]; });
+      return API.post(m.endpoint, body);
+    },
+    onDone: (rec) => { toast(`${noun} ${rec[m.refKey] || ""} created`); openRecord(key, rec.id); refreshDraftCount(); },
   });
-  const msgBox = form.querySelector(".msg");
-  async function submit() {
-    const payload = readForm(m.fields);
-    const missing = m.fields.filter((f) => f.required && !payload[f.key]);
-    if (missing.length) { notify(msgBox, `Required: ${missing.map((f) => f.label).join(", ")}`, "error"); return; }
-    try {
-      await API.post(m.endpoint, payload);
-      instance.close();
-      toast(`${m.title} record created`);
-      renderList(key);
-    } catch (err) { notify(msgBox, err.message, "error"); }
-  }
+}
+
+function editRecordModal(key, record) {
+  const m = MODULES[key];
+  const initial = Object.fromEntries(m.fields.map((f) => [f.key, record[f.key]]));
+  openForm({
+    title: `Edit ${record[m.refKey] || m.title}`,
+    key: `${key}:edit:${record.id}`,
+    meta: { title: `Edit ${record[m.refKey] || ""} ${record[m.nameKey] || ""}`.trim(), record_type: m.recordType, record_id: record.id },
+    fields: moduleFormFields(m),
+    initial,
+    submitLabel: "Save changes",
+    onSubmit: (values) => {
+      const body = formPayload(values, m.fields);
+      if (body.due_date) body.due_date = `${body.due_date}T00:00:00`;
+      return API.patch(`${m.endpoint}/${record.id}`, body);
+    },
+    onDone: () => { toast("Changes saved"); openRecord(key, record.id); refreshDraftCount(); },
+  });
 }
 
 async function renderList(key) {
@@ -602,7 +643,8 @@ function renderInfoTab(panel, key, record, canWrite) {
     ["Updated", fmtDate(record.updated_at)],
   ];
   rows.forEach(([k, v]) => { dl.append(el("dt", null, k), el("dd", null, v)); });
-  card.append(el("h3", null, "Details"), dl);
+  card.append(el("div", { class: "view-head" }, el("h3", null, "Details"),
+    canWrite && record.status !== "Closed" ? el("button", { class: "btn small", onclick: () => editRecordModal(key, record) }, "Edit") : null), dl);
 
   if (canWrite && record.status !== undefined) {
     const statusField = m.filters.find((f) => f.param === "status");
@@ -826,30 +868,22 @@ async function renderTasks() {
 }
 
 function newTaskModal() {
-  const title = el("input", { placeholder: "Task title" });
-  const desc = el("textarea", { placeholder: "Description" });
-  const assignee = el("input", { type: "number", placeholder: "Assignee user id (optional)" });
-  const due = el("input", { type: "date" });
-  const msg = el("div");
-  let instance;
-  instance = modal({
+  openForm({
     title: "New task",
-    body: el("div", null, field("Title", title), field("Description", desc),
-      field("Assignee id", assignee), field("Due date", due), msg),
-    footer: el("div", { class: "actions" },
-      el("button", { class: "btn secondary", onclick: () => instance.close() }, "Cancel"),
-      el("button", { class: "btn", onclick: async () => {
-        if (!title.value.trim()) { notify(msg, "Title required", "error"); return; }
-        try {
-          await API.post("/api/tasks", {
-            title: title.value.trim(),
-            description: desc.value,
-            assignee_id: assignee.value ? Number(assignee.value) : null,
-            due_date: due.value ? new Date(due.value).toISOString() : null,
-          });
-          instance.close(); toast("Task created"); renderTasks();
-        } catch (err) { notify(msg, err.message, "error"); }
-      } }, "Create")),
+    key: "task:new",
+    meta: { title: "New task" },
+    fields: [
+      { name: "title", label: "Title", required: true, maxLength: 255, singleLine: true },
+      { name: "assignee_id", label: "Assignee user id", type: "number", min: 1, help: "Leave blank to keep it unassigned" },
+      { name: "due_date", label: "Due date", type: "date", notPast: true },
+      { name: "description", label: "Description", type: "textarea", maxLength: 20000 },
+    ],
+    submitLabel: "Create",
+    onSubmit: (v) => API.post("/api/tasks", {
+      title: v.title, description: v.description || "", assignee_id: v.assignee_id,
+      due_date: v.due_date ? `${v.due_date}T00:00:00` : null,
+    }),
+    onDone: () => { toast("Task created"); renderTasks(); refreshDraftCount(); },
   });
 }
 
@@ -874,24 +908,35 @@ async function renderAudits() {
   } catch (err) { notify(msg, err.message, "error"); }
 }
 
+const AUDIT_FIELDS = [
+  { name: "title", label: "Title", required: true, maxLength: 255, singleLine: true },
+  { name: "scope", label: "Scope", type: "textarea", maxLength: 20000 },
+  { name: "description", label: "Description / background", type: "textarea", maxLength: 20000 },
+];
+
 function newAuditModal() {
-  const title = el("input", { placeholder: "Title" });
-  const desc = el("textarea", { placeholder: "Description" });
-  const scope = el("textarea", { placeholder: "Scope" });
-  const msg = el("div");
-  let instance;
-  instance = modal({
+  openForm({
     title: "New audit",
-    body: el("div", null, field("Title", title), field("Description", desc), field("Scope", scope), msg),
-    footer: el("div", { class: "actions" },
-      el("button", { class: "btn secondary", onclick: () => instance.close() }, "Cancel"),
-      el("button", { class: "btn", onclick: async () => {
-        if (!title.value.trim()) { notify(msg, "Title required", "error"); return; }
-        try {
-          await API.post("/api/audits", { title: title.value.trim(), description: desc.value, scope: scope.value });
-          instance.close(); toast("Audit created"); renderAudits();
-        } catch (err) { notify(msg, err.message, "error"); }
-      } }, "Create")),
+    key: "audit:new",
+    meta: { title: "New audit" },
+    intro: "Tip: audits for the year are normally started from the Assurance Plan so they stay linked to it.",
+    fields: AUDIT_FIELDS,
+    submitLabel: "Create",
+    onSubmit: (v) => API.post("/api/audits", { title: v.title, description: v.description || "", scope: v.scope || "" }),
+    onDone: (a) => { toast("Audit created"); openAudit(a.id); refreshDraftCount(); },
+  });
+}
+
+function editAuditModal(audit) {
+  openForm({
+    title: `Edit audit #${audit.id}`,
+    key: `audit:edit:${audit.id}`,
+    meta: { title: `Edit audit: ${audit.title}`, record_type: "audit", record_id: audit.id },
+    fields: AUDIT_FIELDS,
+    initial: audit,
+    submitLabel: "Save changes",
+    onSubmit: (v) => API.patch(`/api/audits/${audit.id}`, { title: v.title, description: v.description || "", scope: v.scope || "" }),
+    onDone: () => { toast("Audit saved"); openAudit(audit.id); refreshDraftCount(); },
   });
 }
 
@@ -908,6 +953,7 @@ async function openAudit(id) {
     el("div", { class: "view-actions" },
       el("span", { class: "ref" }, `#${id}`),
       el("button", { class: "btn secondary small", onclick: () => window.print() }, "Print"),
+      canWrite && audit.status !== "Closed" ? el("button", { class: "btn secondary small", onclick: () => editAuditModal(audit) }, "Edit") : null,
       canWrite && audit.status === "Review" && audit.approval_status !== "In Approval"
         ? el("button", { class: "btn small secondary", onclick: async () => {
           try { await API.post(`/api/audits/${id}/in-approval`); toast("Submitted for approval"); openAudit(id); }
@@ -1014,32 +1060,14 @@ async function renderFindings(panel, id, canWrite) {
   else card.append(el("table", null,
     el("thead", null, el("tr", null, el("th", null, "#"), el("th", null, "Issue"), el("th", null, "Risk"), el("th", null, "Status"),
       el("th", null, "Owner"), el("th", null, "Mgmt response"))),
-    el("tbody", null, ...findings.map((f) => el("tr", { onclick: () => issueModal(f, id, canWrite, () => openAudit(id)), title: "Open issue" },
+    el("tbody", null, ...findings.map((f) => el("tr", { onclick: () => issueForm(f, id, canWrite, () => openAudit(id)), title: "Open issue" },
       el("td", { class: "ref" }, `#${f.id}`),
       el("td", null, f.title, f.control_id ? el("span", { class: "muted" }, " (from control test)") : null),
       el("td", null, badge(f.risk_rating)),
       el("td", null, badge(f.status)), el("td", { class: "muted" }, f.assigned_owner_email || "-"),
       el("td", null, f.management_response ? badge("Received") : badge("Awaited")))))));
   if (canWrite) {
-    const t = el("input", { placeholder: "Title" });
-    const o = el("input", { placeholder: "Owner email", type: "email" });
-    const r = el("select", null, ...RISK_RATINGS.map((x) => el("option", { value: x }, x)));
-    const s = el("select", null, ...FINDING_STATUSES.map((x) => el("option", { value: x }, x)));
-    const d = el("textarea", { placeholder: "Description" });
-    const msg = el("div");
-    card.append(el("hr"),
-      el("div", { class: "grid cols-2" }, field("Title", t), field("Owner email", o), field("Risk", r), field("Status", s)),
-      field("Description", d), msg,
-      el("div", { style: "margin-top:12px" }, el("button", { class: "btn", onclick: async () => {
-        if (!t.value.trim()) { notify(msg, "Title required", "error"); return; }
-        try {
-          await API.post(`/api/audits/${id}/findings`, {
-            title: t.value.trim(), description: d.value, risk_rating: r.value, status: s.value,
-            assigned_owner_email: o.value.trim() || null,
-          });
-          toast("Finding added"); openAudit(id);
-        } catch (err) { notify(msg, err.message, "error"); }
-      } }, "Add finding")));
+    card.append(el("div", { style: "margin-top:12px" }, el("button", { class: "btn", onclick: () => issueForm(null, id, true, () => openAudit(id)) }, "Add finding / issue")));
   }
 }
 
@@ -1092,36 +1120,40 @@ async function renderProfile() {
       el("dt", null, "Role"), el("dd", null, badge(u.role)),
       el("dt", null, "Status"), el("dd", null, u.is_active ? badge("Active") : badge("Pending")))));
 
-  const full = el("input", { value: u.full_name || "" });
-  const email = el("input", { type: "email", value: u.email });
-  const edit = el("div", { class: "card" }, el("h3", null, "Edit My Profile"),
-    field("Full name", full), field("Email", email),
-    el("div", { style: "margin-top:12px" }, el("button", { class: "btn" }, "Save changes")));
-  edit.querySelector("button").addEventListener("click", async () => {
-    notify(msg, "");
-    try {
-      const res = await API.patch("/api/auth/me", { full_name: full.value.trim(), email: email.value.trim() });
+  const edit = el("div", { class: "card" }, el("h3", null, "Edit My Profile"));
+  viewRoot.append(edit);
+  inlineForm(edit, {
+    key: "profile:me",
+    meta: { title: "My profile" },
+    fields: [
+      { name: "full_name", label: "Full name", required: true, maxLength: 255, singleLine: true },
+      { name: "email", label: "Email", type: "email", required: true },
+    ],
+    initial: { full_name: u.full_name || "", email: u.email },
+    submitLabel: "Save changes",
+    onSubmit: (v) => API.patch("/api/auth/me", v),
+    onDone: (res) => {
       state.user = res.user; API.csrf = res.csrf_token; state.csrf = res.csrf_token;
       whoami.textContent = `${state.user.full_name || state.user.username} (${state.user.role})`;
       toast("Profile updated");
-    } catch (err) { notify(msg, err.message, "error"); }
+    },
   });
-  viewRoot.append(edit);
 
-  const cur = el("input", { type: "password" });
-  const nw = el("input", { type: "password" });
-  const pw = el("div", { class: "card" }, el("h3", null, "Change My Password"),
-    field("Current password", cur), field("New password (min 8 characters)", nw),
-    el("div", { style: "margin-top:12px" }, el("button", { class: "btn" }, "Change password")));
-  pw.querySelector("button").addEventListener("click", async () => {
-    notify(msg, "");
-    try {
-      await API.post("/api/auth/me/password", { current_password: cur.value, new_password: nw.value });
-      cur.value = ""; nw.value = "";
-      toast("Password changed");
-    } catch (err) { notify(msg, err.message, "error"); }
-  });
+  const pw = el("div", { class: "card" }, el("h3", null, "Change My Password"));
   viewRoot.append(pw);
+  const pwForm = inlineForm(pw, {
+    draftable: false,
+    fields: [
+      { name: "current_password", label: "Current password", type: "password", required: true },
+      { name: "new_password", label: "New password", type: "password", required: true, minLength: 8, maxLength: 128,
+        help: "At least 8 characters; use letters, numbers and a symbol." },
+      { name: "confirm_password", label: "Confirm new password", type: "password", required: true },
+    ],
+    validate: (v) => (v.new_password && v.confirm_password !== v.new_password ? { confirm_password: "Passwords do not match" } : {}),
+    submitLabel: "Change password",
+    onSubmit: (v) => API.post("/api/auth/me/password", { current_password: v.current_password, new_password: v.new_password }),
+    onDone: () => { Object.values(pwForm.nodes).forEach((n) => { n.value = ""; }); toast("Password changed - other sessions were signed out"); },
+  });
 
   if (isAdmin()) {
     viewRoot.append(el("hr"));
@@ -1139,25 +1171,24 @@ async function renderUsers() {
 }
 
 async function renderUserManagement(container, msg) {
-  const uUser = el("input", { placeholder: "Username" });
-  const uEmail = el("input", { type: "email", placeholder: "Email" });
-  const uFull = el("input", { placeholder: "Full name" });
-  const uRole = el("select", null, ...ROLES.map((r) => el("option", { value: r, selected: r === "Auditor" ? "1" : null }, r)));
-  const uPass = el("input", { type: "password", placeholder: "Password" });
-  const form = el("div", { class: "card" }, el("h3", null, "Create user"),
-    el("div", { class: "grid cols-2" }, field("Username", uUser), field("Email", uEmail),
-      field("Full name", uFull), field("Role", uRole), field("Password", uPass)),
-    el("div", { style: "margin-top:12px" }, el("button", { class: "btn" }, "Create user")));
-  form.querySelector("button").addEventListener("click", async () => {
-    try {
-      await API.post("/api/users", {
-        username: uUser.value.trim(), email: uEmail.value.trim(), full_name: uFull.value.trim(),
-        role: uRole.value, password: uPass.value,
-      });
-      toast("User created"); renderUsers();
-    } catch (err) { notify(msg, err.message, "error"); }
-  });
+  const form = el("div", { class: "card" }, el("h3", null, "Create user"));
   container.append(form);
+  inlineForm(form, {
+    key: "user:new",
+    meta: { title: "New user account" },
+    fields: [
+      { name: "username", label: "Username", required: true, minLength: 3, maxLength: 64, pattern: "^[A-Za-z0-9._-]+$",
+        patternMessage: "Username may contain letters, digits, '.', '_' and '-' only" },
+      { name: "email", label: "Email", type: "email", required: true },
+      { name: "full_name", label: "Full name", maxLength: 255, singleLine: true },
+      { name: "role", label: "Role", type: "select", required: true, options: ROLES },
+      { name: "password", label: "Initial password", type: "password", required: true, minLength: 8, maxLength: 128 },
+    ],
+    initial: { role: "Auditor" },
+    submitLabel: "Create user",
+    onSubmit: (v) => API.post("/api/users", v),
+    onDone: () => { toast("User created"); renderUsers(); },
+  });
 
   try {
     const users = await API.get("/api/users");
@@ -1235,4 +1266,28 @@ async function renderBackups() {
   } catch (err) { notify(msg, err.message, "error"); }
 }
 
+function registerAppOpeners() {
+  Object.keys(MODULES).forEach((key) => {
+    registerFormOpener(`${key}:new`, () => { navigate(key); createModal(key); });
+    registerFormOpener(`${key}:edit:`, async (formKey) => {
+      const id = formKey.split(":")[2];
+      await openRecord(key, Number(id));
+      editRecordModal(key, await API.get(`${MODULES[key].endpoint}/${id}`));
+    });
+  });
+  registerFormOpener("audit:new", () => { navigate("audits"); newAuditModal(); });
+  registerFormOpener("audit:edit:", async (formKey) => {
+    const id = formKey.split(":")[2];
+    await openAudit(id);
+    editAuditModal(await API.get(`/api/audits/${id}`));
+  });
+  registerFormOpener("task:new", () => { navigate("tasks"); newTaskModal(); });
+  registerFormOpener("profile:me", () => navigate("profile"));
+  registerFormOpener("user:new", () => navigate("profile"));
+}
+
+registerAppOpeners();
+registerPlanningOpeners();
+window.addEventListener("online", () => { checkHealth(); toast("Back online - drafts will sync as you type"); });
+setInterval(() => { if (state.user) checkHealth(); }, 60000);
 boot();

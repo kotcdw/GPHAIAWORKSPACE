@@ -2,27 +2,28 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.enums import EngagementStatus, PlanStatus
 from app.core.schemas import ORMModel
+from app.core.validators import Code, OptEmail, Title
 
 Quarter = Literal["Q1", "Q2", "Q3", "Q4"]
 Score = Field(ge=1, le=5)
 
 
 class LocationIn(BaseModel):
-    code: str = Field(min_length=1, max_length=20)
-    name: str = Field(min_length=1, max_length=255)
+    code: Code
+    name: Title
     description: str = ""
     is_active: bool = True
 
 
 class LocationUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
+    name: Title | None = None
     description: str | None = None
     is_active: bool | None = None
 
@@ -37,19 +38,19 @@ class LocationOut(ORMModel):
 
 class EntityUnitIn(BaseModel):
     location_id: int
-    code: str = Field(min_length=1, max_length=20)
-    name: str = Field(min_length=1, max_length=255)
+    code: Code
+    name: Title
     description: str = ""
-    owner_email: str | None = Field(default=None, max_length=255)
+    owner_email: OptEmail = None
     risk_likelihood: int = Field(default=3, ge=1, le=5)
     risk_impact: int = Field(default=3, ge=1, le=5)
     is_active: bool = True
 
 
 class EntityUnitUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
+    name: Title | None = None
     description: str | None = None
-    owner_email: str | None = Field(default=None, max_length=255)
+    owner_email: OptEmail = None
     risk_likelihood: int | None = Field(default=None, ge=1, le=5)
     risk_impact: int | None = Field(default=None, ge=1, le=5)
     is_active: bool | None = None
@@ -72,33 +73,41 @@ class EntityUnitOut(ORMModel):
 
 
 class PlanIn(BaseModel):
-    fiscal_year: int = Field(ge=2000, le=2100)
-    title: str = Field(min_length=1, max_length=255)
+    fiscal_year: int
+
+    @field_validator("fiscal_year")
+    @classmethod
+    def _sane_year(cls, value: int) -> int:
+        this_year = datetime.now(UTC).year
+        if not this_year - 2 <= value <= this_year + 10:
+            raise ValueError(f"must be between {this_year - 2} and {this_year + 10}")
+        return value
+    title: Title
     description: str = ""
-    total_budget_hours: int = Field(default=0, ge=0)
+    total_budget_hours: int = Field(default=0, ge=0, le=1_000_000)
 
 
 class PlanUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     description: str | None = None
-    total_budget_hours: int | None = Field(default=None, ge=0)
+    total_budget_hours: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class EngagementIn(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: Title
     entity_unit_id: int | None = None
     rationale: str = ""
     planned_quarter: Quarter = "Q1"
-    budget_hours: int = Field(default=0, ge=0)
+    budget_hours: int = Field(default=0, ge=0, le=10_000)
     lead_auditor_id: int | None = None
 
 
 class EngagementUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     entity_unit_id: int | None = None
     rationale: str | None = None
     planned_quarter: Quarter | None = None
-    budget_hours: int | None = Field(default=None, ge=0)
+    budget_hours: int | None = Field(default=None, ge=0, le=10_000)
     lead_auditor_id: int | None = None
 
 

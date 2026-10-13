@@ -8,50 +8,51 @@ from pydantic import BaseModel, Field
 
 from app.core.enums import ControlFrequency, ControlNature, ControlType, TestConclusion, TestStatus, TestType
 from app.core.schemas import ORMModel
+from app.core.validators import OptEmail, Title
 
 
 class ObjectiveIn(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: Title
     description: str = ""
 
 
 class ObjectiveUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     description: str | None = None
 
 
 class RiskIn(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: Title
     description: str = ""
     likelihood: int = Field(default=3, ge=1, le=5)
     impact: int = Field(default=3, ge=1, le=5)
 
 
 class RiskUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     description: str | None = None
     likelihood: int | None = Field(default=None, ge=1, le=5)
     impact: int | None = Field(default=None, ge=1, le=5)
 
 
 class ControlIn(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: Title
     description: str = ""
     control_type: ControlType = ControlType.Preventive
     nature: ControlNature = ControlNature.Manual
     frequency: ControlFrequency = ControlFrequency.Monthly
-    owner_email: str | None = Field(default=None, max_length=255)
+    owner_email: OptEmail = None
     is_key: bool = True
     risk_ids: list[int] = []
 
 
 class ControlUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    title: Title | None = None
     description: str | None = None
     control_type: ControlType | None = None
     nature: ControlNature | None = None
     frequency: ControlFrequency | None = None
-    owner_email: str | None = Field(default=None, max_length=255)
+    owner_email: OptEmail = None
     is_key: bool | None = None
 
 

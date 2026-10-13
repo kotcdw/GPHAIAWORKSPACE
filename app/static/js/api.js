@@ -12,9 +12,13 @@ class ApiError extends Error {
     if (payload && payload.detail) {
       detail = typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail);
     }
+    if (status === 0) detail = "The server is not reachable (network or server down)";
+    else if (status >= 500 && !(payload && payload.detail)) detail = `Server error (${status})`;
     super(detail);
     this.status = status;
     this.payload = payload;
+    // Field-level validation problems: [{field, message}, ...]
+    this.errors = (payload && Array.isArray(payload.errors)) ? payload.errors : [];
   }
 }
 
@@ -34,7 +38,12 @@ const API = {
       body = opts.form; // FormData: let the browser set the boundary
     }
 
-    const res = await fetch(path, { method, headers, body, credentials: "include" });
+    let res;
+    try {
+      res = await fetch(path, { method, headers, body, credentials: "include" });
+    } catch (err) {
+      throw new ApiError(0, null);
+    }
     const text = await res.text();
     let data = null;
     if (text) {

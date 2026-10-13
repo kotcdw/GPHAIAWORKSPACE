@@ -193,6 +193,10 @@
           <i class="bi bi-grid-1x2-fill"></i>
           Dashboard
         </button>
+        <button data-view="drafts">
+          <i class="bi bi-pencil-square"></i>
+          My Drafts <span id="draftCount" class="count hidden"></span>
+        </button>
         <button data-view="tasks">
           <i class="bi bi-check2-square"></i>
           Task Center
@@ -247,7 +251,10 @@
         <button class="btn secondary small" id="signOut">Sign out</button>
       </div>
     </aside>
-    <main id="viewRoot"></main>
+    <div class="main-col">
+      <div id="healthBar" class="health-bar hidden" role="alert"></div>
+      <main id="viewRoot"></main>
+    </div>
   </div>
 
   <!-- Toast host + modal root ------------------------------------------------->
@@ -255,6 +262,7 @@
   <div id="modalRoot"></div>
 
   <script src="/static/js/api.js"></script>
+  <script src="/static/js/forms.js"></script>
   <script src="/static/js/planning.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
