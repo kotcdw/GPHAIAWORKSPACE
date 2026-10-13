@@ -11,7 +11,7 @@ from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_active_user, require_module_tier, require_role
-from app.core.enums import ApprovalStatus, AuditStatus, Role
+from app.core.enums import ApprovalStatus, AuditStatus, Role, TestStatus, utcnow
 from app.core.history import log_record_history
 from app.core.schemas import ESignRequest, MessageOut
 from app.modules.approvals.models import ApprovalCycle
@@ -167,6 +167,26 @@ def delete_audit(
     return MessageOut(message=f"Audit {audit_id} deleted")
 
 
+def _ensure_fieldwork_reviewed(db: DBSession, audit: Audit) -> None:
+    """Every control test must be reviewed (or not started) before sign-off."""
+    from app.modules.rcm.models import Control, ControlTest, Objective
+
+    pending = db.execute(
+        select(ControlTest.ref)
+        .join(Control, Control.id == ControlTest.control_id)
+        .join(Objective, Objective.id == Control.objective_id)
+        .where(
+            Objective.audit_id == audit.id,
+            ControlTest.status.in_([TestStatus.InProgress, TestStatus.Completed]),
+        )
+    ).scalars().all()
+    if pending:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Control tests not yet reviewed: {', '.join(pending)}",
+        )
+
+
 def _ensure_deletable(db: DBSession, audit: Audit) -> None:
     """Only an untouched, Planned audit may be deleted - never one with evidence."""
     if audit.status != AuditStatus.Planned:
@@ -233,9 +253,17 @@ def close_audit(
             detail=f"Only audits in Review can be closed (current status: {audit.status.value})",
         )
 
+    _ensure_fieldwork_reviewed(db, audit)
+
     def _on_approve(session: DBSession) -> None:
         audit.status = AuditStatus.Closed
         audit.approval_status = ApprovalStatus.Approved
+        if audit.entity_unit_id is not None:
+            from app.modules.planning.models import EntityUnit
+
+            unit = session.get(EntityUnit, audit.entity_unit_id)
+            if unit is not None:
+                unit.last_audited_at = utcnow()
 
     sign(
         db,

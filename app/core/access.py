@@ -93,6 +93,8 @@ def _model_for(record_type: str):  # noqa: ANN202
     from app.modules.capa.models import Capa
     from app.modules.nonconformances.models import Nonconformance
     from app.modules.organizations.models import Organization
+    from app.modules.planning.models import AssurancePlan
+    from app.modules.rcm.models import ControlTest
     from app.modules.service_feedback.models import ServiceFeedback
     from app.modules.stakeholders.models import Stakeholder
 
@@ -105,6 +107,8 @@ def _model_for(record_type: str):  # noqa: ANN202
         "organization": Organization,
         "service_feedback": ServiceFeedback,
         "stakeholder": Stakeholder,
+        "assurance_plan": AssurancePlan,
+        "control_test": ControlTest,
     }.get(record_type)
 
 

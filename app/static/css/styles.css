@@ -530,3 +530,16 @@ tbody tr.no-click:hover { background: transparent; cursor: default; }
 .comment-box { margin-top: 12px; }
 .comment-row { border-left: 3px solid var(--border); padding: 4px 0 4px 10px; margin: 6px 0; }
 .comment-row .who { color: var(--muted); font-size: 12px; }
+
+/* ---- planning & risk-control layer ------------------------------------- */
+.badge-high, .badge-risk-high, .badge-ineffective, .badge-rejected { background: #7f1d1d33; color: #fca5a5; }
+.badge-medium, .badge-risk-medium, .badge-design-effective, .badge-awaited { background: #78350f33; color: #fcd34d; }
+.badge-risk-low, .badge-effective, .badge-approved, .badge-reviewed, .badge-received, .badge-started { background: #14532d33; color: #86efac; }
+.badge-draft, .badge-not-tested, .badge-not-started, .badge-cancelled { background: #1e293b; color: var(--muted); }
+.badge-completed, .badge-key { background: #164e6333; color: #7dd3fc; }
+.card.warn { border-left: 3px solid #f59e0b; }
+.card h4 { margin: 16px 0 8px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.control-box { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; background: var(--panel-2); }
+.control-box table { margin-top: 8px; }
+.checklist { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow: auto; }
+.checklist .check { font-weight: 400; display: flex; align-items: center; gap: 6px; }

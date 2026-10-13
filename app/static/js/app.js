@@ -103,8 +103,9 @@ function readForm(fields) {
 
 // Electronic-signature modal. Signs via a module endpoint (pathOverride) or the
 // generic /api/approvals/sign endpoint.
-function eSignModal({ title, recordType, recordId, pathOverride, actionLabel = "Sign & Approve", onDone }) {
+function eSignModal({ title, recordType, recordId, pathOverride, actionLabel = "Sign & Approve", onDone, allowReject = false }) {
   const pass = el("input", { type: "password", placeholder: "Your password", required: "1" });
+  const decision = el("select", null, el("option", { value: "Approve" }, "Approve"), el("option", { value: "Reject" }, "Reject (return for rework)"));
   const comment = el("textarea", { placeholder: "Comment (optional)" });
   const msg = el("div");
   let instance;
@@ -114,6 +115,7 @@ function eSignModal({ title, recordType, recordId, pathOverride, actionLabel = "
     body: el("div", null,
       el("p", { class: "muted" },
         "By signing you certify this action. Your password is verified and never stored."),
+      allowReject ? field("Decision", decision) : null,
       field("Password", pass),
       field("Comment", comment),
       msg),
@@ -124,7 +126,7 @@ function eSignModal({ title, recordType, recordId, pathOverride, actionLabel = "
   submit.addEventListener("click", async () => {
     try {
       if (pathOverride) {
-        await API.post(pathOverride, { password: pass.value, comment: comment.value });
+        await API.post(pathOverride, { password: pass.value, comment: comment.value, decision: decision.value });
       } else {
         await API.post("/api/approvals/sign", {
           record_type: recordType, record_id: recordId, decision: "Approve",
@@ -408,7 +410,7 @@ function showApp() {
     b.classList.toggle("hidden", !isAdmin());
   });
   // Auditees have no access to internal master data.
-  ["organizations", "stakeholders"].forEach((v) => {
+  ["organizations", "stakeholders", "plans", "universe"].forEach((v) => {
     const b = document.querySelector(`#sidebarNav button[data-view="${v}"]`);
     if (b) b.classList.toggle("hidden", state.user.role === "Auditee");
   });
@@ -435,6 +437,8 @@ function navigate(view) {
   if (view === "dashboard") return renderDashboard();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
+  if (view === "plans") return renderPlans();
+  if (view === "universe") return renderUniverse();
   if (view === "profile") return renderProfile();
   if (view === "logs") return renderLogs();
   if (view === "backups") return renderBackups();
@@ -922,6 +926,8 @@ async function openAudit(id) {
       el("dt", null, "Approval"), el("dd", null, audit.approval_status ? badge(audit.approval_status) : "-"),
       el("dt", null, "Description"), el("dd", null, audit.description || "-"),
       el("dt", null, "Scope"), el("dd", null, audit.scope || "-"),
+      el("dt", null, "Assurance Plan"), el("dd", null, audit.plan_id
+        ? el("a", { href: "#", onclick: (e) => { e.preventDefault(); openPlan(audit.plan_id); } }, `Plan #${audit.plan_id}`) : "-"),
       el("dt", null, "Created"), el("dd", null, fmtDate(audit.created_at))));
   if (canWrite && audit.status !== "Closed") {
     // "Closed" is reached only through the e-signed sign-off.
@@ -939,13 +945,14 @@ async function openAudit(id) {
   if (canWrite) renderAuditees(viewRoot, id);
 
   const tabs = [
-    { key: "findings", label: "Findings" },
+    ...(canWrite ? [{ key: "rcm", label: "Risk & Control Matrix" }] : []),
+    { key: "findings", label: "Findings / Issues" },
     { key: "papers", label: "Working Papers" },
     { key: "tasks", label: "Tasks" },
     { key: "history", label: "History" },
     { key: "approvals", label: "Approval Cycles" },
   ];
-  let active = "findings";
+  let active = canWrite ? "rcm" : "findings";
   const detail = el("div");
   viewRoot.append(detail);
 
@@ -954,6 +961,7 @@ async function openAudit(id) {
     detail.append(tabBar(tabs, active, (k) => { active = k; paint(); }));
     const panel = el("div");
     detail.append(panel);
+    if (active === "rcm") renderRcm(panel, id);
     if (active === "findings") renderFindings(panel, id, canWrite);
     if (active === "papers") renderPapers(panel, id, canWrite);
     if (active === "tasks") renderTasksTab(panel, "audit", id);
@@ -1004,10 +1012,14 @@ async function renderFindings(panel, id, canWrite) {
   const findings = await API.get(`/api/audits/${id}/findings`);
   if (!findings.length) card.append(el("div", { class: "empty" }, "No findings recorded."));
   else card.append(el("table", null,
-    el("thead", null, el("tr", null, el("th", null, "Title"), el("th", null, "Risk"), el("th", null, "Status"), el("th", null, "Owner"))),
-    el("tbody", null, ...findings.map((f) => el("tr", { class: "no-click" },
-      el("td", null, f.title), el("td", null, badge(f.risk_rating)),
-      el("td", null, badge(f.status)), el("td", { class: "muted" }, f.assigned_owner_email || "-"))))));
+    el("thead", null, el("tr", null, el("th", null, "#"), el("th", null, "Issue"), el("th", null, "Risk"), el("th", null, "Status"),
+      el("th", null, "Owner"), el("th", null, "Mgmt response"))),
+    el("tbody", null, ...findings.map((f) => el("tr", { onclick: () => issueModal(f, id, canWrite, () => openAudit(id)), title: "Open issue" },
+      el("td", { class: "ref" }, `#${f.id}`),
+      el("td", null, f.title, f.control_id ? el("span", { class: "muted" }, " (from control test)") : null),
+      el("td", null, badge(f.risk_rating)),
+      el("td", null, badge(f.status)), el("td", { class: "muted" }, f.assigned_owner_email || "-"),
+      el("td", null, f.management_response ? badge("Received") : badge("Awaited")))))));
   if (canWrite) {
     const t = el("input", { placeholder: "Title" });
     const o = el("input", { placeholder: "Owner email", type: "email" });

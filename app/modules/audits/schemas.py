@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.core.enums import ApprovalStatus, AuditStatus, FindingStatus, RiskRating
 from app.core.schemas import ORMModel
@@ -35,6 +36,8 @@ class AuditOut(ORMModel):
     status: AuditStatus
     approval_status: ApprovalStatus | None
     organization_id: int | None
+    plan_id: int | None = None
+    entity_unit_id: int | None = None
     created_by: int | None
     created_at: datetime
     updated_at: datetime
@@ -47,6 +50,13 @@ class FindingCreate(BaseModel):
     risk_rating: RiskRating = RiskRating.Medium
     status: FindingStatus = FindingStatus.Open
     assigned_owner_email: EmailStr | None = None
+    criteria: str | None = None
+    condition: str | None = None
+    cause: str | None = None
+    effect: str | None = None
+    recommendation: str | None = None
+    root_cause_whys: list[str] | None = Field(default=None, max_length=5)
+    control_id: int | None = None
 
 
 class FindingUpdate(BaseModel):
@@ -55,6 +65,17 @@ class FindingUpdate(BaseModel):
     risk_rating: RiskRating | None = None
     status: FindingStatus | None = None
     assigned_owner_email: EmailStr | None = None
+    criteria: str | None = None
+    condition: str | None = None
+    cause: str | None = None
+    effect: str | None = None
+    recommendation: str | None = None
+    root_cause_whys: list[str] | None = Field(default=None, max_length=5)
+    control_id: int | None = None
+
+
+class ManagementResponse(BaseModel):
+    management_response: str = Field(min_length=1, max_length=10000)
 
 
 class FindingOut(ORMModel):
@@ -65,9 +86,31 @@ class FindingOut(ORMModel):
     risk_rating: RiskRating
     status: FindingStatus
     assigned_owner_email: str | None
+    control_id: int | None = None
+    test_id: int | None = None
+    criteria: str | None = ""
+    condition: str | None = ""
+    cause: str | None = ""
+    effect: str | None = ""
+    recommendation: str | None = ""
+    root_cause_whys: list[str] = []
+    management_response: str | None = ""
     created_by: int | None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("root_cause_whys", mode="before")
+    @classmethod
+    def _parse_whys(cls, value):  # noqa: ANN001, ANN206
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except ValueError:
+                return [value]
+            return [str(v) for v in parsed] if isinstance(parsed, list) else [str(parsed)]
+        return value
 
 
 # --------------------------------------------------------------------------- working papers

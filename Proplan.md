@@ -274,6 +274,26 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 ---
 
+## PHASE 9 — Planning & risk-control layer (HighBond flow)
+
+**Goal:** Assurance Plan -> projects -> objectives -> risks -> controls -> tests -> issues -> actions.
+
+### Steps
+- [x] **9.1** Migration `0006_planning_rcm`: `locations`, `entity_units`, `assurance_plans`, `plan_engagements`, `objectives`, `risks`, `controls`, `risk_controls`, `control_tests`; `audits.plan_id/entity_unit_id`; finding issue attributes + control/test links; `AP/OBJ/RSK/CTL/TST` sequences.
+- [x] **9.2** `modules/planning`: universe (Admin-managed), Assurance Plan CRUD, coverage summary, e-signed approval with SoD, reopen/close, engagements, *start engagement -> audit project*.
+- [x] **9.3** `modules/rcm`: objectives/risks/controls with many-to-many mapping (same-audit only), inherent/residual ratings, control effectiveness, tests with sampling guidance + seeded random selection, completion rules, e-signed review (reviewer != performer, reject = rework), raise issue from ineffective test, raise CAPA from issue, deletion only without evidence, matrix locked when audit closed.
+- [x] **9.4** Audit close gate: no unreviewed control tests; closing stamps the entity unit's `last_audited_at`.
+- [x] **9.5** Issues: criteria/condition/cause/effect/recommendation, 5 Whys, management response (auditee can respond on assigned audits).
+- [x] **9.6** UI: *Assurance Plan* and *Audit Universe* views; *Risk & Control Matrix* tab on the audit page; issue modal; e-sign modal with Approve/Reject. Browser-tested end to end.
+- [x] **9.7** Tests: `tests/test_planning_rcm.py` — 60 tests green on MySQL, ruff clean; migration up/down verified on SQLite.
+
+> **Phase 9 notes:** still open from the target design — Preparer -> Manager -> CAE
+> multi-level review chain (only one reviewer level today), time-based
+> escalations, auditor skills/capacity, analytics/NL queries, AI monitoring,
+> ERP/IdP integrations, offline sync, per-module permission tiers.
+
+---
+
 ## Dependency / ordering notes
 
 - PHASE 0 must finish before anything touches the DB; run `init_db` + smoke.

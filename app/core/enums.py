@@ -96,6 +96,71 @@ class TaskStatus(str, enum.Enum):
     Closed = "Closed"
 
 
+# ---------------------------------------------------------------- planning & RCM
+
+
+class PlanStatus(str, enum.Enum):
+    Draft = "Draft"
+    Approved = "Approved"
+    Closed = "Closed"
+
+
+class EngagementStatus(str, enum.Enum):
+    Planned = "Planned"
+    Started = "Started"
+    Cancelled = "Cancelled"
+
+
+class ControlType(str, enum.Enum):
+    Preventive = "Preventive"
+    Detective = "Detective"
+    Corrective = "Corrective"
+
+
+class ControlNature(str, enum.Enum):
+    Manual = "Manual"
+    Automated = "Automated"
+    ITDependent = "IT-Dependent Manual"
+
+
+class ControlFrequency(str, enum.Enum):
+    Annual = "Annual"
+    Quarterly = "Quarterly"
+    Monthly = "Monthly"
+    Weekly = "Weekly"
+    Daily = "Daily"
+    MultipleDaily = "Multiple Daily"
+    AdHoc = "Ad Hoc"
+
+
+class TestType(str, enum.Enum):
+    Walkthrough = "Walkthrough"
+    Design = "Design"
+    OperatingEffectiveness = "Operating Effectiveness"
+
+
+class TestStatus(str, enum.Enum):
+    NotStarted = "Not Started"
+    InProgress = "In Progress"
+    Completed = "Completed"
+    Reviewed = "Reviewed"
+
+
+class TestConclusion(str, enum.Enum):
+    NotTested = "Not Tested"
+    Effective = "Effective"
+    Ineffective = "Ineffective"
+
+
+def risk_level(score: int) -> str:
+    """Map a likelihood x impact score (1-25) onto a rating band."""
+    if score >= 15:
+        return "High"
+    if score >= 8:
+        return "Medium"
+    return "Low"
+
+
 def _enum(enum_cls: type[enum.Enum], length: int = 20) -> Enum:
     """Store Python enums as a VARCHAR column with a CHECK constraint.
 

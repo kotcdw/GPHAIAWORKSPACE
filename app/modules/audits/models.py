@@ -34,6 +34,11 @@ class Audit(Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    # Assurance Plan linkage (set when the audit is started from a plan engagement).
+    plan_id: Mapped[int | None] = mapped_column(ForeignKey("assurance_plans.id", ondelete="SET NULL"), nullable=True)
+    entity_unit_id: Mapped[int | None] = mapped_column(
+        ForeignKey("entity_units.id", ondelete="SET NULL"), nullable=True
+    )
 
     creator: Mapped[User | None] = relationship(back_populates="audits")
     working_papers: Mapped[list[WorkingPaper]] = relationship(back_populates="audit", cascade="all, delete-orphan")
@@ -79,6 +84,16 @@ class Finding(Base):
     risk_rating: Mapped[RiskRating] = mapped_column(_enum(RiskRating), nullable=False, default=RiskRating.Medium)
     status: Mapped[FindingStatus] = mapped_column(_enum(FindingStatus), nullable=False, default=FindingStatus.Open)
     assigned_owner_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Issue attributes (IIA "5 Cs") and its place in the risk & control matrix.
+    control_id: Mapped[int | None] = mapped_column(ForeignKey("controls.id", ondelete="SET NULL"), nullable=True)
+    test_id: Mapped[int | None] = mapped_column(ForeignKey("control_tests.id", ondelete="SET NULL"), nullable=True)
+    criteria: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    condition: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    cause: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    effect: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    recommendation: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    root_cause_whys: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    management_response: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

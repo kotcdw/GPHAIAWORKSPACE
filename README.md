@@ -25,6 +25,28 @@ with electronic attestations, and keep a strict, immutable audit trail.
 
 ## Features
 
+- **Audit Universe** — Admin-managed locations (e.g. Tema, Takoradi) and
+  their entity units (e.g. GJT, Fishing Harbour), each with an inherent risk
+  assessment (likelihood x impact, 1-25) and last-audited date.
+- **Assurance Plan** — the annual audit plan that opens the fiscal year:
+  planned engagements per entity unit with quarter, budget hours and lead
+  auditor; coverage and "high-risk units not planned" analysis; e-signed
+  approval by an Admin who did not prepare it; approved plans are frozen
+  (reopen = back to Draft, re-approval required). **Starting** an engagement
+  creates the audit project linked to the plan and entity.
+- **Risk & Control Matrix (per audit)** — objectives -> risks (inherent and
+  residual rating) and controls (type, nature, frequency, key, owner), mapped
+  many-to-many -> control tests (walkthrough, test of design, test of
+  operating effectiveness) with sample-size guidance and reproducible random
+  sample selection, results, conclusion and an e-signed reviewer sign-off by
+  someone other than the performer. Coverage gaps (risks without controls,
+  untested key controls) are flagged. An audit cannot be signed off while any
+  test is unreviewed.
+- **Issues & actions** — an ineffective test raises an issue (finding)
+  pre-filled with criteria/condition/effect and the worst linked risk rating;
+  issues carry the IIA attributes (criteria, condition, cause, effect,
+  recommendation), a 5 Whys root-cause analysis and the auditee's management
+  response; "Raise action" creates the remediating CAPA.
 - **Users & roles** — Admin, Auditor, Auditee. Self-registration captures
   FreeQMS fields (first/last name, company) and is approval-gated (new accounts
   are inactive until an Admin enables them). Per-module permission tiers are
@@ -150,6 +172,17 @@ Copy `.env.example` to `.env` and adjust. Settings use the `GPHA_` prefix:
 | GET                          | `/api/records/{type}/{id}/history` `/approval-cycles` | authenticated |
 | GET                          | `/api/audit-logs`                             | Admin             |
 | GET/POST/DELETE              | `/api/admin/backup` `/backups`                | Admin             |
+| GET / POST / PATCH           | `/api/locations` `/api/entity-units`          | read Auditor/Admin, write Admin |
+| GET/POST/PATCH               | `/api/assurance-plans` (+ `/{id}/engagements`) | Auditor/Admin     |
+| POST                         | `/api/assurance-plans/{id}/approve` (e-sign) `/reopen` `/close` | Admin |
+| POST/PATCH/DELETE            | `/api/plan-engagements/{id}` `/start` `/cancel` | Auditor/Admin (cancel: Admin) |
+| GET                          | `/api/audits/{id}/rcm` (matrix + coverage summary) | Auditor/Admin |
+| POST/PATCH/DELETE            | `/api/audits/{id}/objectives` `/api/objectives/{id}` `/risks` `/controls` | Auditor/Admin |
+| PUT                          | `/api/controls/{id}/risks` (risk mapping)     | Auditor/Admin     |
+| POST/GET/PATCH/DELETE        | `/api/controls/{id}/tests` `/api/control-tests/{id}` `/sample` `/sample-recommendation` | Auditor/Admin |
+| POST                         | `/api/control-tests/{id}/review` (e-sign) `/raise-issue` | Auditor/Admin |
+| POST                         | `/api/findings/{id}/raise-action` (CAPA)      | Auditor/Admin     |
+| POST                         | `/api/findings/{id}/response` (management response) | anyone who can see the finding |
 
 Read endpoints apply record-level scoping: Auditees get `404` for records
 outside their assignment.
@@ -197,7 +230,9 @@ app/
   modules/
     auth/          register/login/logout/me/profile/password
     users/         user admin + roles
-    audits/        audits + findings + working papers (+ e-closure)
+    planning/      audit universe + Assurance Plan + engagements
+    rcm/           objectives, risks, controls, tests, sampling, issues -> actions
+    audits/        audits + findings/issues + working papers (+ e-closure)
     nonconformances/  NC records + dispositions
     capa/          corrective/preventive actions
     organizations/ third parties / auditee entities
@@ -209,7 +244,7 @@ app/
     backups/       snapshot + scheduled backup admin
   main.py          explicit router registry + lifespan (backup scheduler)
   static/          HTML/CSS/JS front end (index.html, css/, js/, img/)
-alembic/versions/  migrations 0001 initial .. 0005 controls hardening
+alembic/versions/  migrations 0001 initial .. 0006 planning & risk-control layer
 mysql/init/        init SQL mounted into the Docker container at first boot
 scripts/           init_db.py (migrate + seed admin), seed_demo.py, restore_backup.py
 tests/             pytest suite (runs on MySQL)
