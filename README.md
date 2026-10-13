@@ -111,7 +111,7 @@ with electronic attestations, and keep a strict, immutable audit trail.
 - **Follow-up** — action owners record implementation evidence, a different
   auditor validates it (Effective / Not Effective → reopened); a remediation can only
   be closed once validated. Overdue actions escalate automatically: owner →
-  Audit Managers (14 days) → CAE (30 days). Follow-up page lists them.
+  Audit Managers (14 days) → CAE (30 days). Follow-up tab on the "Remediation & Follow-up" page lists them.
 - **Notifications** — in-app bell for task assignments, reviews, report
   stages, validations and escalations; optional e-mail through GPHA SMTP.
 - **Review levels** — Admin assigns Audit Manager / CAE review levels to staff.

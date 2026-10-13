@@ -504,11 +504,12 @@ function setActiveNav(view) {
 function navigate(view) {
   state.view = view;
   setActiveNav(view);
+  if (view === "followup") { state.remTab = "followup"; return navigate("capa"); }
+  if (view === "capa") return renderRemediation(state.remTab);
   if (MODULES[view]) return renderList(view);
   if (view === "dashboard") return renderDashboard();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
-  if (view === "followup") return renderFollowup();
   if (view === "committee") return renderCommittee();
   if (view === "configuration") return renderConfiguration();
   if (view === "plans") return renderPlans();
@@ -600,14 +601,18 @@ function editRecordModal(key, record) {
   });
 }
 
-async function renderList(key) {
+async function renderList(key, opts = {}) {
   const m = MODULES[key];
-  clear(viewRoot);
+  const root = opts.root || viewRoot;
   const msg = el("div");
-  viewRoot.append(
-    viewHeader(m.title, canWriteModule(key) ? el("button", { class: "btn", onclick: () => createModal(key) }, "New") : null),
-    msg,
-  );
+  if (opts.root) root.append(msg);
+  else {
+    clear(root);
+    root.append(
+      viewHeader(m.title, canWriteModule(key) ? el("button", { class: "btn", onclick: () => createModal(key) }, "New") : null),
+      msg,
+    );
+  }
 
   const search = el("input", { placeholder: "Search\u2026" });
   const filterEls = {};
@@ -623,10 +628,10 @@ async function renderList(key) {
   toolbar.append(apply);
   apply.addEventListener("click", load);
   search.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
-  viewRoot.append(toolbar);
+  root.append(toolbar);
 
   const card = el("div", { class: "card" });
-  viewRoot.append(card);
+  root.append(card);
 
   async function load() {
     const params = new URLSearchParams();
@@ -653,6 +658,35 @@ async function renderList(key) {
     } catch (err) { notify(msg, err.message, "error"); }
   }
   load();
+}
+
+// Remediation register and follow-up live on one page: the register of agreed
+// actions, and (for audit staff) the follow-up view of overdue / unvalidated ones.
+function renderRemediation(tab = state.remTab || "register") {
+  const staff = state.user.role !== "Auditee";
+  if (!staff) tab = "register";
+  state.remTab = tab;
+  clear(viewRoot);
+  const actions = [];
+  if (tab === "followup" && isAdmin()) {
+    actions.push(el("button", { class: "btn small secondary", onclick: async () => {
+      try { const r = await API.post("/api/followup/run-escalations"); toast(`${r.escalated} action(s) escalated`); renderRemediation("followup"); }
+      catch (err) { toast(err.message, "error"); }
+    } }, el("i", { class: "bi bi-arrow-repeat" }), " Run escalation check"));
+  }
+  if (canWriteModule("capa")) actions.push(el("button", { class: "btn", onclick: () => createModal("capa") }, "New remediation"));
+  viewRoot.append(viewHeader("Remediation & Follow-up", actions.length ? actions : null, {
+    sub: tab === "followup"
+      ? "Agreed actions that are overdue or waiting for an auditor to validate them"
+      : "Agreed actions raised from audit findings and nonconformances, tracked to validated closure",
+  }));
+  const tabs = [{ key: "register", label: "Register" }];
+  if (staff) tabs.push({ key: "followup", label: "Follow-up" });
+  if (tabs.length > 1) viewRoot.append(tabBar(tabs, tab, (k) => renderRemediation(k)));
+  const body = el("div");
+  viewRoot.append(body);
+  if (tab === "followup") renderFollowup(body);
+  else renderList("capa", { root: body });
 }
 
 // ==================================================================== generic detail

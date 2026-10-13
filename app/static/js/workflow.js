@@ -216,14 +216,9 @@ function validateForm(c, refresh) {
 
 // ==================================================================== follow-up page
 
-async function renderFollowup() {
-  clear(viewRoot);
+async function renderFollowup(root = viewRoot) {
   const msg = el("div");
-  viewRoot.append(viewHeader("Follow-up", isAdmin() ? [el("button", { class: "btn small secondary", onclick: async () => {
-    try { const r = await API.post("/api/followup/run-escalations"); toast(`${r.escalated} action(s) escalated`); renderFollowup(); }
-    catch (err) { toast(err.message, "error"); }
-  } }, el("i", { class: "bi bi-arrow-repeat" }), " Run escalation check")] : null,
-  { sub: "Agreed actions that are overdue or waiting for an auditor to validate them" }), msg);
+  root.append(msg);
   let overdue = [];
   let review = [];
   try {
@@ -234,7 +229,7 @@ async function renderFollowup() {
   } catch (err) { notify(msg, err.message, "error"); return; }
 
   const lvl = (n) => overdue.filter((o) => o.escalation_level === n).length;
-  viewRoot.append(el("div", { class: "stats" },
+  root.append(el("div", { class: "stats" },
     stat(overdue.length, "Overdue actions", overdue.length ? "past their due date" : "none", overdue.length ? "danger" : "ok"),
     stat(lvl(2), "With Audit Managers", "escalated after the manager threshold", lvl(2) ? "warn" : ""),
     stat(lvl(3), "With the CAE", "escalated after the CAE threshold", lvl(3) ? "danger" : ""),
@@ -245,7 +240,7 @@ async function renderFollowup() {
     el("tbody", null, ...rows.map((r) => el("tr", { onclick: () => openRecord("capa", r.id) },
       ...cols.map((c) => el("td", { class: c.num ? "num" : null }, c.render(r)))))))) : el("div", { class: "empty" }, "Nothing here."));
 
-  viewRoot.append(panel("Overdue actions", table(overdue, [
+  root.append(panel("Overdue actions", table(overdue, [
     { label: "Ref", render: (r) => el("span", { class: "ref" }, r.capa_ref) },
     { label: "Action", render: (r) => r.title },
     { label: "Owner", render: (r) => r.owner_email || el("span", { class: "muted" }, "Unassigned") },
@@ -253,7 +248,7 @@ async function renderFollowup() {
     { label: "Days overdue", num: true, render: (r) => el("strong", null, String(r.days_overdue)) },
     { label: "Escalated to", render: (r) => badge(r.escalation_name) },
   ])));
-  viewRoot.append(panel("Awaiting auditor validation", table(review, [
+  root.append(panel("Awaiting auditor validation", table(review, [
     { label: "Ref", render: (r) => el("span", { class: "ref" }, r.capa_ref) },
     { label: "Action", render: (r) => r.title },
     { label: "Owner", render: (r) => r.owner_email || "-" },

@@ -368,3 +368,4 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 - [x] **14.1** User-facing name changed from "CAPA" to "Remediation" (sidebar, module title, dashboard, link pickers, "Raise remediation", notifications, auto-task titles, API messages, audit-log action codes `REMEDIATION_*`).
 - [x] **14.2** New references use `REM-0001` (migration `0010_remediation_refs` seeds the `REM` sequence); existing `CAPA-####` references are unchanged. Internal identifiers (`/api/capa`, table `capa`, record type `capa`) are unchanged so links, history and backups keep working.
+- [x] **14.3** Remediation and Follow-up merged into one sidebar page, "Remediation & Follow-up": a **Register** tab (all remediation actions, search/filters/CSV) and, for audit staff, a **Follow-up** tab (overdue actions, escalation levels, awaiting validation, admin "Run escalation check"). Auditees see the register only. Old `followup` links open the Follow-up tab.
