@@ -410,8 +410,11 @@ async function checkAuthHealth() {
       authMsg.parentNode.insertBefore(box, authMsg);
     }
     box.classList.toggle("hidden", !!h.can_save);
-    box.textContent = h.can_save ? "" : "Sign-in is unavailable: the database server is not running. "
-      + "Ask the administrator to start it (run .\\run.ps1). This page will update automatically.";
+    const needsUpdate = h.database && h.database.ok && !h.database.up_to_date;
+    box.textContent = h.can_save ? "" : (needsUpdate
+      ? "The database is running but needs updating. Ask the administrator to restart the app with .\\run.ps1. "
+      : "Sign-in is unavailable: the database server is not running. Ask the administrator to start it (run .\\run.ps1). ")
+      + "This page will update automatically.";
   } catch { /* server itself unreachable - the browser shows its own error */ }
 }
 checkAuthHealth();
