@@ -1,0 +1,218 @@
+# GPHA Audit Workspace
+
+An enterprise audit-management workspace (FastAPI + MySQL) with a plain
+HTML/JavaScript single-page front end. It combines the AVCS sign-in shell with
+the FreeQMS-style audit module set: schedule audits, capture findings and
+working papers, raise nonconformances and CAPA, manage organizations and
+stakeholders, log service feedback, drive a unified task center, sign records
+with electronic attestations, and keep a strict, immutable audit trail.
+
+> Built by merging two extractions (AVCS auth/branding + FreeQMS module set)
+> into one modular monolith, migrated to MySQL 8, to replace the retired
+> Microsoft LightSwitch *Audit Manager* application.
+
+## Stack
+
+| Layer      | Choice                                            |
+| ---------- | ------------------------------------------------- |
+| Runtime    | Python 3.12 (managed by [uv](https://docs.astral.sh/uv/)) |
+| Web server | FastAPI + Uvicorn                                 |
+| ORM        | SQLAlchemy 2.0 + Alembic                          |
+| Database   | MySQL 8 (Docker) via PyMySQL                      |
+| Auth       | Server-side sessions in an HttpOnly cookie + CSRF |
+| Front end  | Static HTML/CSS/JS calling a JSON API             |
+| Tests      | pytest + httpx (run against a MySQL test database) |
+
+## Features
+
+- **Users & roles** — Admin, Auditor, Auditee. Self-registration captures
+  FreeQMS fields (first/last name, company) and is approval-gated (new accounts
+  are inactive until an Admin enables them). Per-module permission tiers are
+  planned; access is currently role-based.
+- **Audits** — title, description, scope and a `Planned -> In Progress ->
+  Review -> Closed` workflow. `Closed` is reached **only** through an
+  e-signed sign-off by an Admin who did not prepare the audit (segregation of
+  duties); closed audits, their findings and working papers are locked.
+- **Auditee access** — Auditees see only the audits they are assigned to
+  ("Auditees with access" on the audit page) plus the NCs/CAPA/feedback they
+  own; organizations and stakeholders are internal.
+- **Findings** — risk ratings (Low/Medium/High), status and assigned owner.
+- **Working papers** — file upload with automatic per-title versioning,
+  extension allow-list, size limit, SHA-256 integrity hash and encryption at
+  rest. Papers are never physically deleted: an Admin can *withdraw* one.
+- **Nonconformance (NC)** — auto reference `NC-0001`, severity, disposition,
+  `Open -> Remediating -> Closed`, CAPA linking, auto task generation.
+- **CAPA** — corrective/preventive actions, root cause, effectiveness check,
+  e-signature closure from `Review` by someone other than the preparer (also
+  closes a linked NC).
+- **Organizations** — third parties/auditee entities with `Pending -> Approved`
+  status and e-signature approval (`ORG-####`).
+- **Stakeholders** — customers/service users (`SH-####`).
+- **Service feedback** — complaints register (`SF-####`) that can link to
+  NC/CAPA.
+- **Task Center** — assigned-to-me / assigned-by-me / closed, with
+  system-generated (auto) task badges.
+- **Approval cycles** — every e-signature is an attested decision (password
+  verified and **never stored**); a rejection opens the next cycle.
+- **Record history & dashboard** — per-record history and approval-cycle views,
+  plus multi-module dashboard stats.
+- **Automated backups** — on-demand + scheduled snapshots with retention,
+  encrypted at rest (`*.enc`); restore with `scripts/restore_backup.py`.
+- **Immutable trail** — every login and write is recorded; `audit_logs`,
+  `record_history` and `approval_cycles` are append-only, enforced by database
+  triggers (UPDATE/DELETE are rejected). Records that have progressed, been
+  linked or been signed cannot be deleted; users with activity are deactivated,
+  not deleted.
+- **Sign-in protection** — account lockout after repeated failures (Admin can
+  unlock); password change, deactivation, role change and password reset end
+  the user's other sessions.
+
+## Quick start
+
+```powershell
+# 1. Start the MySQL server (Docker) - binds host port 3307
+docker compose up -d
+
+# 2. Install dependencies (creates .venv automatically)
+uv sync
+
+# 3. Create the database schema and the bootstrap admin
+uv run python -m scripts.init_db
+
+# 4. Run the app  (http://127.0.0.1:8001)
+.\run.ps1
+# or: uv run uvicorn app.main:app --reload --port 8001
+```
+
+Open <http://127.0.0.1:8001>. Sign in with the bootstrap administrator
+(`admin` / `Admin@12345` by default — change it in `.env`), or register a new
+account and have an administrator approve it.
+
+> **Two people are needed to close an audit.** The preparer of an audit (or
+> CAPA, or organization) cannot sign it off. Create a second Admin account for
+> sign-off before running a full audit cycle.
+
+### Production checklist
+
+Set `GPHA_ENVIRONMENT=production`; the app then refuses to start until:
+`GPHA_SECRET_KEY` is a random 32+ character value, `GPHA_ENCRYPTION_KEY` is
+set (and backed up — encrypted files are unreadable without it),
+`GPHA_ADMIN_PASSWORD` is not the default, `GPHA_COOKIE_SECURE=true` (HTTPS),
+and the database is MySQL. In development the same problems are logged as
+warnings.
+
+> The Docker MySQL binds **3307** because a local MySQL (e.g. XAMPP) usually
+> already owns 3306. The container sets `--log-bin-trust-function-creators=1`
+> so the app user can create the append-only triggers.
+
+## Configuration
+
+Copy `.env.example` to `.env` and adjust. Settings use the `GPHA_` prefix:
+
+| Variable                 | Default                     | Purpose                       |
+| ------------------------ | --------------------------- | ----------------------------- |
+| `GPHA_ENVIRONMENT`       | `development`               | `production` enables the startup guard |
+| `GPHA_SECRET_KEY`        | `dev-secret-change-me`      | Application secret            |
+| `GPHA_ENCRYPTION_KEY`    | derived from secret key     | Encrypts backups + working papers |
+| `GPHA_LOGIN_MAX_ATTEMPTS` / `GPHA_LOGIN_LOCKOUT_MINUTES` | `5` / `15` | Sign-in lockout |
+| `GPHA_MAX_UPLOAD_MB` / `GPHA_UPLOAD_ALLOWED_EXTENSIONS` | `25` / office, PDF, image, mail, audio | Upload limits |
+| `GPHA_DATABASE_URL`      | `mysql+pymysql://gpha:*@127.0.0.1:3307/gpha_workspace` | Database connection |
+| `GPHA_MYSQL_*`           | `gpha` / `gpha_dev_pass`    | DSN parts when `GPHA_DATABASE_URL` is unset |
+| `GPHA_SESSION_TTL_HOURS` | `12`                        | Session lifetime              |
+| `GPHA_COOKIE_SECURE`     | `false`                     | Set `true` behind HTTPS       |
+| `GPHA_ADMIN_*`           | `admin` / `Admin@12345`     | Bootstrap administrator       |
+| `GPHA_BACKUP_DIR`        | `./backups`                 | Snapshot directory            |
+| `GPHA_BACKUP_RETENTION`  | `7`                         | Snapshots to keep             |
+| `GPHA_BACKUP_INTERVAL_HOURS` | `24`                   | Scheduled backup interval (0 disables) |
+
+## API overview
+
+| Method(s)                    | Path                                          | Access            |
+| ---------------------------- | --------------------------------------------- | ----------------- |
+| POST                         | `/api/auth/register` `/login` `/logout`       | public / session  |
+| GET / PATCH                  | `/api/auth/me`                                | authenticated     |
+| POST                         | `/api/auth/me/password`                       | authenticated     |
+| GET/POST/PATCH/DELETE        | `/api/users`                                  | Admin             |
+| POST                         | `/api/users/{id}/unlock`                      | Admin             |
+| GET/POST/PATCH/DELETE        | `/api/audits`                                 | Auditor/Admin (write) |
+| POST                         | `/api/audits/{id}/in-approval`                | Auditor/Admin     |
+| POST                         | `/api/audits/{id}/close` (e-sign, from Review, not the preparer) | Admin |
+| GET/POST/DELETE              | `/api/audits/{id}/auditees` `/api/audits/auditee-candidates` | Auditor/Admin |
+| GET/POST                     | `/api/audits/{id}/findings`                   | Auditor/Admin (write) |
+| PATCH/DELETE                 | `/api/findings/{id}`                          | Auditor/Admin     |
+| GET/POST                     | `/api/audits/{id}/working-papers`             | Auditor/Admin (write) |
+| GET                          | `/api/working-papers/{id}/download`           | authenticated     |
+| GET/POST/PATCH/DELETE        | `/api/nonconformances` `/api/capa` `/api/organizations` `/api/stakeholders` `/api/service-feedback` | Auditor/Admin (write) |
+| POST                         | `/api/{module}/{id}/copy` `/link-*`           | Auditor/Admin     |
+| POST                         | `/api/organizations/{id}/approve` `/api/capa/{id}/close` (e-sign) | Admin |
+| GET/POST/PATCH               | `/api/tasks`                                  | authenticated     |
+| POST                         | `/api/approvals/sign`                         | Auditor/Admin     |
+| GET                          | `/api/records/{type}/{id}/history` `/approval-cycles` | authenticated |
+| GET                          | `/api/audit-logs`                             | Admin             |
+| GET/POST/DELETE              | `/api/admin/backup` `/backups`                | Admin             |
+
+Read endpoints apply record-level scoping: Auditees get `404` for records
+outside their assignment.
+
+Interactive docs are available at `/docs` while the server is running.
+
+## Tests
+
+Tests run against a dedicated MySQL database (`gpha_workspace_test`, created
+automatically by `tests/conftest.py`). The Docker MySQL is required; the test
+DB is dropped/recreated and migrated on every pytest invocation.
+
+```powershell
+docker compose up -d
+uv run pytest
+uv run ruff check .
+```
+
+## Backups
+
+Backups are written to `GPHA_BACKUP_DIR` (default `./backups`). The module
+prefers `mysqldump` when available (native, restorable) and otherwise writes a
+portable JSON dump of every table. Retention keeps the newest
+`GPHA_BACKUP_RETENTION` snapshots. A scheduler runs in the app lifespan every
+`GPHA_BACKUP_INTERVAL_HOURS` (set to `0` to disable, as the tests do).
+
+Every snapshot is encrypted with `GPHA_ENCRYPTION_KEY` and saved as
+`backup_<stamp>.json.enc` or `.sql.enc`; login sessions are never included.
+
+```powershell
+# Decrypt a snapshot (writes a plaintext file - delete it afterwards)
+uv run python -m scripts.restore_backup backups\backup_20261013_101500.json.enc --decrypt-only
+# Restore a JSON snapshot into a NEW, empty database (point GPHA_DATABASE_URL
+# at it first; the script applies the migrations itself - skip scripts.init_db)
+uv run python -m scripts.restore_backup backups\backup_20261013_101500.json.enc --yes
+```
+
+## Layout
+
+```
+app/
+  core/            config, database, security, deps, audit, enums,
+                   refs, history, tasksvc, approvalsvc, access (record
+                   scoping + deletion rules), crypto (encryption at rest)
+  modules/
+    auth/          register/login/logout/me/profile/password
+    users/         user admin + roles
+    audits/        audits + findings + working papers (+ e-closure)
+    nonconformances/  NC records + dispositions
+    capa/          corrective/preventive actions
+    organizations/ third parties / auditee entities
+    stakeholders/  customers / service users
+    service_feedback/ complaints register
+    tasks/         Task Center
+    approvals/     generic e-sign attestation endpoint
+    history/       audit logs + per-record history views
+    backups/       snapshot + scheduled backup admin
+  main.py          explicit router registry + lifespan (backup scheduler)
+  static/          HTML/CSS/JS front end (index.html, css/, js/, img/)
+alembic/versions/  migrations 0001 initial .. 0005 controls hardening
+mysql/init/        init SQL mounted into the Docker container at first boot
+scripts/           init_db.py (migrate + seed admin), seed_demo.py, restore_backup.py
+tests/             pytest suite (runs on MySQL)
+uploads/           uploaded working papers (git-ignored)
+backups/           database snapshots (git-ignored)
+```

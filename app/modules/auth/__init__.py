@@ -1,0 +1,1 @@
+"""Authentication module: register, login, logout, me, profile."""

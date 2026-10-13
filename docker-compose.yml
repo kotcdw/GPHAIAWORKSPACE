@@ -1,0 +1,34 @@
+# MySQL 8 local dev database for the GPHA Audit Workspace.
+# Credentials come from .env (GPHA_MYSQL_DATABASE/USER/PASSWORD/ROOT_PASSWORD).
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: gpha-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${GPHA_MYSQL_DATABASE:-gpha_workspace}
+      MYSQL_USER: ${GPHA_MYSQL_USER:-gpha}
+      MYSQL_PASSWORD: ${GPHA_MYSQL_PASSWORD:-gpha_dev_pass}
+      MYSQL_ROOT_PASSWORD: ${GPHA_MYSQL_ROOT_PASSWORD:-gpha_root_pass}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # Required so the app user (no SUPER privilege) can create the
+      # append-only triggers on audit_logs while binlog is enabled.
+      - --log-bin-trust-function-creators=1
+    ports:
+      # 3306 is taken by a local XAMPP MySQL; expose Docker MySQL on 3307.
+      - "3307:3306"
+    volumes:
+      - gpha_mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  gpha_mysql_data:

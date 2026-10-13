@@ -1,0 +1,37 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local configuration and secrets
+.env
+
+# SQLite database
+*.db
+*.db-journal
+*.sqlite3
+
+# Uploaded working papers
+uploads/
+
+# Database snapshots
+backups/
+
+# Logs and tool caches
+*.log
+.ruff_cache/
+
+# Decrypted backup files (never commit plaintext snapshots)
+backups/*.json
+backups/*.sql
+
+# Test / coverage artefacts
+.pytest_cache/
+.coverage
+cov-report/

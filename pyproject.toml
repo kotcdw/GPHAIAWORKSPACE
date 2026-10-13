@@ -1,0 +1,44 @@
+[project]
+name = "gpha-audit-workspace"
+version = "0.1.0"
+description = "GPHA Audit Workspace - enterprise audit management system (FastAPI + MySQL)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "alembic>=1.20.0",
+    "bcrypt>=5.0.0",
+    "cryptography>=44",
+    "email-validator>=2.3.0",
+    "fastapi>=0.143.0",
+    "itsdangerous>=2.2.0",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.15.0",
+    "pymysql>=1.1.0",
+    "python-multipart>=0.0.32",
+    "sqlalchemy>=2.1.4",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# B008: FastAPI uses Depends()/File()/Form() as argument defaults by design.
+# UP042: keeping (str, Enum) avoids changing str()/JSON behaviour.
+ignore = ["B008", "UP042"]
