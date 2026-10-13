@@ -364,3 +364,7 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 - MySQL-backed app boots from a fresh DB via `scripts/init_db.py`.
 - All tests run on MySQL and pass; ruff clean.
 - Manual smoke checklist in 7.3 completed.
+## Phase 14 - Rename CAPA to Remediation
+
+- [x] **14.1** User-facing name changed from "CAPA" to "Remediation" (sidebar, module title, dashboard, link pickers, "Raise remediation", notifications, auto-task titles, API messages, audit-log action codes `REMEDIATION_*`).
+- [x] **14.2** New references use `REM-0001` (migration `0010_remediation_refs` seeds the `REM` sequence); existing `CAPA-####` references are unchanged. Internal identifiers (`/api/capa`, table `capa`, record type `capa`) are unchanged so links, history and backups keep working.

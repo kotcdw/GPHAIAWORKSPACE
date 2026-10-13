@@ -28,13 +28,13 @@ router = APIRouter(prefix="/api/capa", tags=["capa"])
 
 WriteCapa = Depends(require_module_tier("capa", Role.Admin, Role.Auditor))
 AdminCapa = Depends(require_module_tier("capa", Role.Admin))
-_CLOSE_VIA_ESIGN = "CAPA can only be closed by an e-signed sign-off (POST /api/capa/{id}/close)"
+_CLOSE_VIA_ESIGN = "A remediation can only be closed by an e-signed sign-off (POST /api/capa/{id}/close)"
 
 
 def _get_or_404(db: DBSession, capa_id: int) -> Capa:
     capa = db.get(Capa, capa_id)
     if capa is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CAPA not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Remediation not found")
     return capa
 
 
@@ -67,7 +67,7 @@ def create_capa(
     if payload.status == CapaStatus.Closed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_CLOSE_VIA_ESIGN)
     capa = Capa(
-        capa_ref=next_reference(db, "CAPA"),
+        capa_ref=next_reference(db, "REM"),
         title=payload.title,
         description=payload.description,
         root_cause=payload.root_cause,
@@ -88,8 +88,8 @@ def create_capa(
         nc = db.get(Nonconformance, capa.linked_nc_id)
         if nc is not None:
             nc.linked_capa_id = capa.id
-    auto_task_for_record(db, record_type="capa", record=capa, action="Action CAPA", assignor_id=user.id)
-    log_action(db, user_id=user.id, action=f"CAPA_CREATE id={capa.id} ref={capa.capa_ref}", request=request)
+    auto_task_for_record(db, record_type="capa", record=capa, action="Action remediation", assignor_id=user.id)
+    log_action(db, user_id=user.id, action=f"REMEDIATION_CREATE id={capa.id} ref={capa.capa_ref}", request=request)
     log_record_history(
         db, record_type="capa", record_id=capa.id, user_id=user.id, action="CREATED", request=request
     )
@@ -115,7 +115,7 @@ def update_capa(
 ) -> Capa:
     capa = _get_or_404(db, capa_id)
     if capa.status == CapaStatus.Closed:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A closed CAPA cannot be edited")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A closed remediation cannot be edited")
     if payload.status == CapaStatus.Closed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_CLOSE_VIA_ESIGN)
     changes: list[str] = []
@@ -137,7 +137,7 @@ def update_capa(
         if value is not None:
             setattr(capa, field, value)
             changes.append(field)
-    log_action(db, user_id=user.id, action=f"CAPA_UPDATE id={capa.id} [{', '.join(changes)}]", request=request)
+    log_action(db, user_id=user.id, action=f"REMEDIATION_UPDATE id={capa.id} [{', '.join(changes)}]", request=request)
     log_record_history(
         db,
         record_type="capa",
@@ -158,16 +158,16 @@ def delete_capa(capa_id: int, request: Request, db: DBSession = Depends(get_db),
     ref = capa.capa_ref
     db.delete(capa)
     log_record_history(db, record_type="capa", record_id=capa_id, user_id=user.id, action=f"DELETED {ref}")
-    log_action(db, user_id=user.id, action=f"CAPA_DELETE id={capa_id} ref={ref}", request=request)
+    log_action(db, user_id=user.id, action=f"REMEDIATION_DELETE id={capa_id} ref={ref}", request=request)
     db.commit()
-    return MessageOut(message=f"CAPA {ref} deleted")
+    return MessageOut(message=f"Remediation {ref} deleted")
 
 
 @router.post("/{capa_id}/copy", response_model=CapaOut, status_code=status.HTTP_201_CREATED)
 def copy_capa(capa_id: int, request: Request, db: DBSession = Depends(get_db), user: User = WriteCapa) -> Capa:
     source = _get_or_404(db, capa_id)
     copy = Capa(
-        capa_ref=next_reference(db, "CAPA"),
+        capa_ref=next_reference(db, "REM"),
         title=f"{source.title} (Copy)",
         description=source.description,
         root_cause=source.root_cause,
@@ -184,7 +184,8 @@ def copy_capa(capa_id: int, request: Request, db: DBSession = Depends(get_db), u
     db.add(copy)
     db.flush()
     log_action(
-        db, user_id=user.id, action=f"CAPA_COPY from={source.id} to={copy.id} ref={copy.capa_ref}", request=request
+        db, user_id=user.id, request=request,
+        action=f"REMEDIATION_COPY from={source.id} to={copy.id} ref={copy.capa_ref}",
     )
     log_record_history(
         db,
@@ -215,7 +216,7 @@ def link_nc(
     nc.linked_capa_id = capa.id
     if nc.status == NCStatus.Open:
         nc.status = NCStatus.Remediating
-    log_action(db, user_id=user.id, action=f"CAPA_LINK_NC capa={capa.id} nc={nc.id}", request=request)
+    log_action(db, user_id=user.id, action=f"REMEDIATION_LINK_NC capa={capa.id} nc={nc.id}", request=request)
     log_record_history(
         db,
         record_type="capa",
@@ -241,7 +242,7 @@ def close_capa(
     if capa.status != CapaStatus.Review:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Only CAPA in Review can be closed (current status: {capa.status.value})",
+            detail=f"Only a remediation in Review can be closed (current status: {capa.status.value})",
         )
     if capa.validation_result != ValidationResult.Effective:
         raise HTTPException(
@@ -270,7 +271,7 @@ def close_capa(
         request=request,
         on_approve=_on_approve,
     )
-    log_action(db, user_id=user.id, action=f"CAPA_CLOSE id={capa.id} ref={capa.capa_ref}", request=request)
+    log_action(db, user_id=user.id, action=f"REMEDIATION_CLOSE id={capa.id} ref={capa.capa_ref}", request=request)
     db.commit()
     db.refresh(capa)
     return capa

@@ -580,7 +580,7 @@ function issueForm(f, auditId, canWrite, onSaved) {
   const raiseAction = !isNew && canWrite ? el("button", { class: "btn secondary", type: "button", onclick: async () => {
     try { const c = await API.post(`/api/findings/${f.id}/raise-action`); toast(`Action ${c.capa_ref} raised`); document.querySelector(".modal-backdrop")?.remove(); onSaved(); }
     catch (err) { toast(err.message, "error"); }
-  } }, "Raise action (CAPA)") : null;
+  } }, "Raise remediation") : null;
   openForm({
     title: isNew ? "New finding / issue" : `Issue #${f.id}: ${f.title}`,
     key: isNew ? `finding:new:${auditId}` : `finding:edit:${f.id}`,

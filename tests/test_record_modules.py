@@ -137,7 +137,7 @@ def test_capa_close_with_esign(client, client2, db):
     created = client.post("/api/capa", json={"title": "Retrain staff"}, headers=csrf_headers(csrf))
     assert created.status_code == 201
     capa_id = created.json()["id"]
-    assert created.json()["capa_ref"].startswith("CAPA-")
+    assert created.json()["capa_ref"].startswith("REM-")
 
     # Not in Review yet -> cannot be signed off.
     early = client2.post(

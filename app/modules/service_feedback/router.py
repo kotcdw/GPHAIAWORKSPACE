@@ -180,7 +180,7 @@ def link_sf(
     if payload.capa_id is not None:
         capa = db.get(Capa, payload.capa_id)
         if capa is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CAPA not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Remediation not found")
         sf.linked_capa_id = capa.id
         linked.append(capa.capa_ref)
     if sf.status == FeedbackStatus.Open:

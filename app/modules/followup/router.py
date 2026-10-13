@@ -64,7 +64,7 @@ class OverdueOut(BaseModel):
 def _load(db: DBSession, capa_id: int) -> Capa:
     capa = db.get(Capa, capa_id)
     if capa is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CAPA not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Remediation not found")
     return capa
 
 
@@ -96,7 +96,7 @@ def record_implementation(
     capa.status = CapaStatus.Review
     log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
                        action="IMPLEMENTED evidence recorded", request=request)
-    log_action(db, user_id=user.id, action=f"CAPA_IMPLEMENTED id={capa.id}", request=request)
+    log_action(db, user_id=user.id, action=f"REMEDIATION_IMPLEMENTED id={capa.id}", request=request)
     notify(db, capa.created_by, f"Ready to validate: {capa.capa_ref}",
            f"{user.full_name or user.username} recorded the implementation of \"{capa.title}\".",
            link_type="capa", link_id=capa.id)
@@ -142,7 +142,7 @@ def validate_implementation(
                     link_type="capa", link_id=capa.id)
     log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
                        action=f"VALIDATED {payload.result.value}", request=request)
-    log_action(db, user_id=user.id, action=f"CAPA_VALIDATED id={capa.id} result={payload.result.value}",
+    log_action(db, user_id=user.id, action=f"REMEDIATION_VALIDATED id={capa.id} result={payload.result.value}",
                request=request)
     db.commit()
     db.refresh(capa)

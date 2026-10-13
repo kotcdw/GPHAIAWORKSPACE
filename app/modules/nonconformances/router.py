@@ -178,18 +178,18 @@ def link_capa(
     nc = _get_or_404(db, nc_id)
     capa = db.get(Capa, payload.capa_id)
     if capa is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CAPA not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Remediation not found")
     nc.linked_capa_id = capa.id
     capa.linked_nc_id = nc.id
     if nc.status == NCStatus.Open:
         nc.status = NCStatus.Remediating
-    log_action(db, user_id=user.id, action=f"NC_LINK_CAPA nc={nc.id} capa={capa.id}", request=request)
+    log_action(db, user_id=user.id, action=f"NC_LINK_REMEDIATION nc={nc.id} capa={capa.id}", request=request)
     log_record_history(
         db,
         record_type="nonconformance",
         record_id=nc.id,
         user_id=user.id,
-        action=f"LINKED CAPA {capa.capa_ref}",
+        action=f"LINKED REMEDIATION {capa.capa_ref}",
         request=request,
     )
     db.commit()

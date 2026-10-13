@@ -3,7 +3,7 @@
 An enterprise audit-management workspace (FastAPI + MySQL) with a plain
 HTML/JavaScript single-page front end. It combines a GPHA-branded sign-in shell with
 the FreeQMS-style audit module set: schedule audits, capture findings and
-working papers, raise nonconformances and CAPA, manage organizations and
+working papers, raise nonconformances and remediation actions, manage organizations and
 stakeholders, log service feedback, drive a unified task center, sign records
 with electronic attestations, and keep a strict, immutable audit trail.
 
@@ -46,7 +46,7 @@ with electronic attestations, and keep a strict, immutable audit trail.
   pre-filled with criteria/condition/effect and the worst linked risk rating;
   issues carry the IIA attributes (criteria, condition, cause, effect,
   recommendation), a 5 Whys root-cause analysis and the auditee's management
-  response; "Raise action" creates the remediating CAPA.
+  response; "Raise action" creates the remediation action.
 - **Never-lost data entry** — every form autosaves what you type as a draft:
   instantly on your device and, a second later, on the server (so it follows
   you to another computer). Drafts survive validation errors, closed windows,
@@ -76,22 +76,22 @@ with electronic attestations, and keep a strict, immutable audit trail.
   e-signed sign-off by an Admin who did not prepare the audit (segregation of
   duties); closed audits, their findings and working papers are locked.
 - **Auditee access** — Auditees see only the audits they are assigned to
-  ("Auditees with access" on the audit page) plus the NCs/CAPA/feedback they
+  ("Auditees with access" on the audit page) plus the NCs/remediations/feedback they
   own; organizations and stakeholders are internal.
 - **Findings** — risk ratings (Low/Medium/High), status and assigned owner.
 - **Working papers** — file upload with automatic per-title versioning,
   extension allow-list, size limit, SHA-256 integrity hash and encryption at
   rest. Papers are never physically deleted: an Admin can *withdraw* one.
 - **Nonconformance (NC)** — auto reference `NC-0001`, severity, disposition,
-  `Open -> Remediating -> Closed`, CAPA linking, auto task generation.
-- **CAPA** — corrective/preventive actions, root cause, effectiveness check,
+  `Open -> Remediating -> Closed`, remediation linking, auto task generation.
+- **Remediation** (formerly CAPA; new refs `REM-0001`, older `CAPA-####` refs are kept) — corrective/preventive actions, root cause, effectiveness check,
   e-signature closure from `Review` by someone other than the preparer (also
   closes a linked NC).
 - **Organizations** — third parties/auditee entities with `Pending -> Approved`
   status and e-signature approval (`ORG-####`).
 - **Stakeholders** — customers/service users (`SH-####`).
 - **Service feedback** — complaints register (`SF-####`) that can link to
-  NC/CAPA.
+  NC/remediation.
 - **Task Center** — assigned-to-me / assigned-by-me / closed, with
   system-generated (auto) task badges.
 - **Approval cycles** — every e-signature is an attested decision (password
@@ -109,7 +109,7 @@ with electronic attestations, and keep a strict, immutable audit trail.
   Audit Manager review (e-sign) → CAE approval (e-sign) → issued. Segregation
   of duties at each level, findings frozen at issue, Word and print/PDF export.
 - **Follow-up** — action owners record implementation evidence, a different
-  auditor validates it (Effective / Not Effective → reopened); a CAPA can only
+  auditor validates it (Effective / Not Effective → reopened); a remediation can only
   be closed once validated. Overdue actions escalate automatically: owner →
   Audit Managers (14 days) → CAE (30 days). Follow-up page lists them.
 - **Notifications** — in-app bell for task assignments, reviews, report
@@ -163,7 +163,7 @@ Open <http://127.0.0.1:8001>. Sign in with the bootstrap administrator
 account and have an administrator approve it.
 
 > **Two people are needed to close an audit.** The preparer of an audit (or
-> CAPA, or organization) cannot sign it off. Create a second Admin account for
+> remediation, or organization) cannot sign it off. Create a second Admin account for
 > sign-off before running a full audit cycle.
 
 ### Production checklist
@@ -243,7 +243,7 @@ Copy `.env.example` to `.env` and adjust. Settings use the `GPHA_` prefix:
 | PUT                          | `/api/controls/{id}/risks` (risk mapping)     | Auditor/Admin     |
 | POST/GET/PATCH/DELETE        | `/api/controls/{id}/tests` `/api/control-tests/{id}` `/sample` `/sample-recommendation` | Auditor/Admin |
 | POST                         | `/api/control-tests/{id}/review` (e-sign) `/raise-issue` | Auditor/Admin |
-| POST                         | `/api/findings/{id}/raise-action` (CAPA)      | Auditor/Admin     |
+| POST                         | `/api/findings/{id}/raise-action` (remediation)      | Auditor/Admin     |
 | POST                         | `/api/findings/{id}/response` (management response) | anyone who can see the finding |
 | GET/PUT/DELETE               | `/api/drafts` `/api/drafts/{form_key}`        | own drafts only   |
 | GET                          | `/health` (incl. database status, `can_save`) | public            |

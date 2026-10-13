@@ -243,11 +243,11 @@ const MODULES = {
     ],
     actions: [
       { key: "copy", label: "Copy", kind: "post", path: (id) => `/api/nonconformances/${id}/copy` },
-      { key: "link", label: "Link CAPA", kind: "link-capa" },
+      { key: "link", label: "Link remediation", kind: "link-capa" },
     ],
   },
   capa: {
-    title: "CAPA",
+    title: "Remediation",
     endpoint: "/api/capa",
     wrapped: true,
     recordType: "capa",
@@ -735,7 +735,7 @@ function displayValue(f, value) {
 function renderInfoTab(panel, key, record, canWrite) {
   const m = MODULES[key];
   const statusField = m.filters.find((f) => f.param === "status");
-  // CAPA is closed only through the e-signed "Close" action.
+  // Remediation is closed only through the e-signed "Close" action.
   const options = ((statusField && statusField.options) || ["Open", "In Progress", "Closed"])
     .filter((o) => !(key === "capa" && ["Closed", "Review"].includes(o) && record.status !== o));
   const control = canWrite && record.status !== undefined && record.status !== "Closed"
@@ -810,7 +810,7 @@ function runAction(key, id, act, refresh) {
     return eSignModal({ title: act.label, recordType: m.recordType, recordId: id, pathOverride: act.path(id), onDone: () => refresh(key, id) });
   }
   if (act.kind === "link-capa") {
-    return linkPicker("Link CAPA", "/api/capa", (selectedId) =>
+    return linkPicker("Link remediation", "/api/capa", (selectedId) =>
       API.post(`/api/nonconformances/${id}/link-capa`, { capa_id: selectedId }), () => refresh(key, id));
   }
   if (act.kind === "post") {
@@ -897,7 +897,7 @@ async function renderDashboard() {
 
     viewRoot.append(el("div", { class: "stats" },
       stat(openAudits.length, "Open audits", `${inReview} in review · ${audits.length} total`),
-      stat(capaItems.filter((c) => c.status !== "Closed").length, "Open CAPA", overdueCapa ? `${overdueCapa} overdue` : "None overdue", overdueCapa ? "danger" : ""),
+      stat(capaItems.filter((c) => c.status !== "Closed").length, "Open remediation", overdueCapa ? `${overdueCapa} overdue` : "None overdue", overdueCapa ? "danger" : ""),
       stat(ncItems.filter((n) => n.status !== "Closed").length, "Open nonconformances"),
       stat(fbItems.filter((f) => f.status !== "Closed").length, "Open feedback"),
       stat(myTasks.length, "My open tasks", null, myTasks.length ? "warn" : ""),

@@ -2,7 +2,7 @@
 
 Objectives -> risks and controls (mapped many-to-many) -> control tests
 (walkthrough, test of design, test of operating effectiveness, with sampling
-and an e-signed reviewer sign-off) -> issues (findings) -> actions (CAPA).
+and an e-signed reviewer sign-off) -> issues (findings) -> actions (remediation).
 
 Only Admins and Auditors can read or change the matrix. Everything is locked
 once the audit is closed, and nothing that carries test evidence can be
@@ -693,7 +693,7 @@ _SEVERITY = {RiskRating.Low: Severity.Low, RiskRating.Medium: Severity.Medium, R
 
 @router.post("/api/findings/{finding_id}/raise-action", response_model=CapaOut, status_code=status.HTTP_201_CREATED)
 def raise_action(finding_id: int, request: Request, db: DBSession = Depends(get_db), user: User = Staff) -> Capa:
-    """Create the corrective action (CAPA) that remediates an issue."""
+    """Create the corrective action (remediation) that remediates an issue."""
     finding = db.get(Finding, finding_id)
     if finding is None:
         raise _not_found("Finding")
@@ -709,7 +709,7 @@ def raise_action(finding_id: int, request: Request, db: DBSession = Depends(get_
             f"Why {i}: {w}" for i, w in enumerate(whys, start=1)
         )
     capa = Capa(
-        capa_ref=next_reference(db, "CAPA"),
+        capa_ref=next_reference(db, "REM"),
         title=f"Remediate: {finding.title}"[:255],
         description=finding.condition or finding.description,
         root_cause=root_cause,
@@ -728,7 +728,7 @@ def raise_action(finding_id: int, request: Request, db: DBSession = Depends(get_
     db.flush()
     if finding.status == FindingStatus.Open:
         finding.status = FindingStatus.Remediating
-    auto_task_for_record(db, record_type="capa", record=capa, action="Action CAPA", assignor_id=user.id)
+    auto_task_for_record(db, record_type="capa", record=capa, action="Action remediation", assignor_id=user.id)
     log_action(db, user_id=user.id, action=f"ACTION_RAISE capa={capa.id} finding={finding.id}", request=request)
     _history(db, finding.audit_id, user, f"ACTION {capa.capa_ref} RAISED for issue #{finding.id}", request)
     log_record_history(

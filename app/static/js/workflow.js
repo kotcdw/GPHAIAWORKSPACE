@@ -145,7 +145,7 @@ function commentsForm(r, reload) {
   });
 }
 
-// ==================================================================== CAPA follow-up panel
+// ==================================================================== Remediation follow-up panel
 
 function renderCapaFollowup(panel, c, refresh) {
   const mine = state.user.email && c.owner_email && state.user.email.toLowerCase() === c.owner_email.toLowerCase();

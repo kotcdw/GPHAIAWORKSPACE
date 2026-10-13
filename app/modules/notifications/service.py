@@ -30,7 +30,7 @@ _PENDING = "pending_emails"
 _LINK_LABEL = {
     "audit": "audit",
     "audit_report": "audit report",
-    "capa": "CAPA",
+    "capa": "Remediation",
     "finding": "finding",
     "task": "task",
     "control_test": "control test",

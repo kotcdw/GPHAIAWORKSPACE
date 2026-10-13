@@ -3,7 +3,7 @@
 Hierarchy (HighBond style): Audit (project) -> Objectives -> Risks and
 Controls (many-to-many through ``risk_controls``) -> Control tests
 (walkthrough, test of design, test of operating effectiveness) -> Issues
-(``findings`` linked to the control/test) -> Actions (CAPA).
+(``findings`` linked to the control/test) -> Actions (remediation).
 """
 
 from __future__ import annotations
