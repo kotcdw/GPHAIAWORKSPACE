@@ -67,8 +67,10 @@ def _throttle(request: Request) -> None:
 
 
 def _me(user: User, csrf_token: str) -> MeOut:
+    from app.core.permissions import permissions_of
+
     return MeOut(user=UserOut.model_validate(user), csrf_token=csrf_token,
-                 mfa_setup_required=mfa_setup_required(user))
+                 mfa_setup_required=mfa_setup_required(user), permissions=sorted(permissions_of(user)))
 
 
 def _set_auth_cookies(response: Response, raw_token: str, csrf_token: str, max_age: int) -> None:
@@ -259,7 +261,7 @@ def update_profile(
     log_action(db, user_id=user.id, action="PROFILE_UPDATE", request=request)
     db.commit()
     db.refresh(user)
-    return MeOut(user=UserOut.model_validate(user), csrf_token=session.csrf_token)
+    return _me(user, session.csrf_token)
 
 
 @router.post("/me/password", response_model=MessageOut)

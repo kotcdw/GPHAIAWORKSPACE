@@ -763,3 +763,21 @@ table.matrix td.mx-cell { text-align: center; }
 .mx-yes { color: var(--ok); }
 .mx-no { color: var(--muted); }
 tr.mx-total td { border-top: 1px solid var(--border-strong); }
+
+/* ---------------------------------------------------------------- roles & permissions, programmes, evidence */
+.role-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.role-card h3 { font-size: 15px; margin: 0; }
+.role-card p { margin: 6px 0 0; }
+.matrix-wrap { max-height: 70vh; overflow: auto; }
+table.perm-matrix th, table.perm-matrix td { padding: 6px 8px; }
+table.perm-matrix thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; font-size: 12px; white-space: normal; min-width: 90px; }
+table.perm-matrix td.center, table.perm-matrix th.center { text-align: center; }
+table.perm-matrix tr.group-row th { text-align: left; background: var(--bg); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+table.perm-matrix tfoot td { position: sticky; bottom: 0; background: var(--panel); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.step-list .step { margin-bottom: 10px; padding: 12px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 12px; }
+.file-list { list-style: none; padding: 0; margin: 0 0 8px; }
+.file-list li { padding: 4px 0; }
+.text-danger { color: var(--danger); font-weight: 600; }
+.actions.center { justify-content: center; }

@@ -224,7 +224,7 @@ async function renderMyTime(body, fy) {
 
 function profileForm(a, onDone) {
   const own = a.user_id === state.user.id;
-  const supervisor = isAdmin() || ["Manager", "CAE"].includes(state.user.review_level);
+  const supervisor = isAdmin() || hasPerm("oversight.resources");
   if (!own && !supervisor) { toast("You can only edit your own profile", "error"); return; }
   openForm({
     key: `profile:${a.user_id}`, title: `Skills & capacity · ${a.name}`, width: 640, draftable: false,
@@ -416,6 +416,25 @@ const HELP = {
     "The bell shows what needs your attention: assignments, approvals, overdue items.",
   ] },
   dashboard: { title: "Dashboard", items: ["Your headline numbers and recent work. Select a row to open it.", "GPHA Workspace (in the sidebar) lists every module."] },
+  roles: { title: "Roles & permissions", items: [
+    "Each user has a job role (Platform Administrator, Audit Administrator, GM Audit, PIA, Audit Manager, Unit Head, Senior Auditor, Auditor, Audit Clerk, Auditee, Audit Committee).",
+    "The matrix shows what each role can do. Tick or untick a permission and save that role; Reset returns it to the GPHA defaults.",
+    "Assign job roles under Profile & Users. The role sets the access tier and review level automatically.",
+  ] },
+  programs: { title: "Audit programmes", items: [
+    "Reusable work programmes maintained by the Audit Administrator: objectives, risks, controls and test steps.",
+    "On an audit's Risk & Control Matrix tab, use 'Apply audit programme' to copy the steps into the engagement.",
+  ] },
+  evidence: { title: "Evidence requests", items: [
+    "Auditors request documents from the auditees assigned to an audit, with a due date.",
+    "Auditees upload files and submit; the auditor accepts (optionally filing them as working papers) or returns them with a comment.",
+  ] },
+  governance: { title: "Governance portal", items: [
+    "Read-only view for the Audit Committee and executive reviewers: approved plans, issued reports (Word / print) and headline KPIs.",
+  ] },
+  portfolio: { title: "Port portfolio", items: [
+    "Audits, open findings and remediation by port. A PIA sees their own port (set 'Where I work' on the profile); the GM Audit sees every port.",
+  ] },
   workspace: { title: "GPHA Workspace", items: ["Every module in one place, with live counts. Quick actions start the most common work."] },
   plans: { title: "Assurance Plan", items: [
     "The annual risk-based plan (IIA GIAS 9.4). Add engagements from the Audit Universe, then submit for CAE approval.",

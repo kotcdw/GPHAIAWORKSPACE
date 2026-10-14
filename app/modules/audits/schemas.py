@@ -20,6 +20,8 @@ class AuditCreate(BaseModel):
     scope: str = ""
     status: AuditStatus = AuditStatus.Planned
     organization_id: int | None = None
+    audit_type: str | None = Field(default=None, max_length=60)
+    port_entity_id: int | None = None
 
 
 class AuditUpdate(BaseModel):
@@ -28,6 +30,8 @@ class AuditUpdate(BaseModel):
     scope: str | None = None
     status: AuditStatus | None = None
     organization_id: int | None = None
+    audit_type: str | None = Field(default=None, max_length=60)
+    port_entity_id: int | None = None
 
 
 class AuditOut(ORMModel):
@@ -40,6 +44,8 @@ class AuditOut(ORMModel):
     organization_id: int | None
     plan_id: int | None = None
     entity_unit_id: int | None = None
+    audit_type: str | None = None
+    port_entity_id: int | None = None
     created_by: int | None
     created_at: datetime
     updated_at: datetime

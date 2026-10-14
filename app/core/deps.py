@@ -117,3 +117,39 @@ def csrf_protect(request: Request, db: DBSession = Depends(get_db)) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF token missing")
     if not constant_time_equals(header, session.csrf_token) or not constant_time_equals(cookie, session.csrf_token):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF validation failed")
+
+
+def require_perm(*perms: str) -> Callable[[User], User]:
+    """Dependency factory: the user's job role must hold one of ``perms`` (see app.core.permissions)."""
+
+    def dependency(user: User = Depends(require_active_user)) -> User:
+        from app.core.permissions import PERMISSIONS, has_perm
+
+        if not has_perm(user, *perms):
+            names = ", ".join(PERMISSIONS.get(p, (None, p))[1].lower() for p in perms)
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail=f"Your role does not allow this ({names})")
+        return user
+
+    return dependency
+
+
+def ensure_perm(user: User, *perms: str) -> None:
+    from app.core.permissions import PERMISSIONS, has_perm
+
+    if not has_perm(user, *perms):
+        names = ", ".join(PERMISSIONS.get(p, (None, p))[1].lower() for p in perms)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Your role does not allow this ({names})")
+
+
+def staff_or_perm(*perms: str) -> Callable[[User], User]:
+    """Audit staff (Admin / Auditor tier) or anyone whose job role holds one of ``perms``."""
+
+    def dependency(user: User = Depends(require_active_user)) -> User:
+        from app.core.permissions import has_perm
+
+        if user.role in (Role.Admin, Role.Auditor) or has_perm(user, *perms):
+            return user
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    return dependency

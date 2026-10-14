@@ -189,6 +189,30 @@ with electronic attestations, and keep a strict, immutable audit trail.
   unlock); password change, deactivation, role change and password reset end
   the user's other sessions.
 
+### Roles & responsibilities (job roles and permissions)
+
+Every account has an access tier (Admin / Auditor / Auditee / Committee) and a **job role** that maps to
+fine-grained permissions (`app/core/permissions.py`). The Platform Administrator edits the matrix on
+**Roles & permissions** and assigns job roles under **Profile & Users** (the role sets the tier and review level).
+
+| Job role | Main responsibilities in the system |
+|---|---|
+| Platform Administrator | Configuration (security, workflow), users, roles & permissions, reference data, organization entities, backups and audit log |
+| Audit Administrator | Audit types, audit programmes, plan configuration (risk thresholds, audit cycle), universe and criteria library, reporting configuration |
+| GM Audit (CAE) | Plan approval and amendments, Audit Committee approval, portfolio across ports, report approval, audit closure, QAIP, governance reporting |
+| PIA | Own-port portfolio, resource allocation, memo approval, report review, quality review, follow-up |
+| Audit Manager | Engagement planning, team allocation, supervision, review notes, findings, report preparation and review |
+| Unit Head / Supervisor | Working-paper review, review notes, quality checks, assignment monitoring |
+| Senior Auditor | Fieldwork, testing, working papers, findings, review support |
+| Auditor | Planning support, fieldwork, tests, evidence requests, working papers, findings |
+| Audit Clerk / Assistant | Working-paper filing and evidence-request administration |
+| Management / Auditee | Evidence requests (upload and submit), finding responses, action plans, remediation updates |
+| Audit Committee / Executive Reviewer | Read-only governance portal: approved plans, issued reports, KPIs, committee pack, port portfolio |
+
+Related modules: **Audit programmes** (`/api/audit-programs`, applied to an audit's RCM), **Evidence requests**
+(`/api/audits/{id}/evidence-requests`, `/api/evidence-requests`), **Governance portal** (`/api/governance/overview`)
+and **Port portfolio** (`/api/portfolio/ports`). Audits carry an audit type and a port.
+
 ## Quick start
 
 ```powershell

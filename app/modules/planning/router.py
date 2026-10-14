@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_role
+from app.core.deps import ensure_perm, require_perm, require_role
 from app.core.enums import AuditStatus, EngagementStatus, PlanStatus, Role, risk_level, utcnow
 from app.core.history import log_record_history
 from app.core.refs import next_reference
@@ -59,7 +59,9 @@ class CancelIn(BaseModel):
 router = APIRouter(tags=["planning"])
 
 Staff = Depends(require_role(Role.Admin, Role.Auditor))
-AdminOnly = Depends(require_role(Role.Admin))
+PlanApprove = Depends(require_perm("plan.approve"))
+PlanAmend = Depends(require_perm("plan.amend"))
+LibraryEdit = Depends(require_perm("method.library", "system.reference"))
 
 
 def _conflict(detail: str) -> HTTPException:
@@ -86,7 +88,7 @@ def list_locations(db: DBSession = Depends(get_db), _: User = Staff) -> list[Loc
 
 
 @router.post("/api/locations", response_model=LocationOut, status_code=status.HTTP_201_CREATED)
-def create_location(payload: LocationIn, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly):
+def create_location(payload: LocationIn, request: Request, db: DBSession = Depends(get_db), user: User = LibraryEdit):
     loc = Location(**payload.model_dump())
     db.add(loc)
     try:
@@ -102,7 +104,8 @@ def create_location(payload: LocationIn, request: Request, db: DBSession = Depen
 
 @router.patch("/api/locations/{location_id}", response_model=LocationOut)
 def update_location(
-    location_id: int, payload: LocationUpdate, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
+    location_id: int, payload: LocationUpdate, request: Request, db: DBSession = Depends(get_db),
+    user: User = LibraryEdit,
 ):
     loc = db.get(Location, location_id)
     if loc is None:
@@ -130,7 +133,7 @@ def list_entity_units(
 
 @router.post("/api/entity-units", response_model=EntityUnitOut, status_code=status.HTTP_201_CREATED)
 def create_entity_unit(
-    payload: EntityUnitIn, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
+    payload: EntityUnitIn, request: Request, db: DBSession = Depends(get_db), user: User = LibraryEdit
 ) -> EntityUnitOut:
     if db.get(Location, payload.location_id) is None:
         raise _not_found("Location")
@@ -149,7 +152,7 @@ def create_entity_unit(
 
 @router.patch("/api/entity-units/{unit_id}", response_model=EntityUnitOut)
 def update_entity_unit(
-    unit_id: int, payload: EntityUnitUpdate, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
+    unit_id: int, payload: EntityUnitUpdate, request: Request, db: DBSession = Depends(get_db), user: User = LibraryEdit
 ) -> EntityUnitOut:
     unit = db.get(EntityUnit, unit_id)
     if unit is None:
@@ -274,7 +277,7 @@ def update_plan(
 
 @router.post("/api/assurance-plans/{plan_id}/approve", response_model=PlanDetail)
 def approve_plan(
-    plan_id: int, payload: ESignRequest, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
+    plan_id: int, payload: ESignRequest, request: Request, db: DBSession = Depends(get_db), user: User = PlanApprove
 ) -> PlanDetail:
     plan = _plan_or_404(db, plan_id)
     _require_draft(plan)
@@ -305,7 +308,7 @@ def approve_plan(
 
 
 @router.post("/api/assurance-plans/{plan_id}/reopen", response_model=PlanDetail)
-def reopen_plan(plan_id: int, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly) -> PlanDetail:
+def reopen_plan(plan_id: int, request: Request, db: DBSession = Depends(get_db), user: User = PlanAmend) -> PlanDetail:
     """Return an approved plan to Draft for changes; it must be re-approved."""
     plan = _plan_or_404(db, plan_id)
     if plan.status != PlanStatus.Approved:
@@ -321,7 +324,7 @@ def reopen_plan(plan_id: int, request: Request, db: DBSession = Depends(get_db),
 
 
 @router.post("/api/assurance-plans/{plan_id}/close", response_model=PlanDetail)
-def close_plan(plan_id: int, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly) -> PlanDetail:
+def close_plan(plan_id: int, request: Request, db: DBSession = Depends(get_db), user: User = PlanAmend) -> PlanDetail:
     plan = _plan_or_404(db, plan_id)
     if plan.status != PlanStatus.Approved:
         raise _conflict("Only an approved plan can be closed")
@@ -428,7 +431,7 @@ def remove_engagement(eng_id: int, request: Request, db: DBSession = Depends(get
 @router.post("/api/plan-engagements/{eng_id}/cancel", response_model=EngagementOut)
 def cancel_engagement(
     eng_id: int, request: Request, payload: CancelIn | None = None, db: DBSession = Depends(get_db),
-    user: User = AdminOnly,
+    user: User = PlanAmend,
 ) -> EngagementOut:
     eng = _engagement_or_404(db, eng_id)
     if eng.status != EngagementStatus.Planned:
@@ -457,6 +460,9 @@ def start_engagement(
     eng_id: int, request: Request, db: DBSession = Depends(get_db), user: User = Staff
 ) -> EngagementOut:
     """Create the audit project for a planned engagement of an approved plan."""
+    from app.modules.audits.router import _home_port
+
+    ensure_perm(user, "audit.create")
     eng = _engagement_or_404(db, eng_id)
     if eng.plan.status != PlanStatus.Approved:
         raise _conflict("Engagements can only be started from an approved Assurance Plan")
@@ -472,6 +478,7 @@ def start_engagement(
         created_by=user.id,
         plan_id=eng.plan_id,
         entity_unit_id=eng.entity_unit_id,
+        port_entity_id=_home_port(db, user),
     )
     db.add(audit)
     db.flush()

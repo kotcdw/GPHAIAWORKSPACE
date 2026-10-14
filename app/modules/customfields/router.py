@@ -14,14 +14,14 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier
+from app.core.deps import require_active_user, require_perm
 from app.core.enums import Role
 from app.core.errors import FieldValidationError, field_error
 from app.modules.customfields.models import FIELD_TYPES, CustomField
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/api/custom-fields", tags=["custom fields"])
-Admin = Depends(require_module_tier("custom fields", Role.Admin))
+Admin = Depends(require_perm("system.reference"))
 MODULES = ("organizations",)  # modules whose records carry custom fields
 _MODULE_PATTERN = "^(" + "|".join(MODULES) + ")$"
 

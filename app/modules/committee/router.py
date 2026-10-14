@@ -15,8 +15,8 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.appconfig import cfg
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_module_tier
-from app.core.enums import CapaStatus, EngagementStatus, FindingStatus, ReportStatus, Role, utcnow
+from app.core.deps import staff_or_perm
+from app.core.enums import CapaStatus, EngagementStatus, FindingStatus, ReportStatus, utcnow
 from app.modules.audits.models import Audit, Finding
 from app.modules.capa.models import Capa
 from app.modules.followup.service import LEVEL_NAMES, overdue_actions
@@ -26,7 +26,7 @@ from app.modules.users.models import User
 
 router = APIRouter(prefix="/api/committee", tags=["audit committee"])
 
-Staff = Depends(require_module_tier("committee", Role.Admin, Role.Auditor))
+Staff = Depends(staff_or_perm("governance.view"))
 AGE_BUCKETS = ("0-30 days", "31-90 days", "91-180 days", "Over 180 days")
 
 

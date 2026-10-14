@@ -88,6 +88,9 @@ async def upload_working_paper(
     db: DBSession = Depends(get_db),
     user: User = Depends(require_role(Role.Admin, Role.Auditor)),
 ) -> WorkingPaper:
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "audit.workpapers", "audit.fieldwork")
     audit = _get_audit_or_404(db, audit_id)
     if audit.status == AuditStatus.Closed:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_LOCKED)

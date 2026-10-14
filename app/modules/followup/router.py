@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.access import _same_email, ensure_can_view, is_privileged
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier
+from app.core.deps import require_active_user, require_module_tier, require_perm
 from app.core.enums import CapaStatus, Role, ValidationResult, utcnow
 from app.core.history import log_record_history
 from app.modules.capa.models import Capa
@@ -113,7 +113,7 @@ def validate_implementation(
     payload: ValidateIn,
     request: Request,
     db: DBSession = Depends(get_db),
-    user: User = Staff,
+    user: User = Depends(require_perm("followup.validate")),
 ) -> Capa:
     """An auditor tests the evidence: Effective (ready to close) or Not Effective (reopened)."""
     capa = _load(db, capa_id)
@@ -172,5 +172,5 @@ def list_overdue(db: DBSession = Depends(get_db), user: User = Staff) -> list[Ov
 
 @router.post("/api/followup/run-escalations")
 def trigger_escalations(db: DBSession = Depends(get_db),
-                        user: User = Depends(require_module_tier("follow-up", Role.Admin))) -> dict:
+                        user: User = Depends(require_perm("followup.manage"))) -> dict:
     return {"escalated": run_escalations(db)}

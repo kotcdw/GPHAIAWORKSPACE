@@ -98,6 +98,9 @@ def create_finding(
     db: DBSession = Depends(get_db),
     user: User = Depends(require_role(Role.Admin, Role.Auditor)),
 ) -> Finding:
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "audit.findings")
     _ensure_audit_open(_get_audit_or_404(db, audit_id))
     finding = Finding(
         audit_id=audit_id,
@@ -147,6 +150,9 @@ def update_finding(
     db: DBSession = Depends(get_db),
     user: User = Depends(require_role(Role.Admin, Role.Auditor)),
 ) -> Finding:
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "audit.findings")
     finding = _get_finding_or_404(db, finding_id)
     _ensure_audit_open(_get_audit_or_404(db, finding.audit_id))
     changes: list[str] = []

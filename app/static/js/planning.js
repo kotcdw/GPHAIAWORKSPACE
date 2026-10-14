@@ -43,7 +43,7 @@ function heat(score) {
 async function renderUniverse() {
   clear(viewRoot);
   const msg = el("div");
-  const admin = isAdmin();
+  const admin = hasPerm("method.library", "system.reference");
   viewRoot.append(viewHeader("Audit Universe", admin ? el("button", { class: "btn secondary", onclick: () => importDialog({
     title: "Import the Audit Universe from Excel", templateKind: "universe", path: "/api/import/universe",
     intro: "Create or update locations and auditable units with their inherent risk (likelihood and impact, 1-5). Existing units are matched on location code + unit code and updated.",
@@ -197,15 +197,15 @@ async function openPlan(id) {
 
   setActiveNav("plans");
   viewRoot.append(viewHeader(plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`, [
-    isAdmin() && draft ? btn("Approve (e-sign)", () => eSignModal({
+    hasPerm("plan.approve") && draft ? btn("Approve (e-sign)", () => eSignModal({
       title: "Approve Assurance Plan", pathOverride: `/api/assurance-plans/${id}/approve`, actionLabel: "Sign & Approve",
       allowReject: true, onDone: () => openPlan(id) })) : null,
     draft ? btn("Edit", () => editPlanModal(plan), "secondary") : null,
-    isAdmin() && approved ? btn("Reopen", async () => {
+    hasPerm("plan.amend") && approved ? btn("Reopen", async () => {
       try { await API.post(`/api/assurance-plans/${id}/reopen`); toast("Plan reopened"); openPlan(id); }
       catch (err) { toast(err.message, "error"); }
     }, "secondary") : null,
-    isAdmin() && approved ? btn("Close year", async () => {
+    hasPerm("plan.amend") && approved ? btn("Close year", async () => {
       try { await API.post(`/api/assurance-plans/${id}/close`); toast("Plan closed"); openPlan(id); }
       catch (err) { toast(err.message, "error"); }
     }, "secondary") : null,
@@ -276,8 +276,8 @@ async function renderEngagements(panel, plan) {
           try { const r = await API.post(`/api/plan-engagements/${e.id}/start`); toast("Audit project created"); openAudit(r.audit_id); }
           catch (err) { toast(err.message, "error"); }
         }) : null,
-        approved && e.status !== "Cancelled" && isAdmin() ? btn("Change", () => amendEngagement(plan, e), "secondary") : null,
-        approved && e.status === "Planned" && isAdmin() ? btn("Cancel", () => cancelEngagement(plan, e), "danger-ghost") : null,
+        approved && e.status !== "Cancelled" && hasPerm("plan.amend") ? btn("Change", () => amendEngagement(plan, e), "secondary") : null,
+        approved && e.status === "Planned" && hasPerm("plan.amend") ? btn("Cancel", () => cancelEngagement(plan, e), "danger-ghost") : null,
         draft ? btn("Edit", () => addEngagement(plan, e), "secondary") : null,
         draft ? btn("Remove", async () => {
           try { await API.del(`/api/plan-engagements/${e.id}`); toast("Removed"); openPlan(plan.id); }
@@ -286,7 +286,7 @@ async function renderEngagements(panel, plan) {
   if (draft) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement", () => addEngagement(plan))));
   else if (approved) {
     card.append(el("p", { class: "muted" }, "The plan is approved. Changes are made as amendments with a reason; each one is logged under Plan changes and reported in the Committee pack."));
-    if (isAdmin()) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement (amendment)", () => amendAddEngagement(plan))));
+    if (hasPerm("plan.amend")) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement (amendment)", () => amendAddEngagement(plan))));
   }
 }
 
@@ -698,7 +698,7 @@ function registerPlanningOpeners() {
 // ==================================================================== Audit Committee approval + plan changes (GIAS 9.4)
 
 function committeeCard(plan) {
-  const canRecord = (isAdmin() || state.user.review_level === "CAE") && plan.status === "Approved";
+  const canRecord = hasPerm("plan.amend") && plan.status === "Approved";
   const card = el("div", { class: `callout ${plan.committee_meeting_date ? "ok" : "warn"}` },
     el("i", { class: `bi bi-${plan.committee_meeting_date ? "patch-check" : "people"}` }),
     el("div", { style: "flex:1" }, plan.committee_meeting_date

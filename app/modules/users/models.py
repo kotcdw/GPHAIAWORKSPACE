@@ -41,6 +41,8 @@ class User(Base):
     # Optional TOTP multi-factor authentication; the secret is stored encrypted.
     mfa_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # Job role (see app.core.permissions.JOB_ROLES); empty = derived from role / review level.
+    job_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # The entity (normally a port or office) where the user is based.
     work_entity_id: Mapped[int | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="SET NULL", use_alter=True, name="fk_users_work_entity"), nullable=True

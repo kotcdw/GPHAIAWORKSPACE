@@ -36,6 +36,10 @@ class Audit(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
     # Assurance Plan linkage (set when the audit is started from a plan engagement).
     plan_id: Mapped[int | None] = mapped_column(ForeignKey("assurance_plans.id", ondelete="SET NULL"), nullable=True)
+    audit_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # The port / site the engagement belongs to (an organization entity of a port type).
+    port_entity_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"),
+                                                       nullable=True)
     entity_unit_id: Mapped[int | None] = mapped_column(
         ForeignKey("entity_units.id", ondelete="SET NULL"), nullable=True
     )

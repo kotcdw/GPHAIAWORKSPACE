@@ -10,7 +10,7 @@ from app.core.access import ensure_can_view, visible
 from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier, require_role
+from app.core.deps import require_active_user, require_module_tier, require_perm, require_role
 from app.core.enums import ApprovalStatus, AuditStatus, Role, TestStatus, utcnow
 from app.core.history import log_record_history
 from app.core.schemas import ESignRequest, MessageOut
@@ -23,6 +23,7 @@ from app.modules.users.models import User
 router = APIRouter(prefix="/api/audits", tags=["audits"])
 
 AdminAudit = Depends(require_module_tier("audits", Role.Admin))
+CloseAudit = Depends(require_perm("audit.close"))
 
 WriteAudit = Depends(require_role(Role.Admin, Role.Auditor))
 
@@ -53,9 +54,58 @@ def _check_transition(current: AuditStatus, new: AuditStatus) -> None:
 
 
 @router.get("", response_model=list[AuditOut])
-def list_audits(db: DBSession = Depends(get_db), user: User = Depends(require_active_user)) -> list[Audit]:
-    audits = list(db.execute(select(Audit).order_by(Audit.created_at.desc())).scalars().all())
+def list_audits(db: DBSession = Depends(get_db), user: User = Depends(require_active_user),
+                audit_type: str | None = None, port_id: int | None = None, mine: bool = False) -> list[Audit]:
+    stmt = select(Audit).order_by(Audit.created_at.desc())
+    if audit_type:
+        stmt = stmt.where(Audit.audit_type == audit_type)
+    if mine:
+        from app.modules.organizations.router import Index
+
+        idx = Index(db)
+        home = idx.rows.get(user.work_entity_id) if user.work_entity_id else None
+        port = idx.port_of(home) if home else None
+        port_id = port.id if port else -1
+    if port_id is not None:
+        stmt = stmt.where(Audit.port_entity_id == port_id)
+    audits = list(db.execute(stmt).scalars().all())
     return visible(db, user, "audit", audits)
+
+
+def _audit_type(value: str | None) -> str | None:
+    from app.core.appconfig import cfg
+    from app.core.errors import field_error
+
+    if not value or not value.strip():
+        return None
+    match = next((t for t in cfg("audit_types") if t.lower() == value.strip().lower()), None)
+    if match is None:
+        raise field_error("audit_type", f"must be one of: {', '.join(cfg('audit_types'))}")
+    return match
+
+
+def _port(db: DBSession, port_id: int | None) -> int | None:
+    from app.core.errors import field_error
+    from app.modules.organizations.router import Index
+
+    if port_id is None:
+        return None
+    idx = Index(db)
+    row = idx.rows.get(port_id)
+    if row is None or not idx.is_port(row):
+        raise field_error("port_entity_id", "is not a port / site entity")
+    return port_id
+
+
+def _home_port(db: DBSession, user: User) -> int | None:
+    from app.modules.organizations.router import Index
+
+    if not user.work_entity_id:
+        return None
+    idx = Index(db)
+    home = idx.rows.get(user.work_entity_id)
+    port = idx.port_of(home) if home else None
+    return port.id if port else None
 
 
 @router.get("/auditee-candidates", response_model=list[AuditeeOut])
@@ -76,12 +126,17 @@ def create_audit(
 ) -> Audit:
     if payload.status != AuditStatus.Planned:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New audits must start as Planned")
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "audit.create")
     audit = Audit(
         title=payload.title,
         description=payload.description,
         scope=payload.scope,
         status=payload.status,
         organization_id=payload.organization_id,
+        audit_type=_audit_type(payload.audit_type),
+        port_entity_id=_port(db, payload.port_entity_id) if payload.port_entity_id else _home_port(db, user),
         created_by=user.id,
     )
     db.add(audit)
@@ -129,6 +184,12 @@ def update_audit(
     if payload.organization_id is not None:
         audit.organization_id = payload.organization_id
         changes.append("organization_id")
+    if "audit_type" in payload.model_fields_set:
+        audit.audit_type = _audit_type(payload.audit_type)
+        changes.append("audit_type")
+    if "port_entity_id" in payload.model_fields_set:
+        audit.port_entity_id = _port(db, payload.port_entity_id)
+        changes.append("port")
     if payload.status is not None:
         _check_transition(audit.status, payload.status)
         if payload.status != audit.status:
@@ -251,7 +312,7 @@ def close_audit(
     payload: ESignRequest,
     request: Request,
     db: DBSession = Depends(get_db),
-    user: User = AdminAudit,
+    user: User = CloseAudit,
 ) -> Audit:
     audit = db.get(Audit, audit_id)
     if audit is None:

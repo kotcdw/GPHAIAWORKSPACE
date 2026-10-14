@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_module_tier
-from app.core.enums import EngagementStatus, ReviewLevel, Role, utcnow
+from app.core.enums import EngagementStatus, Role, utcnow
 from app.core.errors import field_error
 from app.modules.audits.models import Audit
 from app.modules.capacity.models import TIME_CATEGORIES, AuditorProfile, TimeEntry
@@ -25,7 +25,9 @@ AUDIT_WORK = ("Audit", "Follow-up")
 
 
 def _is_supervisor(user: User) -> bool:
-    return user.role == Role.Admin or user.review_level in (ReviewLevel.Manager, ReviewLevel.CAE)
+    from app.core.permissions import has_perm
+
+    return user.role == Role.Admin or has_perm(user, "oversight.resources")
 
 
 def _name(u: User) -> str:

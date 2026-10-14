@@ -33,7 +33,9 @@ from app.modules.configuration.router import router as configuration_router
 from app.modules.customfields.router import router as customfields_router
 from app.modules.dataio.router import router as dataio_router
 from app.modules.drafts.router import router as drafts_router
+from app.modules.evidence.router import router as evidence_router
 from app.modules.followup.router import router as followup_router
+from app.modules.governance.router import router as governance_router
 from app.modules.history.router import records_router
 from app.modules.history.router import router as history_router
 from app.modules.insights.router import router as insights_router
@@ -43,9 +45,11 @@ from app.modules.nonconformances.router import router as nonconformances_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.organizations.router import router as organizations_router
 from app.modules.planning.router import router as planning_router
+from app.modules.programs.router import router as programs_router
 from app.modules.qaip.router import router as qaip_router
 from app.modules.rcm.router import router as rcm_router
 from app.modules.reports.router import router as reports_router
+from app.modules.roles.router import router as roles_router
 from app.modules.service_feedback.router import router as service_feedback_router
 from app.modules.stakeholders.router import router as stakeholders_router
 from app.modules.tasks.router import router as tasks_router
@@ -88,6 +92,10 @@ _ROUTERS = (
     views_router,
     customfields_router,
     methodology_router,
+    roles_router,
+    programs_router,
+    evidence_router,
+    governance_router,
 )
 
 

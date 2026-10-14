@@ -193,6 +193,8 @@
         <button data-view="workspace"><i class="bi bi-grid-3x3-gap"></i><span>GPHA Workspace</span></button>
         <button data-view="tasks"><i class="bi bi-check2-square"></i><span>Task Center</span></button>
         <button data-view="drafts"><i class="bi bi-pencil-square"></i><span>My Drafts</span><span id="draftCount" class="count hidden"></span></button>
+        <button data-view="governance" data-perm="1"><i class="bi bi-bank"></i><span>Governance portal</span></button>
+        <button data-view="portfolio" data-perm="1"><i class="bi bi-geo-alt"></i><span>Port portfolio</span></button>
         <button data-view="committee" data-staff="1"><i class="bi bi-bar-chart-line"></i><span>Committee pack</span></button>
         <button data-view="analytics" data-staff="1"><i class="bi bi-graph-up-arrow"></i><span>Analytics</span></button>
         <button data-view="qaip" data-staff="1"><i class="bi bi-patch-check"></i><span>Quality (QAIP)</span></button>
@@ -205,19 +207,22 @@
         <div class="nav-section">Audit work</div>
         <button data-view="audits"><i class="bi bi-clipboard-check"></i><span>Audits</span></button>
         <button data-view="capa"><i class="bi bi-tools"></i><span>Remediation &amp; Follow-up</span></button>
+        <button data-view="evidence"><i class="bi bi-inbox"></i><span>Evidence requests</span></button>
         <button data-view="nonconformances"><i class="bi bi-exclamation-triangle"></i><span>Nonconformance</span></button>
 
         <div class="nav-section" data-staff="1">Registers</div>
         <button data-view="organizations"><i class="bi bi-building"></i><span>Organizations</span></button>
         <button data-view="stakeholders"><i class="bi bi-people"></i><span>Stakeholders</span></button>
         <button data-view="criteria" data-staff="1"><i class="bi bi-journal-bookmark"></i><span>Criteria library</span></button>
+        <button data-view="programs" data-staff="1"><i class="bi bi-list-check"></i><span>Audit programmes</span></button>
         <button data-view="service-feedback"><i class="bi bi-chat-left-text"></i><span>Service Feedback</span></button>
 
         <div class="nav-section">Account</div>
         <button data-view="profile"><i class="bi bi-person-gear"></i><span>Profile &amp; Users</span></button>
+        <button data-view="roles" data-perm="1"><i class="bi bi-shield-lock"></i><span>Roles &amp; permissions</span></button>
         <button data-view="logs" data-admin="1"><i class="bi bi-journal-text"></i><span>Audit Log</span></button>
         <button data-view="backups" data-admin="1"><i class="bi bi-hdd-stack"></i><span>Backups</span></button>
-        <button data-view="configuration" data-admin="1"><i class="bi bi-sliders"></i><span>Configuration</span></button>
+        <button data-view="configuration" data-perm="1"><i class="bi bi-sliders"></i><span>Configuration</span></button>
       </nav>
       <div class="sidebar-footer">
         <span class="who" id="whoami"></span>
@@ -258,6 +263,7 @@
   <script src="/static/js/engagement.js"></script>
   <script src="/static/js/insight.js"></script>
   <script src="/static/js/entities.js"></script>
+  <script src="/static/js/roles.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.access import is_privileged, visible
 from app.core.appconfig import cfg
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier
+from app.core.deps import require_active_user, require_module_tier, staff_or_perm
 from app.core.enums import CapaStatus, EngagementStatus, ReportStatus, Role, utcnow
 from app.modules.audits.models import Audit, Finding
 from app.modules.capa.models import Capa
@@ -22,6 +22,7 @@ from app.modules.users.models import User
 
 router = APIRouter(tags=["insights"])
 Staff = Depends(require_module_tier("analytics", Role.Admin, Role.Auditor))
+Governance = Depends(staff_or_perm("governance.view"))
 
 _STOP = {
     "the",
@@ -356,7 +357,9 @@ def analytics(db: DBSession, fy: int) -> Analytics:
 
 
 @router.get("/api/analytics", response_model=Analytics)
-def get_analytics(fiscal_year: int | None = None, db: DBSession = Depends(get_db), user: User = Staff) -> Analytics:
+def get_analytics(
+    fiscal_year: int | None = None, db: DBSession = Depends(get_db), user: User = Governance
+) -> Analytics:
     return analytics(db, fiscal_year or utcnow().year)
 
 

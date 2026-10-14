@@ -52,6 +52,10 @@ def _report_or_404(db: DBSession, report_id: int, user: User) -> AuditReport:
 def _can_view(db: DBSession, user: User, report: AuditReport) -> bool:
     if is_privileged(user):
         return True
+    from app.core.permissions import has_perm
+
+    if report.status == ReportStatus.Issued and has_perm(user, "governance.view"):
+        return True
     return report.status in _AUDITEE_STAGES and report.audit_id in assigned_audit_ids(db, user)
 
 

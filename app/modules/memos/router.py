@@ -23,6 +23,7 @@ from app.core.database import get_db
 from app.core.deps import require_active_user, require_module_tier
 from app.core.enums import AuditStatus, ReviewLevel, Role, utcnow
 from app.core.history import log_record_history
+from app.core.permissions import has_perm
 from app.core.schemas import ESignRequest
 from app.modules.audits.models import Audit
 from app.modules.memos.models import PlanningMemo
@@ -135,7 +136,7 @@ def _out(db: DBSession, audit: Audit, memo: PlanningMemo | None, user: User) -> 
         can_edit=staff and memo.status in ("Draft", "Returned") and audit.status != AuditStatus.Closed,
         can_approve=staff
         and memo.status == "Submitted"
-        and user.review_level in (ReviewLevel.Manager, ReviewLevel.CAE)
+        and has_perm(user, "audit.memo_approve")
         and memo.prepared_by != user.id,
         missing=missing_sections(memo),
     )
@@ -151,6 +152,9 @@ def get_memo(audit_id: int, db: DBSession = Depends(get_db), user: User = Depend
 def save_memo(
     audit_id: int, payload: MemoIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
 ) -> MemoOut:
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "audit.plan")
     audit = _audit(db, audit_id, user)
     if audit.status == AuditStatus.Closed:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The audit is closed")
@@ -209,10 +213,10 @@ def approve_memo(
     memo = _memo(db, audit_id)
     if memo is None or memo.status != "Submitted":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The memo is not awaiting approval")
-    if user.review_level not in (ReviewLevel.Manager, ReviewLevel.CAE):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Only an Audit Manager or the CAE can approve a planning memo"
-        )
+
+    if not has_perm(user, "audit.memo_approve"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Only an Audit Manager, PIA or the GM Audit can approve a planning memo")
     decision = payload.decision.value
 
     def _approve(_: DBSession) -> None:

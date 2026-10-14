@@ -11,7 +11,7 @@ const RISK_RATINGS = ["Low", "Medium", "High"];
 const FINDING_STATUSES = ["Open", "Remediating", "Closed"];
 const SEVERITIES = ["Low", "Medium", "High"];
 const TASK_STATUSES = ["Open", "In Progress", "Closed"];
-const ROLES = ["Admin", "Auditor", "Auditee"];
+const ROLES = ["Admin", "Auditor", "Auditee", "Committee"];
 
 const WRITE_ROLES = ["Admin", "Auditor"];
 
@@ -399,6 +399,7 @@ qs("#loginForm").addEventListener("submit", async (ev) => {
       otp: otpInput ? otpInput.value.trim() : null,
     });
     state.user = me.user;
+    state.perms = me.permissions || [];
     state.csrf = me.csrf_token;
     API.csrf = me.csrf_token;
     state.mfaSetupRequired = me.mfa_setup_required;
@@ -507,6 +508,7 @@ async function boot() {
   try {
     const me = await API.get("/api/auth/me");
     state.user = me.user;
+    state.perms = me.permissions || [];
     state.csrf = me.csrf_token;
     API.csrf = me.csrf_token;
     state.mfaSetupRequired = me.mfa_setup_required;
@@ -529,6 +531,7 @@ function showApp() {
     if (b) b.classList.toggle("hidden", state.user.role === "Auditee");
   });
   document.querySelectorAll("#sidebarNav [data-staff]").forEach((n) => n.classList.toggle("hidden", state.user.role === "Auditee"));
+  applyNavPermissions();
   checkHealth();
   refreshDraftCount();
   initBell();
@@ -539,9 +542,8 @@ function showApp() {
   // Deep link from an e-mail: #open/<type>/<id>
   const link = /^#open\/([a-z_]+)\/(\d+)$/.exec(window.location.hash);
   if (link) { history.replaceState(null, "", window.location.pathname); openLink(link[1], Number(link[2])); return; }
-  const adminOnly = ["logs", "backups", "configuration"];
-  const requested = isAdmin() ? state.view : (adminOnly.includes(state.view) ? "dashboard" : state.view);
-  navigate(requested);
+  const home = isCommittee() ? "governance" : "dashboard";
+  navigate(state.view && viewAllowed(state.view) && !(isCommittee() && state.view === "dashboard") ? state.view : home);
 }
 
 // ------------------------------------------------------------------ nav
@@ -559,12 +561,18 @@ function setActiveNav(view) {
 }
 
 function navigate(view) {
+  if (state.user && !viewAllowed(view)) view = isCommittee() ? "governance" : "dashboard";
   state.view = view;
   setActiveNav(view);
   if (view === "followup") { state.remTab = "followup"; return navigate("capa"); }
   if (view === "capa") return renderRemediation(state.remTab);
   if (MODULES[view]) return renderList(view);
   if (view === "dashboard") return renderDashboard();
+  if (view === "roles") return renderRolesPage();
+  if (view === "programs") return renderProgramsPage();
+  if (view === "evidence") return renderEvidencePage();
+  if (view === "governance") return renderGovernance();
+  if (view === "portfolio") return renderPortfolio();
   if (view === "workspace") return renderWorkspace();
   if (view === "analytics") return renderAnalytics();
   if (view === "qaip") return renderQaipPage();
@@ -1024,10 +1032,10 @@ function panel(title, body, action = null) {
 
 async function renderWorkspace() {
   clear(viewRoot);
-  const staff = state.user.role !== "Auditee";
+  const staff = isStaff();
   const admin = isAdmin();
   const quick = [];
-  if (staff) quick.push(el("button", { class: "btn secondary", onclick: () => navigate("audits") }, el("i", { class: "bi bi-clipboard-plus" }), " Start an audit"));
+  if (staff && hasPerm("audit.create")) quick.push(el("button", { class: "btn secondary", onclick: () => navigate("audits") }, el("i", { class: "bi bi-clipboard-plus" }), " Start an audit"));
   if (canWriteModule("capa")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("capa") }, el("i", { class: "bi bi-tools" }), " New remediation"));
   if (canWriteModule("nonconformances")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("nonconformances") }, el("i", { class: "bi bi-exclamation-triangle" }), " New nonconformance"));
   viewRoot.append(viewHeader("GPHA Workspace", null, { sub: "Every Internal Audit module in one place" }));
@@ -1041,6 +1049,8 @@ async function renderWorkspace() {
       { view: "dashboard", icon: "grid-1x2", name: "Dashboard", desc: "Your headline numbers and recent work" },
       { view: "tasks", icon: "check2-square", name: "Task Center", desc: "Tasks assigned to you and your team", count: "tasks" },
       { view: "drafts", icon: "pencil-square", name: "My Drafts", desc: "Forms you started and can finish later", count: "drafts" },
+      { view: "governance", icon: "bank", name: "Governance portal", desc: "Approved plans, issued reports and headline KPIs" },
+      { view: "portfolio", icon: "geo-alt", name: "Port portfolio", desc: "Audits, findings and remediation by port" },
       { view: "committee", icon: "bar-chart-line", name: "Committee pack", desc: "Audit Committee summary and Word pack", staff: true },
       { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Heat map, trends, repeat findings and KPIs", staff: true },
       { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews and auditee satisfaction", staff: true },
@@ -1053,25 +1063,28 @@ async function renderWorkspace() {
     { title: "Audit work", tiles: [
       { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: RCM, testing, findings, reports", count: "audits" },
       { view: "capa", icon: "tools", name: "Remediation & Follow-up", desc: "Agreed actions tracked to validated closure", count: "capa" },
+      { view: "evidence", icon: "inbox", name: "Evidence requests", desc: "Documents requested from and submitted by auditees" },
       { view: "nonconformances", icon: "exclamation-triangle", name: "Nonconformance", desc: "Nonconformities and their disposition", count: "ncs" },
     ] },
     { title: "Registers", tiles: [
       { view: "organizations", icon: "building", name: "Organizations", desc: "Departments, units and external bodies", staff: true },
       { view: "stakeholders", icon: "people", name: "Stakeholders", desc: "Key contacts for each organization", staff: true },
       { view: "criteria", icon: "journal-bookmark", name: "Criteria library", desc: "Laws, policies and standards findings are measured against", staff: true },
+      { view: "programs", icon: "list-check", name: "Audit programmes", desc: "Reusable work programmes applied to an audit's RCM", staff: true },
       { view: "service-feedback", icon: "chat-left-text", name: "Service Feedback", desc: "Auditee feedback on audit services", count: "feedback" },
     ] },
     { title: "Account & administration", tiles: [
       { view: "profile", icon: "person-gear", name: "Profile & Users", desc: "Your profile, password and two-step sign-in" },
-      { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, SLAs and escalation", admin: true },
+      { view: "roles", icon: "shield-lock", name: "Roles & permissions", desc: "Job roles and what each one can do" },
+      { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, audit types, plan settings, SLAs" },
       { view: "logs", icon: "journal-text", name: "Audit Log", desc: "Who did what, and when", admin: true },
       { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
     ] },
   ];
 
   const countEls = {};
-  groups.filter((g) => !g.staff || staff).forEach((g) => {
-    const tiles = g.tiles.filter((t) => (!t.staff || staff) && (!t.admin || admin));
+  groups.filter((g) => !g.staff || staff || isCommittee()).forEach((g) => {
+    const tiles = g.tiles.filter((t) => (!t.staff || staff || isCommittee()) && (!t.admin || admin) && viewAllowed(t.view));
     if (!tiles.length) return;
     groupsEl.append(el("section", { class: "ws-group" },
       el("h3", { class: "ws-group-title" }, g.title),
@@ -1261,7 +1274,7 @@ async function renderAudits() {
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(viewHeader("Audits",
-    canWriteModule("audits") ? el("button", { class: "btn", onclick: newAuditModal }, "New audit") : null), msg);
+    canWriteModule("audits") && hasPerm("audit.create") ? el("button", { class: "btn", onclick: newAuditModal }, "New audit") : null), msg);
   try {
     const audits = await API.get("/api/audits");
     const card = el("div", { class: "card" });
@@ -1283,28 +1296,48 @@ const AUDIT_FIELDS = [
   { name: "description", label: "Description / background", type: "textarea", maxLength: 20000 },
 ];
 
-function newAuditModal() {
+// Audit type and port pickers (types come from Configuration > Audit methodology; ports from Organizations).
+async function auditFields() {
+  let types = []; let ports = [];
+  try { const c = await loadEntityConfig(); types = c.types.audit_types || []; ports = c.entities.filter((e) => e.is_port); } catch { /* optional */ }
+  return [
+    ...AUDIT_FIELDS.slice(0, 1),
+    { name: "audit_type", label: "Audit type", type: "select", options: types, emptyLabel: "Select..." },
+    { name: "port_entity_id", label: "Port", type: "select", options: ports.map((p) => ({ value: String(p.id), label: p.name })),
+      emptyLabel: "Select...", help: "Defaults to the port where you work" },
+    ...AUDIT_FIELDS.slice(1),
+  ];
+}
+
+function auditPayload(v) {
+  return { title: v.title, description: v.description || "", scope: v.scope || "", audit_type: v.audit_type || null,
+    port_entity_id: v.port_entity_id ? Number(v.port_entity_id) : null };
+}
+
+async function newAuditModal() {
+  const fields = await auditFields();
   openForm({
     title: "New audit",
     key: "audit:new",
     meta: { title: "New audit" },
     intro: "Tip: audits for the year are normally started from the Assurance Plan so they stay linked to it.",
-    fields: AUDIT_FIELDS,
+    fields,
     submitLabel: "Create",
-    onSubmit: (v) => API.post("/api/audits", { title: v.title, description: v.description || "", scope: v.scope || "" }),
+    onSubmit: (v) => { const body = auditPayload(v); if (!body.port_entity_id) delete body.port_entity_id; return API.post("/api/audits", body); },
     onDone: (a) => { toast("Audit created"); openAudit(a.id); refreshDraftCount(); },
   });
 }
 
-function editAuditModal(audit) {
+async function editAuditModal(audit) {
+  const fields = await auditFields();
   openForm({
     title: `Edit audit #${audit.id}`,
     key: `audit:edit:${audit.id}`,
     meta: { title: `Edit audit: ${audit.title}`, record_type: "audit", record_id: audit.id },
-    fields: AUDIT_FIELDS,
-    initial: audit,
+    fields,
+    initial: { ...audit, audit_type: audit.audit_type || "", port_entity_id: audit.port_entity_id ? String(audit.port_entity_id) : "" },
     submitLabel: "Save changes",
-    onSubmit: (v) => API.patch(`/api/audits/${audit.id}`, { title: v.title, description: v.description || "", scope: v.scope || "" }),
+    onSubmit: (v) => API.patch(`/api/audits/${audit.id}`, auditPayload(v)),
     onDone: () => { toast("Audit saved"); openAudit(audit.id); refreshDraftCount(); },
   });
 }
@@ -1357,6 +1390,13 @@ async function openAudit(id, startTab = null) {
           return a;
         })()
         : el("span", { class: "muted" }, "Not linked")),
+      el("dt", null, "Audit type"), el("dd", null, audit.audit_type || el("span", { class: "muted" }, "Not set")),
+      el("dt", null, "Port"), el("dd", null, (() => {
+        if (!audit.port_entity_id) return el("span", { class: "muted" }, "Not set");
+        const s = el("span", null, `#${audit.port_entity_id}`);
+        loadEntityConfig().then((c) => { const p = c.entities.find((e) => e.id === audit.port_entity_id); if (p) s.textContent = p.name; }).catch(() => {});
+        return s;
+      })()),
       el("dt", null, "Created"), el("dd", null, fmtDate(audit.created_at)),
       el("dt", null, "Last updated"), el("dd", null, fmtDate(audit.updated_at))),
     el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Scope"),
@@ -1377,6 +1417,7 @@ async function openAudit(id, startTab = null) {
     { key: "findings", label: "Findings / Issues" },
     { key: "report", label: "Audit Report" },
     { key: "papers", label: "Working Papers" },
+    { key: "evidence", label: "Evidence Requests" },
     ...(canWrite ? [{ key: "notes", label: "Review Notes" }, { key: "time", label: "Time" }, { key: "quality", label: "Quality Review" }] : []),
     { key: "survey", label: "Survey" },
     { key: "tasks", label: "Tasks" },
@@ -1393,7 +1434,16 @@ async function openAudit(id, startTab = null) {
     const panel = el("div");
     detail.append(panel);
     if (active === "memo") renderMemoTab(panel, audit, canWrite);
-    if (active === "rcm") renderRcm(panel, id);
+    if (active === "rcm") {
+      if (canWrite && audit.status !== "Closed" && hasPerm("audit.plan", "audit.fieldwork")) {
+        panel.append(el("div", { class: "actions end", style: "margin-bottom:8px" }, el("button", { class: "btn small secondary",
+          onclick: () => applyProgramDialog(audit, () => paint()) }, el("i", { class: "bi bi-list-check" }), " Apply audit programme")));
+      }
+      const rcmPanel = el("div");
+      panel.append(rcmPanel);
+      renderRcm(rcmPanel, id);
+    }
+    if (active === "evidence") renderEvidenceTab(panel, audit, canWrite);
     if (active === "time") renderAuditTimeTab(panel, audit);
     if (active === "notes") renderReviewNotesTab(panel, audit);
     if (active === "quality") renderQualityTab(panel, audit);
@@ -1531,7 +1581,7 @@ async function renderProfile() {
     submitLabel: "Save changes",
     onSubmit: (v) => API.patch("/api/auth/me", v),
     onDone: (res) => {
-      state.user = res.user; API.csrf = res.csrf_token; state.csrf = res.csrf_token;
+      state.user = res.user; state.perms = res.permissions || state.perms; API.csrf = res.csrf_token; state.csrf = res.csrf_token;
       whoami.replaceChildren(el("span", { class: "who-name" }, state.user.full_name || state.user.username), badge(state.user.role));
       toast("Profile updated");
     },
@@ -1583,13 +1633,15 @@ function newUserForm() {
       { name: "username", label: "Username", required: true, minLength: 3, maxLength: 64, pattern: "^[A-Za-z0-9._-]+$",
         patternMessage: "Username may contain letters, digits, '.', '_' and '-' only" },
       { name: "email", label: "Email", type: "email", required: true },
-      { name: "role", label: "Role", type: "select", required: true, options: ROLES },
+      { name: "job_role", label: "Job role", type: "select", required: true,
+        options: (JOB_ROLE_OPTIONS || []).map((r) => ({ value: r.code, label: r.name })),
+        help: "Sets the access tier and review level; fine-tune permissions under Roles & permissions." },
       { name: "password", label: "Initial password", type: "password", required: true, minLength: 8, maxLength: 128,
         help: "The user should change it after first sign-in." },
     ],
-    initial: { role: "Auditor" },
+    initial: { job_role: "auditor" },
     submitLabel: "Create user",
-    onSubmit: (v) => API.post("/api/users", v),
+    onSubmit: (v) => API.post("/api/users", { ...v, role: ((JOB_ROLE_OPTIONS || []).find((r) => r.code === v.job_role) || {}).tier || "Auditor" }),
     onDone: () => { toast("User created"); renderProfile(); },
   });
 }
@@ -1603,10 +1655,11 @@ async function renderUserManagement(container, msg) {
         el("h3", null, `${users.length} accounts`, pending ? el("span", { class: "muted" }, ` · ${pending} awaiting approval`) : null),
         el("button", { class: "btn small", onclick: newUserForm }, el("i", { class: "bi bi-person-plus" }), " Add user")));
     card.append(el("div", { class: "table-wrap" }, el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Role"), el("th", null, "Review level"),
+      el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Job role"), el("th", null, "Access tier"), el("th", null, "Review level"),
         el("th", null, "Status"), el("th", { class: "num" }, ""))),
-      el("tbody", null, ...users.sort((a, b) => Number(a.is_active) - Number(b.is_active)).map((u) => {
+      el("tbody", null, ...(await Promise.all(users.sort((a, b) => Number(a.is_active) - Number(b.is_active)).map(async (u) => {
         const self = u.id === state.user.id;
+        const jobSelect = await jobRoleSelect(u, () => renderProfile());
         const roleSelect = el("select", { class: "compact", disabled: self ? "1" : null, "aria-label": `Role of ${u.username}` },
           ...ROLES.map((r) => el("option", { value: r, selected: r === u.role ? "1" : null }, r)));
         roleSelect.addEventListener("change", async () => {
@@ -1640,12 +1693,13 @@ async function renderUserManagement(container, msg) {
         return el("tr", { class: "no-click" },
           el("td", null, el("div", { class: "cell-title" }, u.full_name || u.username),
             el("div", { class: "muted small" }, `${u.username} · ${u.email}`)),
+          el("td", null, jobSelect),
           el("td", null, roleSelect),
           el("td", null, levelSelect),
           el("td", null, u.is_active ? badge("Active") : badge("Pending"), locked ? " " : null, locked ? badge("Locked") : null,
             u.mfa_enabled ? " " : null, u.mfa_enabled ? el("span", { class: "chip-mini", title: "Two-step verification on" }, el("i", { class: "bi bi-shield-check" }), " 2-step") : null),
           el("td", { class: "num" }, actions));
-      })))));
+      })))))));
     container.append(card);
   } catch (err) { notify(msg, err.message, "error"); }
 }

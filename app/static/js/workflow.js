@@ -397,7 +397,7 @@ function mfaEnrol(card, setup) {
     submitLabel: "Turn on",
     onSubmit: (v) => API.post("/api/auth/mfa/enable", v),
     onDone: (me) => {
-      state.user = me.user; state.mfaSetupRequired = me.mfa_setup_required;
+      state.user = me.user; state.perms = me.permissions || state.perms; state.mfaSetupRequired = me.mfa_setup_required;
       toast("Two-step verification is on");
       paintMfa(card);
     },
@@ -651,7 +651,7 @@ async function renderReviewNotesTab(panelEl, audit) {
   const card = el("div", { class: "card" });
   panelEl.append(card);
   const refresh = () => { clear(panelEl); renderReviewNotesTab(panelEl, audit); };
-  const canRaise = audit.status !== "Closed" && (audit.created_by !== state.user.id || isAdmin() || ["Manager", "CAE"].includes(state.user.review_level));
+  const canRaise = audit.status !== "Closed" && hasPerm("review.notes") && (audit.created_by !== state.user.id || isAdmin() || ["Manager", "CAE"].includes(state.user.review_level));
   card.append(el("div", { class: "card-head" }, el("h3", null, "Review notes"),
     canRaise ? el("button", { class: "btn small", onclick: () => raiseNoteForm(audit, refresh) }, el("i", { class: "bi bi-chat-square-text" }), " Raise review note") : null),
   el("p", { class: "muted small" }, "The reviewer raises a note on the audit, a working paper, a test or a finding; the preparer answers; the reviewer clears it. All notes must be cleared before the audit can close."));

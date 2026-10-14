@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.access import ensure_can_view
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier
+from app.core.deps import require_active_user, require_module_tier, require_perm
 from app.core.enums import AuditStatus, RiskRating, Role
 from app.core.history import log_record_history
 from app.modules.audits.models import Audit, Finding
@@ -246,7 +246,7 @@ async def import_universe(
     file: UploadFile = File(...),
     commit: bool = Query(False),
     db: DBSession = Depends(get_db),
-    user: User = AdminOnly,
+    user: User = Depends(require_perm("method.library", "system.reference")),
 ) -> ImportResult:
     from app.modules.planning.models import EntityUnit, Location
 

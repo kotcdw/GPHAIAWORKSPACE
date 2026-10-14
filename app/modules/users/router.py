@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core import permissions as perms
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_role
@@ -19,6 +20,15 @@ from app.modules.users.schemas import UserCreate, UserOut, UserUpdate
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 AdminUser = Depends(require_role(Role.Admin))
+
+
+def _apply_job_role(user: User, code: str) -> None:
+    role = perms.JOB_ROLES_BY_CODE.get(code)
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown job role")
+    user.job_role = role.code
+    user.role = role.tier
+    user.review_level = role.review_level
 
 
 @router.get("", response_model=list[UserOut])
@@ -51,6 +61,8 @@ def create_user(
         role=payload.role,
         is_active=payload.is_active,
     )
+    if payload.job_role:
+        _apply_job_role(user, payload.job_role)
     db.add(user)
     db.flush()
     log_action(
@@ -126,6 +138,17 @@ def update_user(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown entity")
         user.work_entity_id = payload.work_entity_id
         changes.append(f"work_entity={payload.work_entity_id}")
+    if payload.job_role:
+        if user.id == admin.id and perms.JOB_ROLES_BY_CODE.get(payload.job_role, None) is not None \
+                and perms.JOB_ROLES_BY_CODE[payload.job_role].tier != Role.Admin:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot remove your own admin role")
+        tier_before = user.role
+        _apply_job_role(user, payload.job_role)
+        changes.append(f"job_role={user.job_role}")
+        if user.role != tier_before:
+            changes.append(f"role={user.role.value}")
+    elif payload.role is not None or payload.review_level is not None:
+        user.job_role = None  # falls back to the default job role for the new tier / level
     if payload.reset_mfa:
         user.mfa_enabled = False
         user.mfa_secret = None
@@ -136,7 +159,8 @@ def update_user(
         user.locked_until = None
         changes.append("password")
     # Deactivation, a role change or a password reset ends the user's sessions.
-    if user.id != admin.id and (payload.is_active is False or payload.role is not None or payload.password is not None):
+    if user.id != admin.id and (payload.is_active is False or payload.role is not None or payload.password is not None
+                                 or any(c.startswith("role=") for c in changes)):
         revoked = revoke_sessions(db, user.id)
         if revoked:
             changes.append(f"sessions_revoked={revoked}")

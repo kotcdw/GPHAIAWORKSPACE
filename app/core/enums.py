@@ -21,6 +21,8 @@ class Role(str, enum.Enum):
     Admin = "Admin"
     Auditor = "Auditor"
     Auditee = "Auditee"
+    # Read-only governance access (Audit Committee members, executive reviewers).
+    Committee = "Committee"
 
 
 class AuditStatus(str, enum.Enum):
@@ -153,10 +155,16 @@ class TestConclusion(str, enum.Enum):
 
 
 def risk_level(score: int) -> str:
-    """Map a likelihood x impact score (1-25) onto a rating band."""
-    if score >= 15:
+    """Map a likelihood x impact score (1-25) onto a rating band (thresholds on the Configuration screen)."""
+    try:
+        from app.core.appconfig import cfg
+
+        high, medium = int(cfg("risk_high_threshold")), int(cfg("risk_medium_threshold"))
+    except Exception:  # noqa: BLE001 - configuration not reachable: standard bands
+        high, medium = 15, 8
+    if score >= high:
         return "High"
-    if score >= 8:
+    if score >= medium:
         return "Medium"
     return "Low"
 

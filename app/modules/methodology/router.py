@@ -19,10 +19,11 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.access import ensure_can_view
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier
+from app.core.deps import require_active_user, require_module_tier, require_perm
 from app.core.enums import AuditStatus, EngagementStatus, PlanStatus, ReportStatus, ReviewLevel, Role, utcnow
 from app.core.errors import field_error
 from app.core.history import log_record_history
+from app.core.permissions import has_perm, job_role_of
 from app.core.refs import next_reference
 from app.modules.audits.models import Audit, Finding, WorkingPaper
 from app.modules.methodology.models import CRITERIA_SOURCES, Criterion, ReviewNote
@@ -32,7 +33,7 @@ from app.modules.users.models import User
 
 router = APIRouter(tags=["methodology"])
 Staff = Depends(require_module_tier("audit work", Role.Admin, Role.Auditor))
-AdminOnly = Depends(require_module_tier("assurance plan", Role.Admin))
+AdminOnly = Depends(require_perm("plan.amend"))
 
 
 def _name(db: DBSession, uid: int | None) -> str | None:
@@ -85,9 +86,9 @@ def _log_change(db: DBSession, plan: AssurancePlan, user: User, kind: str, descr
 def record_committee_approval(plan_id: int, payload: CommitteeIn, request: Request, db: DBSession = Depends(get_db),
                               user: User = Staff) -> dict:
     """Record that the Audit Committee approved the (CAE-approved) plan at a meeting."""
-    if user.role != Role.Admin and user.review_level != ReviewLevel.CAE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Only the CAE or an Admin records the Audit Committee's approval")
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "plan.amend")
     plan = _plan(db, plan_id)
     if plan.status != PlanStatus.Approved:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
@@ -274,6 +275,8 @@ def list_criteria(q: str | None = None, status_filter: str | None = Query(None, 
 @router.post("/api/criteria", response_model=CriterionOut, status_code=status.HTTP_201_CREATED)
 def create_criterion(payload: CriterionIn, request: Request, db: DBSession = Depends(get_db),
                      user: User = Staff) -> CriterionOut:
+    if not has_perm(user, "method.library", "audit.findings"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not maintain criteria")
     c = Criterion(crit_ref=next_reference(db, "CR"), title=payload.title.strip(), source_type=payload.source_type,
                   reference=payload.reference.strip(), body=payload.body.strip(), created_by=user.id)
     db.add(c)
@@ -299,6 +302,8 @@ def get_criterion(crit_id: int, db: DBSession = Depends(get_db), user: User = St
 @router.patch("/api/criteria/{crit_id}", response_model=CriterionOut)
 def update_criterion(crit_id: int, payload: CriterionPatch, request: Request, db: DBSession = Depends(get_db),
                      user: User = Staff) -> CriterionOut:
+    if not has_perm(user, "method.library", "audit.findings"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not maintain criteria")
     c = _crit(db, crit_id)
     changed = []
     for field in ("title", "source_type", "reference", "body", "status"):
@@ -356,7 +361,8 @@ class NoteOut(BaseModel):
 
 
 def _is_reviewer(user: User) -> bool:
-    return user.role == Role.Admin or user.review_level in (ReviewLevel.Manager, ReviewLevel.CAE)
+    return user.role == Role.Admin or user.review_level in (ReviewLevel.Manager, ReviewLevel.CAE) or \
+        "unit_head" == job_role_of(user)
 
 
 def _note_out(db: DBSession, n: ReviewNote, user: User) -> NoteOut:
@@ -417,6 +423,8 @@ def raise_note(audit_id: int, payload: NoteIn, request: Request, db: DBSession =
     ensure_can_view(db, user, "audit", audit)
     if audit.status == AuditStatus.Closed:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The audit is closed")
+    if not has_perm(user, "review.notes"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not raise review notes")
     if audit.created_by == user.id and not _is_reviewer(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Review notes are raised by a reviewer, not by the audit's preparer")
@@ -527,6 +535,8 @@ def set_xref(paper_id: int, payload: XrefIn, request: Request, db: DBSession = D
 @router.post("/api/working-papers/{paper_id}/review")
 def review_paper(paper_id: int, request: Request, db: DBSession = Depends(get_db), user: User = Staff) -> dict:
     wp = _paper(db, paper_id, user)
+    if not has_perm(user, "review.workpapers"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not sign off working papers")
     if wp.uploaded_by == user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="A working paper is signed off by someone other than its preparer")

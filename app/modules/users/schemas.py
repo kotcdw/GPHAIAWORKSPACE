@@ -26,7 +26,18 @@ class UserOut(ORMModel):
     review_level: ReviewLevel | None = None
     mfa_enabled: bool = False
     work_entity_id: int | None = None
+    job_role: str | None = None
+    job_role_name: str | None = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def _effective_job_role(self) -> UserOut:
+        from app.core.permissions import JOB_ROLES_BY_CODE, default_job_role
+
+        if self.job_role not in JOB_ROLES_BY_CODE:
+            self.job_role = default_job_role(self)
+        self.job_role_name = JOB_ROLES_BY_CODE[self.job_role].name
+        return self
 
 
 class UserCreate(BaseModel):
@@ -46,6 +57,8 @@ class UserCreate(BaseModel):
     company: str = Field(default="", max_length=255)
     role: Role = Role.Auditee
     is_active: bool = True
+    # A job role (see app.core.permissions) sets the access tier and review level.
+    job_role: str | None = Field(default=None, max_length=40)
 
 
 class UserUpdate(BaseModel):
@@ -63,6 +76,8 @@ class UserUpdate(BaseModel):
     reset_mfa: bool | None = None
     # Where the user is based (an entity, normally a port); send null to clear.
     work_entity_id: int | None = None
+    # A job role sets the access tier and review level; changing role/review_level alone clears it.
+    job_role: str | None = Field(default=None, max_length=40)
 
     @field_validator("password")
     @classmethod

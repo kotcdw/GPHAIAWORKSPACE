@@ -163,7 +163,8 @@ def list_organizations(
 @router.get("/types")
 def entity_types(user: User = Depends(require_active_user)) -> dict[str, list[str]]:
     """The configured entity types and which of them are ports / sites."""
-    return {"categories": cfg("organization_categories"), "port_categories": cfg("port_categories")}
+    return {"categories": cfg("organization_categories"), "port_categories": cfg("port_categories"),
+            "audit_types": cfg("audit_types")}
 
 
 @router.get("/entities", response_model=list[EntityLite])

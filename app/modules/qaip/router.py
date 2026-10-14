@@ -14,7 +14,7 @@ from app.core.access import ensure_can_view
 from app.core.appconfig import cfg
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier
+from app.core.deps import require_active_user, require_module_tier, staff_or_perm
 from app.core.enums import AuditStatus, ReportStatus, Role, TestStatus, utcnow
 from app.core.errors import field_error
 from app.core.history import log_record_history
@@ -24,6 +24,7 @@ from app.modules.users.models import User
 
 router = APIRouter(tags=["qaip"])
 Staff = Depends(require_module_tier("qaip", Role.Admin, Role.Auditor))
+Governance = Depends(staff_or_perm("governance.view"))
 
 # (key, standard, question)
 CHECKLIST: list[tuple[str, str, str]] = [
@@ -477,7 +478,7 @@ def qaip_summary(db: DBSession, fy: int) -> QaipSummary:
 
 @router.get("/api/qaip/summary", response_model=QaipSummary)
 def get_qaip_summary(
-    fiscal_year: int | None = None, db: DBSession = Depends(get_db), user: User = Staff
+    fiscal_year: int | None = None, db: DBSession = Depends(get_db), user: User = Governance
 ) -> QaipSummary:
     return qaip_summary(db, fiscal_year or utcnow().year)
 
@@ -498,7 +499,7 @@ def conformance_rating(score: float | None) -> str:
 
 @router.get("/api/qaip/report.docx")
 def internal_assessment_report(request: Request, fiscal_year: int | None = None, db: DBSession = Depends(get_db),
-                               user: User = Staff):  # noqa: ANN201
+                               user: User = Governance):  # noqa: ANN201
     """Periodic internal assessment report for the CAE and the Audit Committee (Word)."""
     import io
 

@@ -71,7 +71,20 @@ from app.modules.users.models import User
 
 router = APIRouter(tags=["risk-control-matrix"])
 
-Staff = Depends(require_role(Role.Admin, Role.Auditor))
+def _rcm_user(request: Request, user: User = Depends(require_role(Role.Admin, Role.Auditor))) -> User:
+    """Reading is open to audit staff; changes need fieldwork rights, test review needs review rights."""
+    if request.method in ("GET", "HEAD"):
+        return user
+    from app.core.deps import ensure_perm
+
+    if request.url.path.endswith("/review"):
+        ensure_perm(user, "review.workpapers")
+    else:
+        ensure_perm(user, "audit.fieldwork", "audit.findings")
+    return user
+
+
+Staff = Depends(_rcm_user)
 
 _BANDS = ["Low", "Medium", "High"]
 

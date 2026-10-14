@@ -37,6 +37,8 @@ class MeOut(BaseModel):
     csrf_token: str
     # True when the role requires MFA and the user has not set it up yet.
     mfa_setup_required: bool = False
+    # Fine-grained permissions of the user's job role (drive what the screens offer).
+    permissions: list[str] = []
 
 
 class MfaCode(BaseModel):
