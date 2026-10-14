@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -31,6 +31,10 @@ class Organization(Base):
     # Hierarchy (Port -> Department -> Unit) and address.
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set up by administrators: this entity receives a copy of the approved Assurance Plan, under this label
+    # (e.g. "HQ", "PIA Tema"), and engagements can name it as their responsible site.
+    plan_destination: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    destination_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
     # Values of admin-defined custom fields, JSON {field_key: value}.
     custom_fields: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

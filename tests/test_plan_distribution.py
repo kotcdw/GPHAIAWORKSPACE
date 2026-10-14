@@ -26,13 +26,21 @@ def test_distribution_to_hq_and_port_pias(client, client2, db):
     adm = _u(db, "dsadm", "platform_admin", Role.Admin)
     ah = csrf_headers(login(client2, adm.username))
     tag = uuid.uuid4().hex[:4]
-    hq = client2.post(
-        "/api/organizations", json={"name": f"GPHA Head Office {tag}", "category": "Head Office"}, headers=ah
-    ).json()
-    tema = client2.post("/api/organizations", json={"name": f"Tema{tag} Port", "category": "Port"}, headers=ah).json()
-    tadi = client2.post(
-        "/api/organizations", json={"name": f"Takoradi{tag} Port", "category": "Port"}, headers=ah
-    ).json()
+
+    def dest(name, category, label):
+        r = client2.post(
+            "/api/organizations",
+            json={"name": name, "category": category, "plan_destination": True, "destination_label": label},
+            headers=ah,
+        )
+        assert r.status_code == 201, r.text
+        return r.json()
+
+    # Destinations are set up by administrators (nothing is hard-coded).
+    hq = dest(f"GPHA Head Office {tag}", "Head Office", "HQ")
+    tema = dest(f"Tema{tag} Port", "Port", f"PIA Tema{tag}")
+    tadi = dest(f"Takoradi{tag} Port", "Port", f"PIA Takoradi{tag}")
+    assert hq["plan_destination"] and hq["destination_label"] == "HQ"
     gm = _u(db, "dsgm", "gm_audit", site=hq["id"])
     mgr_hq = _u(db, "dsmgr", "audit_manager", site=hq["id"])
     pia_tema = _u(db, "dspiat", "pia", site=tema["id"])
@@ -104,11 +112,14 @@ def test_distribution_to_hq_and_port_pias(client, client2, db):
     assert by_site[f"PIA Tema{tag}"]["started"] == 1
 
     # A site with nobody registered cannot be sent a copy.
-    empty = client2.post(
-        "/api/organizations",
-        json={"name": f"Kpone{tag} Port", "category": "Port"},
-        headers=csrf_headers(login(client2, adm.username)),
-    ).json()
+    ah = csrf_headers(login(client2, adm.username))
+    empty = dest(f"Kpone{tag} Port", "Port", f"PIA Kpone{tag}")
+    # Only users with the reference-data permission set up destinations.
+    nh = csrf_headers(login(client, pia_tema.username))
+    assert (
+        client.patch(f"/api/organizations/{empty['id']}", json={"plan_destination": False}, headers=nh).status_code
+        == 403
+    )
     gh = csrf_headers(login(client2, gm.username))
     r = client2.post(f"{base}/cycle/distribute", json={"site_ids": [empty["id"]]}, headers=gh)
     assert r.status_code == 422 and "Where I work" in r.text

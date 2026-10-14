@@ -24,7 +24,7 @@ async function changeRequestEditor(plan, existing = null, onDone = null) {
   const leadOpts = [{ value: state.user.id, label: `${state.user.full_name || state.user.username} (me)` },
     ...staff.map((s) => ({ value: s.id, label: `${s.name}${s.job_role ? ` · ${s.job_role}` : ""}` }))];
   let siteOpts = [];
-  try { siteOpts = (await loadEntityConfig()).entities.filter((e) => e.is_port).map((e) => ({ value: e.id, label: e.name })); } catch { /* optional */ }
+  try { siteOpts = await planSites(); } catch { /* optional */ }
   const engOpts = live.map((e) => ({ value: e.id, label: `${e.title} (${e.planned_quarter}, ${e.budget_hours}h, ${e.status})` }));
 
   function control(it, key, node, parse = (v) => v) {

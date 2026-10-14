@@ -223,7 +223,9 @@ e-signature, or return with comments) → Submission to the approving authority 
 Word "controlled copy") → GM Audit controlled distribution (named PIAs and Audit Managers, receipt acknowledged)
 → PIA / Manager execution (engagements started, by site and by lead).
 Each engagement has a **responsible site** (Head Office or a port). The GM Audit distributes the approved version
-by destination - **HQ, PIA Tema, PIA Takoradi** (one per Head Office / port entity) - to the PIA / Audit Managers
+by destination. Destinations are **set up by administrators** on the Organizations register (tick "Receives the
+approved Assurance Plan" and give a label such as HQ, PIA Tema, PIA Takoradi; needs the reference-data
+permission) - nothing is hard-coded. Each copy goes to the PIA / Audit Managers
 registered there ("Where I work"); each destination gets its own Word controlled copy with its engagements, and
 every recipient acknowledges receipt. Audits started from an engagement belong to its site. Two switches under Configuration › Plan configuration
 control enforcement: `plan_cycle_enforced` and `plan_distribution_before_execution` (both on by default).

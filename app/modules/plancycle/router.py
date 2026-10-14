@@ -597,18 +597,17 @@ def export_version(plan_id: int, version: int, request: Request, site_id: int | 
 
 
 def sites(db: DBSession) -> list[dict]:
-    """Distribution destinations: Head Office and each port (entity types under Configuration > port categories)."""
+    """Distribution destinations, set up by administrators on the Organizations register: every entity marked
+    'Receives the approved plan', shown under its destination label (e.g. HQ, PIA Tema, PIA Takoradi).
+    Until an administrator marks any, the entities of the configured port / site types are used."""
     from app.modules.organizations.router import Index
 
     idx = Index(db)
-    out = []
-    for o in idx.rows.values():
-        if not idx.is_port(o):
-            continue
-        hq = (o.category or "").lower() in ("head office", "headquarters", "hq")
-        short = o.name.replace(" Port", "").replace(" port", "").strip() or o.name
-        out.append({"id": o.id, "name": o.name, "is_hq": hq, "destination": "HQ" if hq else f"PIA {short}"})
-    return sorted(out, key=lambda x: (not x["is_hq"], x["name"].lower()))
+    flagged = [o for o in idx.rows.values() if o.plan_destination]
+    rows = flagged or [o for o in idx.rows.values() if idx.is_port(o)]
+    out = [{"id": o.id, "name": o.name, "destination": o.destination_label or o.name, "configured": bool(flagged)}
+           for o in rows]
+    return sorted(out, key=lambda x: x["destination"].lower())
 
 
 def site_officers(db: DBSession, site_id: int) -> list[User]:
@@ -640,7 +639,7 @@ def destinations(plan_id: int, db: DBSession = Depends(get_db), user: User = Sta
                     "recipients": [{"id": u.id, "name": u.full_name or u.username, "job_role": _job_name(db, u.id)}
                                    for u in site_officers(db, s["id"])]})
     unassigned = [e for e in live if e.site_entity_id is None]
-    return out + ([{"id": None, "name": "No responsible site", "destination": "Unassigned", "is_hq": False,
+    return out + ([{"id": None, "name": "No responsible site", "destination": "Unassigned", "configured": False,
                     "engagements": len(unassigned), "hours": sum(e.budget_hours for e in unassigned),
                     "recipients": []}] if unassigned else [])
 
@@ -677,7 +676,7 @@ def distribute(plan_id: int, payload: DistributeIn, request: Request, db: DBSess
     targets: list[tuple[int, int | None]] = []
     for sid in dict.fromkeys(payload.site_ids):
         if sid not in known:
-            raise field_error("site_ids", f"site {sid} is not Head Office or a port")
+            raise field_error("site_ids", f"entity {sid} is not set up as a plan destination")
         officers = site_officers(db, sid)
         if not officers:
             raise field_error("site_ids", f"nobody is registered to receive the plan at {known[sid]['name']}: "

@@ -229,12 +229,13 @@ async function cycleDistribute(plan, c, reload) {
   } catch (err) { toast(err.message, "error"); return; }
   const already = new Set(c.distribution.filter((d) => d.version === c.current_version).map((d) => d.user_id));
   const siteOpts = dests.filter((d) => d.id !== null).map((d) => ({ value: String(d.id),
-    label: `${d.destination} - ${d.name} · ${d.engagements} engagement(s), ${d.hours}h · ${d.recipients.length
+    label: `${d.destination}${d.destination !== d.name ? ` - ${d.name}` : ""} · ${d.engagements} engagement(s), ${d.hours}h · ${d.recipients.length
       ? `to ${d.recipients.map((r) => r.name).join(", ")}` : "NOBODY REGISTERED (set 'Where I work')"}` }));
   const unassigned = dests.find((d) => d.id === null);
   openForm({
     title: `Distribute approved version ${c.current_version}`, draftable: false, width: 720,
-    intro: "GM Audit controlled distribution. Each destination (HQ and each port's PIA) receives its copy, is notified and must acknowledge receipt."
+    intro: "GM Audit controlled distribution. Each destination receives its copy, is notified and must acknowledge receipt. Destinations and their labels are set up by administrators on the Organizations register (\"Receives the approved Assurance Plan\")."
+      + (dests.some((d) => d.configured) ? "" : " No destination has been set up yet, so every port / site entity is listed.")
       + (unassigned ? ` ${unassigned.engagements} engagement(s) have no responsible site yet.` : ""),
     fields: [
       { name: "site_ids", label: "Destinations", type: "checklist", full: true, options: siteOpts },

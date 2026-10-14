@@ -54,8 +54,24 @@ async function prepareOrganizations(m, fresh = false) {
     { key: "contact_phone", label: "Contact phone" },
     ...customFieldDefs(defs),
     { key: "address", label: "Address / location", type: "textarea", maxLength: 2000 },
+    ...(hasPerm("system.reference") ? [
+      { key: "plan_destination", label: "Receives the approved Assurance Plan (distribution destination)", type: "checkbox",
+        help: "Set up by administrators. Engagements can name this entity as their responsible site, and the GM Audit distributes its copy here.",
+        display: (r) => (r.plan_destination ? `Yes - as "${r.destination_label || r.name}"` : "No") },
+      { key: "destination_label", label: "Destination label", maxLength: 60,
+        help: "How the destination appears in distribution, e.g. HQ, PIA Tema, PIA Takoradi. Leave blank to use the name." },
+    ] : []),
     { key: "notes", label: "Notes", type: "textarea" },
   ];
+}
+
+// Plan destinations (HQ, PIA Tema ...): entities administrators marked as receiving the approved plan;
+// until any are marked, the configured port / site types.
+async function planSites() {
+  const { entities } = await loadEntityConfig();
+  const flagged = entities.filter((e) => e.plan_destination);
+  return (flagged.length ? flagged : entities.filter((e) => e.is_port))
+    .map((e) => ({ value: e.id, label: e.destination_label ? `${e.destination_label} (${e.name})` : e.name }));
 }
 
 function entityLink(id, name) {

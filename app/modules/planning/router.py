@@ -407,17 +407,15 @@ def _engagement_or_404(db: DBSession, eng_id: int) -> PlanEngagement:
 
 
 def check_site(db: DBSession, site_entity_id: int | None) -> None:
-    """The responsible site must be Head Office or a port (Configuration > Organizations > port categories)."""
+    """The responsible site must be one of the plan destinations administrators set up (Organizations)."""
     if site_entity_id is None:
         return
-    from app.modules.organizations.router import Index
+    from app.modules.plancycle.router import sites
 
-    idx = Index(db)
-    site = idx.rows.get(site_entity_id)
-    if site is None or not idx.is_port(site):
+    if site_entity_id not in {x["id"] for x in sites(db)}:
         from app.core.errors import field_error
 
-        raise field_error("site_entity_id", "must be Head Office or a port")
+        raise field_error("site_entity_id", "is not set up as a plan destination (Organizations register)")
 
 
 def _check_refs(db: DBSession, entity_unit_id: int | None, lead_auditor_id: int | None) -> None:

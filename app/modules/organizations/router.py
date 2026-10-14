@@ -77,6 +77,17 @@ class Index:
         return out
 
 
+def _destination(user: User, flag: bool | None, label: str | None) -> dict:
+    """Plan distribution settings are reference data: only users with 'system.reference' may set them."""
+    flag = bool(flag)
+    label = (label or "").strip() or None
+    if flag or label:
+        from app.core.deps import ensure_perm
+
+        ensure_perm(user, "system.reference")
+    return {"plan_destination": flag, "destination_label": label if flag else None}
+
+
 def _out(o: Organization, idx: Index) -> OrganizationOut:
     parent = idx.rows.get(o.parent_id) if o.parent_id else None
     port = idx.port_of(o)
@@ -84,7 +95,8 @@ def _out(o: Organization, idx: Index) -> OrganizationOut:
         id=o.id, org_ref=o.org_ref, name=o.name, category=o.category, is_port=idx.is_port(o),
         parent_id=o.parent_id, parent_name=parent.name if parent else None,
         port_id=port.id if port else None, port_name=port.name if port else None,
-        children=idx.children.get(o.id, 0), address=o.address, contact_name=o.contact_name,
+        children=idx.children.get(o.id, 0), address=o.address, plan_destination=o.plan_destination,
+        destination_label=o.destination_label, contact_name=o.contact_name,
         contact_email=o.contact_email, contact_phone=o.contact_phone, status=o.status,
         evaluation_end_date=o.evaluation_end_date, approved_by=o.approved_by, approved_at=o.approved_at,
         notes=o.notes, custom_fields=json.loads(o.custom_fields or "{}"), created_by=o.created_by,
@@ -176,7 +188,8 @@ def list_entities(db: DBSession = Depends(get_db), user: User = Depends(require_
         port = idx.port_of(o)
         out.append(EntityLite(id=o.id, name=o.name, category=o.category, is_port=idx.is_port(o),
                               port_id=port.id if port else None, port_name=port.name if port else None,
-                              parent_id=o.parent_id))
+                              parent_id=o.parent_id, plan_destination=o.plan_destination,
+                              destination_label=o.destination_label))
     return out
 
 
@@ -196,6 +209,7 @@ def create_organization(
         category=category,
         parent_id=parent_id,
         address=(payload.address or "").strip() or None,
+        **_destination(user, payload.plan_destination, payload.destination_label),
         contact_name=payload.contact_name,
         contact_email=str(payload.contact_email) if payload.contact_email else None,
         contact_phone=payload.contact_phone,
@@ -253,6 +267,15 @@ def update_organization(
     if "address" in sent:
         org.address = (payload.address or "").strip() or None
         changes.append("address")
+    if "plan_destination" in sent or "destination_label" in sent:
+        dest = _destination(user, payload.plan_destination if "plan_destination" in sent else org.plan_destination,
+                            payload.destination_label if "destination_label" in sent else org.destination_label)
+        if (dest["plan_destination"], dest["destination_label"]) != (org.plan_destination, org.destination_label):
+            from app.core.deps import ensure_perm
+
+            ensure_perm(user, "system.reference")  # removing a destination is as controlled as adding one
+            org.plan_destination, org.destination_label = dest["plan_destination"], dest["destination_label"]
+            changes.append("plan destination")
     if "custom_fields" in sent:
         org.custom_fields = json.dumps(clean_values(db, "organizations", payload.custom_fields,
                                                     json.loads(org.custom_fields or "{}")))

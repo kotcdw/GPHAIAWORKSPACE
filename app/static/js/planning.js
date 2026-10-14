@@ -309,7 +309,7 @@ async function addEngagement(plan, eng = null) {
   const units = await safeGet("/api/entity-units?active_only=true", []);
   const leads = isAdmin() ? await safeGet("/api/users", null) : null; // user list is Admin-only
   let sites = [];
-  try { sites = (await loadEntityConfig()).entities.filter((e) => e.is_port); } catch { /* optional */ }
+  try { sites = await planSites(); } catch { /* optional */ }
   openForm({
     title: eng ? `Edit engagement #${eng.id}` : "Add engagement",
     key: eng ? `engagement:edit:${eng.id}` : `engagement:new:${plan.id}`,
@@ -319,7 +319,7 @@ async function addEngagement(plan, eng = null) {
       { name: "entity_unit_id", label: "Entity unit", type: "select", emptyLabel: "- none -",
         options: units.sort((a, b) => b.risk_score - a.risk_score).map((u) => ({ value: u.id, label: `${u.location_name} / ${u.name} (risk ${u.risk_score})` })) },
       { name: "site_entity_id", label: "Responsible site (HQ / port)", type: "select", emptyLabel: "- choose -",
-        options: sites.map((x) => ({ value: x.id, label: x.name })), help: "Decides which copy of the approved plan (HQ, PIA Tema, PIA Takoradi ...) includes it" },
+        options: sites, help: "Decides which copy of the approved plan includes it. Destinations are set up by administrators on the Organizations register." },
       { name: "planned_quarter", label: "Quarter", type: "select", required: true, options: QUARTERS },
       { name: "budget_hours", label: "Budget hours", type: "number", min: 0, max: 10000 },
       ...(Array.isArray(leads) ? [{ name: "lead_auditor_id", label: "Lead auditor", type: "select", emptyLabel: "- not assigned -",

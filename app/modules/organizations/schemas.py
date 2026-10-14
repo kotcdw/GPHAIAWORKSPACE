@@ -21,6 +21,8 @@ class OrganizationCreate(BaseModel):
     contact_phone: str | None = Field(default=None, max_length=50)
     evaluation_end_date: datetime | None = None
     notes: str = ""
+    plan_destination: bool = False
+    destination_label: str | None = Field(default=None, max_length=60)
     custom_fields: dict[str, Any] | None = None
 
 
@@ -36,6 +38,8 @@ class OrganizationUpdate(BaseModel):
     contact_phone: str | None = Field(default=None, max_length=50)
     evaluation_end_date: datetime | None = None
     notes: str | None = None
+    plan_destination: bool | None = None
+    destination_label: str | None = Field(default=None, max_length=60)
     custom_fields: dict[str, Any] | None = None
 
 
@@ -51,6 +55,8 @@ class OrganizationOut(BaseModel):
     port_name: str | None = None
     children: int = 0
     address: str | None = None
+    plan_destination: bool = False
+    destination_label: str | None = None
     contact_name: str | None
     contact_email: str | None
     contact_phone: str | None
@@ -80,3 +86,5 @@ class EntityLite(BaseModel):
     port_id: int | None
     port_name: str | None
     parent_id: int | None
+    plan_destination: bool = False
+    destination_label: str | None = None
