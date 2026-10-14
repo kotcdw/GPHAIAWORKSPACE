@@ -9,6 +9,7 @@ one under Plan changes and freezes a new numbered version, which is re-distribut
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -34,6 +35,8 @@ from app.modules.users.models import User
 router = APIRouter(tags=["plan change requests"])
 Staff = Depends(require_role(Role.Admin, Role.Auditor))
 OPEN = ("Submitted", "Endorsed")
+COMMITTEE_DECISIONS = ("Approved", "Rejected", "Deferred")
+REVIEWER_FLAG = "marked significant by the reviewer"
 
 
 class Item(BaseModel):
@@ -204,6 +207,41 @@ def compute_impact(db: DBSession, plan: AssurancePlan, items: list[Item]) -> dic
     }
 
 
+def significance(impact: dict, items: list[Item]) -> list[str]:
+    """Why a change counts as significant (IIA GIAS 9.4: significant changes are approved by the board)."""
+    from app.core.appconfig import cfg
+
+    reasons = []
+    if any(i.action == "add" for i in items):
+        reasons.append("adds an engagement to the approved plan")
+    if any(i.action == "cancel" for i in items):
+        reasons.append("cancels an approved engagement")
+    r = impact["resource"]
+    pct = abs(r["hours_delta"]) * 100 / max(r["hours_before"], 1)
+    if r["hours_delta"] and pct >= cfg("plan_change_significant_hours_pct"):
+        reasons.append(f"moves planned hours by {pct:.0f}% (threshold {cfg('plan_change_significant_hours_pct')}%)")
+    if r["over_budget"]:
+        reasons.append("takes planned hours over the approved budget")
+    if impact["coverage"]["high_risk_newly_uncovered"]:
+        lost = ", ".join(impact["coverage"]["high_risk_newly_uncovered"])
+        reasons.append(f"leaves high-risk units uncovered: {lost}")
+    return reasons
+
+
+def _assess(
+    db: DBSession, plan: AssurancePlan, cr: PlanChangeRequest, items: list[Item], flagged: bool = False
+) -> None:
+    """Recompute the impact and whether the change is significant (the reviewer can also mark it so)."""
+    impact = compute_impact(db, plan, items)
+    reasons = significance(impact, items)
+    previous = json.loads(cr.impact or "{}").get("significance", [])
+    if flagged or REVIEWER_FLAG in previous:
+        reasons.append(REVIEWER_FLAG)
+    impact["significance"] = reasons
+    cr.impact = json.dumps(impact)
+    cr.significant = bool(reasons)
+
+
 # ------------------------------------------------------------------ read
 
 
@@ -226,7 +264,13 @@ class CROut(BaseModel):
     decided_at: str | None
     decision_comment: str | None
     new_version: int | None
+    significant: bool
+    committee_decision: str | None
+    committee_meeting_date: str | None
+    committee_reference: str | None
+    committee_notes: str | None
     can_review: bool
+    can_record_committee: bool
     can_approve: bool
     can_withdraw: bool
     can_resubmit: bool
@@ -261,6 +305,12 @@ def _out(db: DBSession, cr: PlanChangeRequest, user: User) -> CROut:
         decided_at=_iso(cr.decided_at),
         decision_comment=cr.decision_comment,
         new_version=cr.new_version,
+        significant=cr.significant,
+        committee_decision=cr.committee_decision,
+        committee_meeting_date=_iso(cr.committee_meeting_date),
+        committee_reference=cr.committee_reference,
+        committee_notes=cr.committee_notes,
+        can_record_committee=cr.status == "Awaiting Committee" and has_perm(user, "plan.amend"),
         can_review=cr.status == "Submitted"
         and cr.requested_by != user.id
         and has_perm(user, "plan.prepare", "oversight.port", "plan.approve"),
@@ -345,9 +395,10 @@ def create_request(
         title=payload.title.strip(),
         reason=payload.reason.strip(),
         items=json.dumps([i.model_dump() for i in payload.items]),
-        impact=json.dumps(compute_impact(db, plan, payload.items)),
+        impact="{}",
         requested_by=user.id,
     )
+    _assess(db, plan, cr, payload.items)
     db.add(cr)
     db.flush()
     reviewers = [
@@ -372,6 +423,7 @@ def create_request(
 class ReviewIn(BaseModel):
     decision: Literal["Endorse", "Return"]
     comment: str = Field("", max_length=4000)
+    mark_significant: bool = False
 
 
 @router.post("/api/plan-change-requests/{cr_id}/review", response_model=CROut)
@@ -390,7 +442,7 @@ def review_request(
     if payload.decision == "Return" and len(payload.comment.strip()) < 5:
         raise field_error("comment", "say what needs to change")
     plan = _plan(db, cr.plan_id)
-    cr.impact = json.dumps(compute_impact(db, plan, [Item(**i) for i in json.loads(cr.items)]))  # refresh
+    _assess(db, plan, cr, [Item(**i) for i in json.loads(cr.items)], flagged=payload.mark_significant)  # refresh
     cr.reviewer_id = user.id
     cr.reviewed_at = utcnow()
     cr.review_comment = payload.comment.strip() or None
@@ -448,7 +500,10 @@ def approve_request(
         _validate(db, plan, items)
 
     def _on_approve(_: DBSession) -> None:
-        _apply(db, plan, cr, items, user)
+        if cr.significant:  # GIAS 9.4: the Audit Committee approves significant changes
+            cr.status = "Awaiting Committee"
+        else:
+            _apply(db, plan, cr, items, user)
 
     sign(
         db,
@@ -549,8 +604,9 @@ def _apply(db: DBSession, plan: AssurancePlan, cr: PlanChangeRequest, items: lis
             plan_id=plan.id,
             version=plan.current_version,
             snapshot=json.dumps(_snapshot(plan)),
-            decision=f"Amended by {cr.cr_ref}",
-            committee_reference=plan.committee_reference,
+            decision=f"Amended by {cr.cr_ref}"
+            + (f" (Audit Committee {cr.committee_reference})" if cr.committee_reference else " (CAE, minor change)"),
+            committee_reference=cr.committee_reference or plan.committee_reference,
             approved_at=utcnow(),
             created_by=user.id,
         )
@@ -622,10 +678,71 @@ def resubmit_request(
     _validate(db, plan, payload.items)
     cr.title, cr.reason = payload.title.strip(), payload.reason.strip()
     cr.items = json.dumps([i.model_dump() for i in payload.items])
-    cr.impact = json.dumps(compute_impact(db, plan, payload.items))
+    _assess(db, plan, cr, payload.items)
     cr.base_version = plan.current_version
     cr.status = "Submitted"
     cr.reviewer_id = cr.reviewed_at = None
     _history(db, cr, user, "RESUBMITTED", request)
+    db.commit()
+    return _out(db, cr, user)
+
+
+class CommitteeIn(BaseModel):
+    decision: Literal["Approved", "Rejected", "Deferred"]
+    meeting_date: datetime
+    reference: str = Field(..., min_length=2, max_length=100)
+    notes: str = Field("", max_length=8000)
+
+
+@router.post("/api/plan-change-requests/{cr_id}/committee-decision", response_model=CROut)
+def committee_decision(
+    cr_id: int, payload: CommitteeIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
+) -> CROut:
+    """Record the Audit Committee's decision on a significant change (IIA GIAS 9.4); approval applies it."""
+    ensure_perm(user, "plan.amend")
+    cr = _cr(db, cr_id)
+    if cr.status != "Awaiting Committee":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The request is not awaiting the Committee")
+    meeting = payload.meeting_date.replace(tzinfo=None)
+    if meeting > utcnow():
+        raise field_error("meeting_date", "cannot be in the future")
+    if cr.decided_at and meeting.date() < cr.decided_at.date():
+        raise field_error("meeting_date", "is before the CAE approved the change")
+    plan = _plan(db, cr.plan_id)
+    cr.committee_decision = payload.decision
+    cr.committee_meeting_date = meeting
+    cr.committee_reference = payload.reference.strip()
+    cr.committee_notes = payload.notes.strip() or None
+    cr.committee_recorded_by = user.id
+    if payload.decision == "Approved":
+        _approved(plan)
+        if cr.base_version != plan.current_version:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"The plan moved from version {cr.base_version} to {plan.current_version}; "
+                "raise a new change request against the current version",
+            )
+        items = [Item(**i) for i in json.loads(cr.items)]
+        _validate(db, plan, items)
+        _apply(db, plan, cr, items, user)
+    elif payload.decision == "Rejected":
+        cr.status = "Rejected"
+        notify(
+            db,
+            cr.requested_by,
+            f"Plan change request {cr.cr_ref} rejected by the Audit Committee",
+            cr.committee_notes or cr.committee_reference,
+            link_type="assurance_plan",
+            link_id=plan.id,
+        )
+    _history(
+        db,
+        cr,
+        user,
+        f"AUDIT COMMITTEE {payload.decision.upper()} (ref {cr.committee_reference})"
+        + (f" -> version {cr.new_version}" if cr.new_version else ""),
+        request,
+    )
+    log_action(db, user_id=user.id, action=f"PCR_COMMITTEE_{payload.decision.upper()} {cr.cr_ref}", request=request)
     db.commit()
     return _out(db, cr, user)

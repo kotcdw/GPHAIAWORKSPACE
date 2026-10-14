@@ -805,3 +805,7 @@ table.perm-matrix tfoot td { position: sticky; bottom: 0; background: var(--pane
 .badge-returned, .badge-revised { background: #f5a5241a; color: #f7c35c; border-color: #f5a52444; }
 .badge-distributed, .badge-in-execution { background: #2f6fed22; color: #9dbcff; border-color: #2f6fed44; }
 .badge-archived { background: #ffffff0d; color: var(--muted); border-color: var(--border); }
+.warn-chip { background: #f5a5241a; color: #f7c35c; border-color: #f5a52444; }
+.badge-awaiting-committee { background: #8e4ec61f; color: #c9a6f2; border-color: #8e4ec655; }
+.badge-endorsed { background: #2f6fed22; color: #9dbcff; border-color: #2f6fed44; }
+.badge-withdrawn { background: #ffffff0d; color: var(--muted); border-color: var(--border); }

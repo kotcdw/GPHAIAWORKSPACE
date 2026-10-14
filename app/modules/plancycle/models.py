@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -37,10 +37,14 @@ class PlanVersion(Base):
     plan_id: Mapped[int] = mapped_column(ForeignKey("assurance_plans.id", ondelete="CASCADE"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     snapshot: Mapped[str] = mapped_column(Text, nullable=False)
-    decision: Mapped[str] = mapped_column(String(40), nullable=False)
+    decision: Mapped[str] = mapped_column(String(160), nullable=False)
     committee_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
     approved_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Submission of this approved version to the Internal Audit Agency (Ghana).
+    iaa_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    iaa_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    iaa_recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
 class PlanDistribution(Base):
@@ -81,3 +85,11 @@ class PlanChangeRequest(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Significant changes need Audit Committee approval (IIA GIAS 9.4) after the CAE's approval.
+    significant: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    committee_decision: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    committee_meeting_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    committee_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    committee_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    committee_recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"),
+                                                              nullable=True)

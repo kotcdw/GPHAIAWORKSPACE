@@ -208,6 +208,8 @@ class VersionOut(BaseModel):
     committee_reference: str | None
     approved_at: datetime
     engagements: int
+    iaa_submitted_at: datetime | None = None
+    iaa_reference: str | None = None
 
 
 class DistributionOut(BaseModel):
@@ -296,7 +298,8 @@ def _cycle(db: DBSession, plan: AssurancePlan, user: User) -> CycleOut:
                          attendees=e.attendees, notes=e.notes, data=json.loads(e.data) if e.data else None,
                          by=_name(db, e.user_id), at=e.created_at) for e in reversed(events)],
         versions=[VersionOut(version=v.version, decision=v.decision, committee_reference=v.committee_reference,
-                             approved_at=v.approved_at, engagements=len(json.loads(v.snapshot)["engagements"]))
+                             approved_at=v.approved_at, engagements=len(json.loads(v.snapshot)["engagements"]),
+                             iaa_submitted_at=v.iaa_submitted_at, iaa_reference=v.iaa_reference)
                   for v in versions],
         distribution=[DistributionOut(user_id=d.user_id, name=_name(db, d.user_id) or "?",
                                       job_role=_job_name(db, d.user_id), version=d.version, sent_at=d.sent_at,
@@ -653,5 +656,32 @@ def archive(plan_id: int, request: Request, db: DBSession = Depends(get_db), use
     plan.archived_by = user.id
     _event(db, plan, user, "execution", "Archived", request)
     log_action(db, user_id=user.id, action=f"PLAN_ARCHIVE id={plan.id}", request=request)
+    db.commit()
+    return _cycle(db, plan, user)
+
+
+# ------------------------------------------------------------------ Internal Audit Agency (Ghana)
+
+
+class IaaIn(BaseModel):
+    submitted_on: datetime
+    reference: str = Field(..., min_length=2, max_length=100)
+
+
+@router.post("/api/assurance-plans/{plan_id}/versions/{version}/iaa-submission", response_model=CycleOut)
+def iaa_submission(plan_id: int, version: int, payload: IaaIn, request: Request, db: DBSession = Depends(get_db),
+                   user: User = Staff) -> CycleOut:
+    """Record that an approved version was submitted to the Internal Audit Agency (date and letter reference)."""
+    ensure_perm(user, "plan.amend")
+    plan = _plan(db, plan_id)
+    v = _version(db, plan_id, version)
+    when = _past(payload.submitted_on, "submitted_on")
+    if when.date() < v.approved_at.date():
+        raise field_error("submitted_on", "is before this version was approved")
+    v.iaa_submitted_at = when
+    v.iaa_reference = payload.reference.strip()
+    v.iaa_recorded_by = user.id
+    _event(db, plan, user, "approved", "Submitted to IAA", request, decision=f"Version {version} to the Internal "
+           "Audit Agency", meeting_date=when, reference=v.iaa_reference)
     db.commit()
     return _cycle(db, plan, user)

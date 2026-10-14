@@ -6,7 +6,7 @@ from __future__ import annotations
 import uuid
 
 from app.core import permissions as perms
-from app.core.enums import Role
+from app.core.enums import Role, utcnow
 from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user, release_plan, walk_plan_to_review
 
 _YEARS = iter(range(2024, 2031))
@@ -162,10 +162,26 @@ def test_change_request_lifecycle(client, client2, db):
         ).status_code
         == 400
     )
-    done = client2.post(
+    cae = client2.post(
         f"/api/plan-change-requests/{cr['id']}/approve", json={"password": DEFAULT_PASSWORD}, headers=ah
     ).json()
-    assert done["status"] == "Approved" and done["new_version"] == 2 and done["approver"]
+    # Adding an engagement is significant: IIA GIAS 9.4 -> the Audit Committee approves it after the CAE.
+    assert cae["significant"] and cae["status"] == "Awaiting Committee" and cae["approver"]
+    assert any("adds an engagement" in r for r in cae["impact"]["significance"])
+    assert client2.get(f"/api/assurance-plans/{pid}").json()["current_version"] == 1, "not applied yet"
+    now = utcnow().isoformat()
+    deferred = client2.post(
+        f"/api/plan-change-requests/{cr['id']}/committee-decision",
+        json={"decision": "Deferred", "meeting_date": now, "reference": "AC/7"},
+        headers=ah,
+    ).json()
+    assert deferred["status"] == "Awaiting Committee"
+    done = client2.post(
+        f"/api/plan-change-requests/{cr['id']}/committee-decision",
+        json={"decision": "Approved", "meeting_date": now, "reference": "AC/8", "notes": "Approved at the Q3 meeting"},
+        headers=ah,
+    ).json()
+    assert done["status"] == "Approved" and done["new_version"] == 2 and done["committee_reference"] == "AC/8"
     plan = client2.get(f"/api/assurance-plans/{pid}").json()
     assert plan["current_version"] == 2
     assert {e["title"]: e["budget_hours"] for e in plan["engagements"]} == {
@@ -173,10 +189,41 @@ def test_change_request_lifecycle(client, client2, db):
         "Container yard controls": 100,
     }
     v2 = client2.get(f"/api/assurance-plans/{pid}/versions/2").json()
-    assert v2["decision"].startswith("Amended by PCR-")
+    assert v2["decision"].startswith("Amended by PCR-") and "Audit Committee AC/8" in v2["decision"]
+    # Approved versions are submitted to the Internal Audit Agency.
+    iaa = client2.post(
+        f"/api/assurance-plans/{pid}/versions/2/iaa-submission",
+        json={"submitted_on": now, "reference": "IAA/GPHA/2026/14"},
+        headers=ah,
+    ).json()
+    assert next(v for v in iaa["versions"] if v["version"] == 2)["iaa_reference"] == "IAA/GPHA/2026/14"
+
+    # A minor change (below the hours threshold, nothing added or cancelled) is approved by the CAE alone.
+    mh = csrf_headers(login(client, mgr.username))
+    minor = client.post(
+        base,
+        json={
+            "title": "Re-time payroll",
+            "reason": "Payroll system cut-over moved",
+            "items": [{"action": "change", "engagement_id": eng["id"], "planned_quarter": "Q4"}],
+        },
+        headers=mh,
+    ).json()
+    assert minor["significant"] is False
+    ph = csrf_headers(login(client2, pia.username))
+    client2.post(f"/api/plan-change-requests/{minor['id']}/review", json={"decision": "Endorse"}, headers=ph)
+    ah = csrf_headers(login(client2, adm.username))
+    m2 = client2.post(
+        f"/api/plan-change-requests/{minor['id']}/approve", json={"password": DEFAULT_PASSWORD}, headers=ah
+    ).json()
+    assert m2["status"] == "Approved" and m2["new_version"] == 3
     changes = client2.get(f"/api/assurance-plans/{pid}/changes").json()
     assert {c["change_type"] for c in changes} >= {"Added", "Changed"}
-    assert all(c["reason"].startswith(cr["cr_ref"]) for c in changes if c["change_type"] in ("Added", "Changed"))
+    assert all(
+        c["reason"].startswith((cr["cr_ref"], minor["cr_ref"]))
+        for c in changes
+        if c["change_type"] in ("Added", "Changed")
+    )
     cyc = client2.get(f"/api/assurance-plans/{pid}/cycle").json()
     assert any(d["version"] == 2 and d["user_id"] == adm.id for d in cyc["distribution"]), "re-distributed"
 
@@ -200,7 +247,7 @@ def test_change_request_lifecycle(client, client2, db):
         headers=ah,
     ).json()
     assert rej["status"] == "Rejected"
-    assert client2.get(f"/api/assurance-plans/{pid}").json()["current_version"] == 2
+    assert client2.get(f"/api/assurance-plans/{pid}").json()["current_version"] == 3
 
     # Full revision needs a reason.
     assert client2.post(f"/api/assurance-plans/{pid}/reopen", json={}, headers=ah).status_code == 422

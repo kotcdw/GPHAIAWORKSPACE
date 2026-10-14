@@ -87,7 +87,11 @@ def test_committee_approval_and_documented_plan_changes(client, client2, db):
                         headers=ah).status_code == 403
     admin2 = _u(db, "gpadm2", Role.Admin)
     a2 = csrf_headers(login(client, admin2.username))
-    done = client.post(f"/api/plan-change-requests/{cr1['id']}/approve", json={"password": DEFAULT_PASSWORD},
+    cae = client.post(f"/api/plan-change-requests/{cr1['id']}/approve", json={"password": DEFAULT_PASSWORD},
+                      headers=a2).json()
+    assert cae["status"] == "Awaiting Committee"  # significant change: the Audit Committee approves (GIAS 9.4)
+    done = client.post(f"/api/plan-change-requests/{cr1['id']}/committee-decision",
+                       json={"decision": "Approved", "meeting_date": utcnow().isoformat(), "reference": "AC/2026/05"},
                        headers=a2).json()
     assert done["status"] == "Approved" and done["new_version"] == 2
     added_id = next(e["id"] for e in client.get(f"/api/assurance-plans/{plan['id']}").json()["engagements"]
@@ -95,7 +99,9 @@ def test_committee_approval_and_documented_plan_changes(client, client2, db):
     rh = csrf_headers(login(client, reviewer.username))
     cr2 = change([{"action": "cancel", "engagement_id": added_id}], "Investigation handed to the police unit")
     a2 = csrf_headers(login(client, admin2.username))
-    assert client.post(f"/api/plan-change-requests/{cr2['id']}/approve", json={"password": DEFAULT_PASSWORD},
+    client.post(f"/api/plan-change-requests/{cr2['id']}/approve", json={"password": DEFAULT_PASSWORD}, headers=a2)
+    assert client.post(f"/api/plan-change-requests/{cr2['id']}/committee-decision",
+                       json={"decision": "Approved", "meeting_date": utcnow().isoformat(), "reference": "AC/2026/06"},
                        headers=a2).json()["new_version"] == 3
 
     log = client.get(f"/api/assurance-plans/{plan['id']}/changes").json()

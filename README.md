@@ -237,7 +237,12 @@ engagements), the computed **resource impact** (hours vs budget, by quarter and 
 return), and the GM Audit's **approval** by e-signature (approve or reject; requester cannot approve).
 Approval applies the changes, logs each one under Plan changes with the PCR reference, freezes a **new version**
 (snapshot + Word controlled copy) and re-distributes it to the holders of the previous version for
-acknowledgement. A request raised against an older version cannot be approved. A full revision ("Revise plan")
+acknowledgement. **Significant** changes (an engagement added or cancelled, planned hours moved by at least
+`plan_change_significant_hours_pct` (default 10%), hours over budget, a high-risk unit left uncovered, or marked
+significant by the reviewer) then go to the **Audit Committee** for approval, as IIA GIAS 9.4 requires; minor
+changes are approved by the CAE and reported in the Committee pack. Each approved version records its submission
+to the **Internal Audit Agency** (date and letter reference). A request raised against an older version cannot be
+approved. A full revision ("Revise plan")
 needs a reason and goes back through internal review and the Audit Committee.
 API: `/api/assurance-plans/{id}/change-requests[/impact]`, `/api/plan-change-requests/{id}/review|approve|withdraw|resubmit`.
 

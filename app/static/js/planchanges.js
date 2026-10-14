@@ -117,17 +117,24 @@ async function renderChangeRequests(panelEl, plan) {
     if (cr.can_resubmit) {
       acts.push(btn("Rework & resubmit", () => changeRequestEditor(plan, cr, reload), "secondary"));
     }
+    if (cr.can_record_committee) acts.push(btn("Record Audit Committee decision", () => crCommittee(cr, reload)));
     if (cr.can_withdraw) acts.push(btn("Withdraw", async () => {
       try { await API.post(`/api/plan-change-requests/${cr.id}/withdraw`); toast("Withdrawn"); reload(); } catch (err) { toast(err.message, "error"); }
     }, "danger-ghost"));
-    card.append(el("details", { class: "table-toggle cr", open: ["Submitted", "Endorsed", "Returned"].includes(cr.status) ? "1" : null },
+    card.append(el("details", { class: "table-toggle cr", open: ["Submitted", "Endorsed", "Returned", "Awaiting Committee"].includes(cr.status) ? "1" : null },
       el("summary", null, el("span", { class: "ref" }, cr.cr_ref), " ", el("strong", null, cr.title), " ", badge(cr.status),
+        cr.significant ? el("span", { class: "chip-mini warn-chip", title: "Needs Audit Committee approval (IIA GIAS 9.4)" }, " Significant") : el("span", { class: "chip-mini" }, " Minor"),
         el("span", { class: "muted small" }, ` · against v${cr.base_version}${cr.new_version ? ` → v${cr.new_version}` : ""}`)),
       el("dl", { class: "kv two-col" },
         el("dt", null, "Requested by"), el("dd", null, `${cr.requested_by || "-"} · ${fmtDate(cr.requested_at)}`),
         el("dt", null, "Reviewer"), el("dd", null, cr.reviewer ? `${cr.reviewer} · ${fmtDate(cr.reviewed_at)}${cr.review_comment ? ` — ${cr.review_comment}` : ""}` : "Awaiting review"),
         el("dt", null, "Approval"), el("dd", null, cr.approver ? `${cr.approver} · ${fmtDate(cr.decided_at)}${cr.decision_comment ? ` — ${cr.decision_comment}` : ""}` : "Pending"),
+        el("dt", null, "Audit Committee"), el("dd", null, cr.significant
+          ? (cr.committee_decision ? `${cr.committee_decision} · ${fmtDate(cr.committee_meeting_date).split(",")[0]} · ref ${cr.committee_reference}${cr.committee_notes ? ` — ${cr.committee_notes}` : ""}` : "Required (significant change) - after the CAE's approval")
+          : "Not required (minor change); reported in the Committee pack"),
         el("dt", null, "New version"), el("dd", null, cr.new_version ? `v${cr.new_version}` : "-")),
+      cr.significant && (cr.impact.significance || []).length ? el("div", { class: "callout warn" }, el("i", { class: "bi bi-bank" }),
+        el("div", null, el("strong", null, "Significant change - Audit Committee approval required (IIA GIAS 9.4): "), cr.impact.significance.join("; "))) : null,
       el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Reason"), el("div", { class: "lf-value" }, cr.reason)),
       impactView(cr.impact),
       acts.length ? el("div", { class: "actions", style: "margin-top:8px" }, ...acts) : null));
@@ -138,9 +145,10 @@ function crReview(cr, decision, reload) {
   openForm({
     title: `${decision === "Endorse" ? "Endorse" : "Return"} ${cr.cr_ref}`, draftable: false, width: 560,
     fields: [{ name: "comment", label: decision === "Return" ? "What needs to change" : "Review comment (optional)", type: "textarea",
-      required: decision === "Return", minLength: decision === "Return" ? 5 : undefined, maxLength: 4000, full: true }],
+      required: decision === "Return", minLength: decision === "Return" ? 5 : undefined, maxLength: 4000, full: true },
+    ...(decision === "Endorse" && !cr.significant ? [{ name: "mark_significant", label: "Treat as significant (send to the Audit Committee)", type: "checkbox" }] : [])],
     submitLabel: decision,
-    onSubmit: (v) => API.post(`/api/plan-change-requests/${cr.id}/review`, { decision, comment: v.comment || "" }),
+    onSubmit: (v) => API.post(`/api/plan-change-requests/${cr.id}/review`, { decision, comment: v.comment || "", mark_significant: !!v.mark_significant }),
     onDone: () => { toast(decision === "Endorse" ? "Endorsed - sent for approval" : "Returned to the requester"); reload(); },
   });
 }
@@ -153,5 +161,21 @@ function revisePlanDialog(plan) {
     submitLabel: "Reopen for revision",
     onSubmit: (v) => API.post(`/api/assurance-plans/${plan.id}/reopen`, v),
     onDone: () => { toast("Plan reopened for revision"); openPlan(plan.id); },
+  });
+}
+
+function crCommittee(cr, reload) {
+  openForm({
+    title: `Audit Committee decision on ${cr.cr_ref}`, draftable: false, width: 600,
+    intro: "IIA GIAS 9.4: significant changes to the internal audit plan are approved by the board (Audit Committee). Approval applies the change and freezes a new version.",
+    fields: [
+      { name: "decision", label: "Decision", type: "select", required: true, options: ["Approved", "Rejected", "Deferred"] },
+      { name: "meeting_date", label: "Meeting date", type: "date", required: true, notFuture: true },
+      { name: "reference", label: "Minute / resolution reference", required: true, maxLength: 100, singleLine: true },
+      { name: "notes", label: "Committee comments", type: "textarea", maxLength: 8000, full: true },
+    ],
+    submitLabel: "Record decision",
+    onSubmit: (v) => API.post(`/api/plan-change-requests/${cr.id}/committee-decision`, { ...v, meeting_date: `${v.meeting_date}T09:00:00` }),
+    onDone: (r) => { toast(r.new_version ? `Approved - version ${r.new_version} frozen` : `Decision recorded: ${r.committee_decision}`); reload(); },
   });
 }

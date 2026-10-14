@@ -87,6 +87,9 @@ async function renderPlanCycleLog(panelEl, plan) {
       { key: "committee_reference", label: "Committee ref", render: (v) => v.committee_reference || "-" },
       { key: "approved_at", label: "Approved", render: (v) => fmtDate(v.approved_at).split(",")[0] },
       { key: "engagements", label: "Engagements", num: true },
+      { key: "iaa_reference", label: "Internal Audit Agency", render: (v) => (v.iaa_submitted_at
+        ? `${fmtDate(v.iaa_submitted_at).split(",")[0]} · ${v.iaa_reference}`
+        : (hasPerm("plan.amend") ? btn("Record IAA submission", () => iaaSubmission(plan, v), "small") : el("span", { class: "muted" }, "Not yet submitted"))) },
       { key: "dl", label: "", render: (v) => el("a", { class: "btn small secondary", href: `/api/assurance-plans/${plan.id}/versions/${v.version}/export.docx` },
         el("i", { class: "bi bi-file-earmark-word" }), " Controlled copy") },
     ], { pageSize: 20 })));
@@ -227,5 +230,19 @@ async function cycleDistribute(plan, c, reload) {
     submitLabel: "Distribute",
     onSubmit: (v) => API.post(`/api/assurance-plans/${plan.id}/cycle/distribute`, { user_ids: (v.user_ids || []).map(Number), note: v.note || "" }),
     onDone: () => { toast("Plan distributed"); reload(); },
+  });
+}
+
+function iaaSubmission(plan, v) {
+  openForm({
+    title: `Submit version ${v.version} to the Internal Audit Agency`, draftable: false, width: 560,
+    intro: "Record the submission of the Audit Committee-approved plan (or amended version) to the Internal Audit Agency.",
+    fields: [
+      { name: "submitted_on", label: "Date submitted", type: "date", required: true, notFuture: true },
+      { name: "reference", label: "Letter / submission reference", required: true, maxLength: 100, singleLine: true },
+    ],
+    submitLabel: "Record submission",
+    onSubmit: (x) => API.post(`/api/assurance-plans/${plan.id}/versions/${v.version}/iaa-submission`, { ...x, submitted_on: `${x.submitted_on}T09:00:00` }),
+    onDone: () => { toast("IAA submission recorded"); openPlan(plan.id); },
   });
 }

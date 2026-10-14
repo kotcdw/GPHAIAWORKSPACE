@@ -116,6 +116,11 @@ RULES: list[Rule] = [
          "recorded", "Plan configuration", "bool", default=True),
     Rule("plan_distribution_before_execution", "Engagements can start only after the GM Audit has distributed the "
          "approved plan", "Plan configuration", "bool", default=True),
+    Rule("plan_change_significant_hours_pct", "A plan change is significant (needs Audit Committee approval) when it "
+         "moves planned hours by at least this % ", "Plan configuration", "int",
+         "Adding or cancelling an engagement, leaving a high-risk unit uncovered or exceeding the budget is always "
+         "significant (IIA GIAS 9.4: significant changes to the plan are approved by the board).", default=10, min=1,
+         max=100),
     Rule("default_engagement_hours", "Default budget hours for a new engagement", "Plan configuration", "int",
          default=120, min=0, max=5000),
     # --- organizations / entities
