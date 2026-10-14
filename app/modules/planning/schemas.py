@@ -100,6 +100,7 @@ class EngagementIn(BaseModel):
     planned_quarter: Quarter = "Q1"
     budget_hours: int = Field(default=0, ge=0, le=10_000)
     lead_auditor_id: int | None = None
+    site_entity_id: int | None = None
 
 
 class EngagementUpdate(BaseModel):
@@ -109,6 +110,7 @@ class EngagementUpdate(BaseModel):
     planned_quarter: Quarter | None = None
     budget_hours: int | None = Field(default=None, ge=0, le=10_000)
     lead_auditor_id: int | None = None
+    site_entity_id: int | None = None
 
 
 class EngagementOut(ORMModel):
@@ -122,6 +124,8 @@ class EngagementOut(ORMModel):
     planned_quarter: str
     budget_hours: int
     lead_auditor_id: int | None
+    site_entity_id: int | None = None
+    site_name: str | None = None
     status: EngagementStatus
     audit_id: int | None
     created_at: datetime

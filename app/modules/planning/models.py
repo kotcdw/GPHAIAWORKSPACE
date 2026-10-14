@@ -112,6 +112,9 @@ class PlanEngagement(Base):
     planned_quarter: Mapped[str] = mapped_column(String(2), nullable=False, default="Q1")
     budget_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lead_auditor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Responsible site (Head Office or a port) - drives distribution and port execution.
+    site_entity_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"),
+                                                       nullable=True)
     status: Mapped[EngagementStatus] = mapped_column(
         _enum(EngagementStatus), nullable=False, default=EngagementStatus.Planned
     )

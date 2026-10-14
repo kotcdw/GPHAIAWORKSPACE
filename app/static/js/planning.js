@@ -278,11 +278,12 @@ async function renderEngagements(panel, plan) {
   if (!plan.engagements.length) card.append(el("div", { class: "empty" }, "No engagements yet."));
   else card.append(el("table", null,
     el("thead", null, el("tr", null, el("th", null, "Quarter"), el("th", null, "Engagement"), el("th", null, "Entity"),
-      el("th", null, "Risk"), el("th", null, "Hours"), el("th", null, "Status"), el("th", null, ""))),
+      el("th", null, "Risk"), el("th", null, "Site"), el("th", null, "Hours"), el("th", null, "Status"), el("th", null, ""))),
     el("tbody", null, ...plan.engagements.map((e) => el("tr", { class: "no-click" },
       el("td", null, e.planned_quarter), el("td", null, e.title, e.rationale ? el("div", { class: "muted" }, e.rationale) : null),
       el("td", null, e.entity_unit_name || "-"),
       el("td", null, e.entity_risk_score ? heat(e.entity_risk_score) : "-"),
+      el("td", null, e.site_name || el("span", { class: "muted" }, "-")),
       el("td", null, String(e.budget_hours)), el("td", null, badge(e.status)),
       el("td", null, el("div", { class: "actions" },
         e.audit_id ? btn("Open audit", () => openAudit(e.audit_id), "secondary") : null,
@@ -307,6 +308,8 @@ async function renderEngagements(panel, plan) {
 async function addEngagement(plan, eng = null) {
   const units = await safeGet("/api/entity-units?active_only=true", []);
   const leads = isAdmin() ? await safeGet("/api/users", null) : null; // user list is Admin-only
+  let sites = [];
+  try { sites = (await loadEntityConfig()).entities.filter((e) => e.is_port); } catch { /* optional */ }
   openForm({
     title: eng ? `Edit engagement #${eng.id}` : "Add engagement",
     key: eng ? `engagement:edit:${eng.id}` : `engagement:new:${plan.id}`,
@@ -315,6 +318,8 @@ async function addEngagement(plan, eng = null) {
       { name: "title", label: "Engagement title", required: true, maxLength: 255, singleLine: true },
       { name: "entity_unit_id", label: "Entity unit", type: "select", emptyLabel: "- none -",
         options: units.sort((a, b) => b.risk_score - a.risk_score).map((u) => ({ value: u.id, label: `${u.location_name} / ${u.name} (risk ${u.risk_score})` })) },
+      { name: "site_entity_id", label: "Responsible site (HQ / port)", type: "select", emptyLabel: "- choose -",
+        options: sites.map((x) => ({ value: x.id, label: x.name })), help: "Decides which copy of the approved plan (HQ, PIA Tema, PIA Takoradi ...) includes it" },
       { name: "planned_quarter", label: "Quarter", type: "select", required: true, options: QUARTERS },
       { name: "budget_hours", label: "Budget hours", type: "number", min: 0, max: 10000 },
       ...(Array.isArray(leads) ? [{ name: "lead_auditor_id", label: "Lead auditor", type: "select", emptyLabel: "- not assigned -",

@@ -125,7 +125,19 @@ def on_reopen(db: DBSession, plan: AssurancePlan, user: User, request: Request |
     plan.cycle_stage = "drafting"
 
 
+def _site_names(plan: AssurancePlan) -> dict[int, str]:
+    from sqlalchemy.orm import object_session
+
+    from app.modules.organizations.models import Organization
+
+    db = object_session(plan)
+    ids = {e.site_entity_id for e in plan.engagements if e.site_entity_id}
+    return {o.id: o.name for o in db.execute(select(Organization).where(Organization.id.in_(ids))).scalars()} if ids \
+        else {}
+
+
 def _snapshot(plan: AssurancePlan) -> dict:
+    sites = _site_names(plan)
     return {
         "plan_ref": plan.plan_ref, "fiscal_year": plan.fiscal_year, "title": plan.title,
         "description": plan.description, "total_budget_hours": plan.total_budget_hours,
@@ -138,6 +150,7 @@ def _snapshot(plan: AssurancePlan) -> dict:
             "risk": risk_level(e.entity_unit.risk_score) if e.entity_unit else None,
             "planned_quarter": e.planned_quarter, "budget_hours": e.budget_hours,
             "lead_auditor_id": e.lead_auditor_id, "rationale": e.rationale,
+            "site_entity_id": e.site_entity_id, "site": sites.get(e.site_entity_id),
         } for e in plan.engagements if e.status != EngagementStatus.Cancelled],
     }
 
@@ -214,6 +227,8 @@ class VersionOut(BaseModel):
 
 class DistributionOut(BaseModel):
     user_id: int
+    site_entity_id: int | None = None
+    site: str | None = None
     name: str
     job_role: str | None
     version: int
@@ -268,6 +283,12 @@ def _cycle(db: DBSession, plan: AssurancePlan, user: User) -> CycleOut:
     dist = list(db.execute(select(PlanDistribution).where(PlanDistribution.plan_id == plan.id)
                            .order_by(PlanDistribution.version.desc(), PlanDistribution.id)).scalars())
     live = [e for e in plan.engagements if e.status != EngagementStatus.Cancelled]
+    site_list = sites(db)
+    site_dest = {x["id"]: x["destination"] for x in site_list}
+    by_site: dict[str, dict[str, int]] = {}
+    for e in live:
+        row = by_site.setdefault(site_dest.get(e.site_entity_id, "No responsible site"), {"planned": 0, "started": 0})
+        row["started" if e.status == EngagementStatus.Started else "planned"] += 1
     by_lead: dict[str, dict[str, int]] = {}
     for e in live:
         row = by_lead.setdefault(_name(db, e.lead_auditor_id) or "Unassigned", {"planned": 0, "started": 0})
@@ -301,11 +322,12 @@ def _cycle(db: DBSession, plan: AssurancePlan, user: User) -> CycleOut:
                              approved_at=v.approved_at, engagements=len(json.loads(v.snapshot)["engagements"]),
                              iaa_submitted_at=v.iaa_submitted_at, iaa_reference=v.iaa_reference)
                   for v in versions],
-        distribution=[DistributionOut(user_id=d.user_id, name=_name(db, d.user_id) or "?",
+        distribution=[DistributionOut(user_id=d.user_id, site_entity_id=d.site_entity_id,
+                                      site=site_dest.get(d.site_entity_id), name=_name(db, d.user_id) or "?",
                                       job_role=_job_name(db, d.user_id), version=d.version, sent_at=d.sent_at,
                                       acknowledged_at=d.acknowledged_at) for d in dist],
         execution={"engagements": len(live), "started": sum(1 for e in live if e.status == EngagementStatus.Started),
-                   "by_lead": by_lead},
+                   "by_lead": by_lead, "by_site": by_site},
         can=can, preparation_checks=[{"key": k, "label": label} for k, label in PREPARATION_CHECKS],
         committee_decisions=list(COMMITTEE_DECISIONS),
     )
@@ -521,13 +543,20 @@ def _version(db: DBSession, plan_id: int, version: int) -> PlanVersion:
 
 
 @router.get("/api/assurance-plans/{plan_id}/versions/{version}/export.docx")
-def export_version(plan_id: int, version: int, request: Request, db: DBSession = Depends(get_db),
-                   user: User = Staff) -> Response:
+def export_version(plan_id: int, version: int, request: Request, site_id: int | None = None,
+                   db: DBSession = Depends(get_db), user: User = Staff) -> Response:
     from docx import Document
     from docx.shared import Pt
 
     v = _version(db, plan_id, version)
     s = json.loads(v.snapshot)
+    copy_for = None
+    if site_id is not None:  # the copy for one destination (HQ / PIA Tema / PIA Takoradi)
+        site = next((x for x in sites(db) if x["id"] == site_id), None)
+        if site is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown site")
+        copy_for = site["destination"]
+        s["engagements"] = [e for e in s["engagements"] if e.get("site_entity_id") == site_id]
     doc = Document()
     doc.styles["Normal"].font.size = Pt(10)
     doc.add_heading("Ghana Ports and Harbours Authority - Internal Audit", level=2)
@@ -535,19 +564,21 @@ def export_version(plan_id: int, version: int, request: Request, db: DBSession =
     doc.add_paragraph(f"Approved version {v.version} · {v.decision} by the Audit Committee on "
                       f"{v.approved_at:%d %B %Y} (ref {v.committee_reference or '-'}) · {s['plan_ref']}")
     doc.add_paragraph("CONTROLLED COPY - distributed by the GM Audit. Do not amend; changes go through the plan "
-                      "amendment process.").runs[0].bold = True
+                      "amendment process."
+                      + (f" Copy for: {copy_for}." if copy_for else "")).runs[0].bold = True
     if s.get("description"):
         doc.add_heading("Basis of the plan", level=2)
         doc.add_paragraph(s["description"])
     doc.add_heading("Planned engagements", level=2)
-    table = doc.add_table(rows=1, cols=5)
+    table = doc.add_table(rows=1, cols=6)
     table.style = "Light Grid Accent 1"
-    for cell, text in zip(table.rows[0].cells, ("Engagement", "Entity", "Risk", "Quarter", "Hours"), strict=True):
+    for cell, text in zip(table.rows[0].cells, ("Engagement", "Responsible site", "Entity", "Risk", "Quarter",
+                                                "Hours"), strict=True):
         cell.text = text
     for e in s["engagements"]:
         row = table.add_row().cells
-        for cell, text in zip(row, (e["title"], e["entity"] or "-", e["risk"] or "-", e["planned_quarter"],
-                                    str(e["budget_hours"])), strict=True):
+        for cell, text in zip(row, (e["title"], e.get("site") or "-", e["entity"] or "-", e["risk"] or "-",
+                                    e["planned_quarter"], str(e["budget_hours"])), strict=True):
             cell.text = text
     doc.add_paragraph(f"Total budget: {s['total_budget_hours']} hours · "
                       f"{sum(e['budget_hours'] for e in s['engagements'])} hours planned")
@@ -558,16 +589,60 @@ def export_version(plan_id: int, version: int, request: Request, db: DBSession =
     return Response(content=buf.getvalue(),
                     media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     headers={"Content-Disposition":
-                             f'attachment; filename="Assurance-Plan-FY{s["fiscal_year"]}-v{v.version}.docx"'})
+                             f'attachment; filename="Assurance-Plan-FY{s["fiscal_year"]}-v{v.version}'
+                             + (f"-{copy_for.replace(' ', '-')}" if copy_for else "") + '.docx"'})
 
 
 # ------------------------------------------------------------------ stages 9-10
+
+
+def sites(db: DBSession) -> list[dict]:
+    """Distribution destinations: Head Office and each port (entity types under Configuration > port categories)."""
+    from app.modules.organizations.router import Index
+
+    idx = Index(db)
+    out = []
+    for o in idx.rows.values():
+        if not idx.is_port(o):
+            continue
+        hq = (o.category or "").lower() in ("head office", "headquarters", "hq")
+        short = o.name.replace(" Port", "").replace(" port", "").strip() or o.name
+        out.append({"id": o.id, "name": o.name, "is_hq": hq, "destination": "HQ" if hq else f"PIA {short}"})
+    return sorted(out, key=lambda x: (not x["is_hq"], x["name"].lower()))
+
+
+def site_officers(db: DBSession, site_id: int) -> list[User]:
+    """Who receives the copy for a site: its PIA (port oversight) and Audit Managers / planners based there.
+    The GM Audit (portfolio oversight) distributes and is not a site recipient."""
+    from app.modules.audits.router import _home_port
+
+    staff = db.execute(select(User).where(User.is_active.is_(True), User.role.in_((Role.Auditor, Role.Admin))))
+    return [u for u in staff.scalars()
+            if _home_port(db, u) == site_id and has_perm(u, "oversight.port", "audit.memo_approve", "plan.prepare")
+            and not has_perm(u, "oversight.portfolio")]
 
 
 def default_recipients(db: DBSession) -> list[User]:
     """PIAs and Audit Managers (and anyone else who oversees a port or approves memos)."""
     return [u for u in db.execute(select(User).where(User.is_active.is_(True), User.role == Role.Auditor)).scalars()
             if has_perm(u, "oversight.port", "audit.memo_approve") and not has_perm(u, "oversight.portfolio")]
+
+
+@router.get("/api/assurance-plans/{plan_id}/cycle/destinations")
+def destinations(plan_id: int, db: DBSession = Depends(get_db), user: User = Staff) -> list[dict]:
+    """HQ, PIA Tema, PIA Takoradi ...: who receives each copy and what is in it."""
+    plan = _plan(db, plan_id)
+    live = [e for e in plan.engagements if e.status != EngagementStatus.Cancelled]
+    out = []
+    for s in sites(db):
+        engs = [e for e in live if e.site_entity_id == s["id"]]
+        out.append({**s, "engagements": len(engs), "hours": sum(e.budget_hours for e in engs),
+                    "recipients": [{"id": u.id, "name": u.full_name or u.username, "job_role": _job_name(db, u.id)}
+                                   for u in site_officers(db, s["id"])]})
+    unassigned = [e for e in live if e.site_entity_id is None]
+    return out + ([{"id": None, "name": "No responsible site", "destination": "Unassigned", "is_hq": False,
+                    "engagements": len(unassigned), "hours": sum(e.budget_hours for e in unassigned),
+                    "recipients": []}] if unassigned else [])
 
 
 @router.get("/api/assurance-plans/{plan_id}/cycle/recipients")
@@ -580,37 +655,57 @@ def recipients(plan_id: int, db: DBSession = Depends(get_db), user: User = Staff
 
 
 class DistributeIn(BaseModel):
-    user_ids: list[int] = Field(..., min_length=1, max_length=200)
+    site_ids: list[int] = Field(default_factory=list, max_length=50)
+    user_ids: list[int] = Field(default_factory=list, max_length=200)
     note: str = Field("", max_length=4000)
 
 
 @router.post("/api/assurance-plans/{plan_id}/cycle/distribute", response_model=CycleOut)
 def distribute(plan_id: int, payload: DistributeIn, request: Request, db: DBSession = Depends(get_db),
                user: User = Staff) -> CycleOut:
-    """GM Audit sends the approved version to named PIAs and Audit Managers, who acknowledge receipt."""
+    """GM Audit sends the approved version to the destinations - HQ and each port's PIA - and, optionally,
+    to named individuals. Every recipient acknowledges receipt."""
     ensure_perm(user, "oversight.portfolio")
     plan = _plan(db, plan_id)
     if plan.status != PlanStatus.Approved or plan.current_version == 0:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="Only an Audit Committee-approved version can be distributed")
     _at(plan, "distribution", "execution")
-    existing = {d.user_id for d in db.execute(select(PlanDistribution).where(
-        PlanDistribution.plan_id == plan.id, PlanDistribution.version == plan.current_version)).scalars()}
-    sent = []
-    for uid in dict.fromkeys(payload.user_ids):
+    if not payload.site_ids and not payload.user_ids:
+        raise field_error("site_ids", "choose at least one destination (HQ or a port)")
+    known = {s["id"]: s for s in sites(db)}
+    targets: list[tuple[int, int | None]] = []
+    for sid in dict.fromkeys(payload.site_ids):
+        if sid not in known:
+            raise field_error("site_ids", f"site {sid} is not Head Office or a port")
+        officers = site_officers(db, sid)
+        if not officers:
+            raise field_error("site_ids", f"nobody is registered to receive the plan at {known[sid]['name']}: "
+                                          "set 'Where I work' for its PIA / Audit Manager")
+        targets += [(u.id, sid) for u in officers]
+    for uid in payload.user_ids:
         u = db.get(User, uid)
         if u is None or not u.is_active or u.role not in (Role.Auditor, Role.Admin):
             raise field_error("user_ids", f"user {uid} is not an active member of the audit staff")
-        if uid in existing:
+        targets.append((uid, None))
+    existing = {d.user_id for d in db.execute(select(PlanDistribution).where(
+        PlanDistribution.plan_id == plan.id, PlanDistribution.version == plan.current_version)).scalars()}
+    sent: list[int] = []
+    for uid, sid in targets:
+        if uid in existing or uid in sent:
             continue
-        db.add(PlanDistribution(plan_id=plan.id, version=plan.current_version, user_id=uid,
+        db.add(PlanDistribution(plan_id=plan.id, version=plan.current_version, user_id=uid, site_entity_id=sid,
                                 note=payload.note.strip() or None, sent_by=user.id))
         sent.append(uid)
     notify_many(db, sent, f"Approved Assurance Plan FY{plan.fiscal_year} (version {plan.current_version})",
                 (payload.note.strip() + "\n\n" if payload.note.strip() else "")
                 + "Please open the plan and acknowledge receipt.", link_type="assurance_plan", link_id=plan.id)
-    _event(db, plan, user, "distribution", "Distributed", decision=f"Version {plan.current_version} to "
-           f"{len(sent)} recipient(s)", notes=payload.note.strip() or None, data=json.dumps({"user_ids": sent}))
+    dests = [known[s]["destination"] for s in dict.fromkeys(payload.site_ids)]
+    _event(db, plan, user, "distribution", "Distributed",
+           decision=(f"Version {plan.current_version} to " + ", ".join(dests or ["named individuals"]))[:40],
+           notes=(", ".join(dests) + (f" + {len(payload.user_ids)} individual(s)" if payload.user_ids else "")
+                  + (f". {payload.note.strip()}" if payload.note.strip() else "")),
+           data=json.dumps({"site_ids": payload.site_ids, "user_ids": sent}))
     plan.cycle_stage = "execution"
     db.commit()
     return _cycle(db, plan, user)

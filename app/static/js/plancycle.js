@@ -61,18 +61,27 @@ async function renderPlanCycle(slot, plan) {
 
   if (c.stage === "execution" || c.distribution.length) {
     const ex = c.execution;
+    // Group the copies by destination: HQ, PIA Tema, PIA Takoradi ... (individual copies last).
+    const groups = {};
+    c.distribution.forEach((d) => { (groups[d.site || "Individual copies"] ||= []).push(d); });
+    const destRows = Object.entries(groups).flatMap(([dest, rows]) => [
+      el("tr", { class: "no-click group-row" }, el("th", { colspan: "3" }, dest,
+        rows[0].site_entity_id ? el("a", { class: "small", style: "margin-left:8px", href: `/api/assurance-plans/${plan.id}/versions/${c.current_version}/export.docx?site_id=${rows[0].site_entity_id}` },
+          el("i", { class: "bi bi-file-earmark-word" }), " copy") : null)),
+      ...rows.map((d) => el("tr", { class: "no-click" },
+        el("td", null, d.name, el("div", { class: "muted small" }, d.job_role || "")),
+        el("td", null, `v${d.version}`),
+        el("td", null, d.acknowledged_at ? el("span", null, el("i", { class: "bi bi-check-circle-fill ok-ico" }), ` ${fmtDate(d.acknowledged_at).split(",")[0]}`)
+          : el("span", { class: "muted" }, "Awaiting acknowledgement"))))]);
     card.append(el("div", { class: "cycle-sub" },
       el("div", null, el("h4", null, "Distribution"),
-        c.distribution.length ? el("table", { class: "compact" }, el("tbody", null, ...c.distribution.map((d) => el("tr", { class: "no-click" },
-          el("td", null, d.name, el("div", { class: "muted small" }, d.job_role || "")),
-          el("td", null, `v${d.version}`),
-          el("td", null, d.acknowledged_at ? el("span", null, el("i", { class: "bi bi-check-circle-fill ok-ico" }), ` ${fmtDate(d.acknowledged_at).split(",")[0]}`)
-            : el("span", { class: "muted" }, "Awaiting acknowledgement"))))))
+        c.distribution.length ? el("table", { class: "compact perm-matrix" }, el("tbody", null, ...destRows))
           : el("div", { class: "muted" }, "Not distributed yet.")),
       el("div", null, el("h4", null, "Execution"),
         el("div", null, `${ex.started} of ${ex.engagements} engagements started`),
-        el("table", { class: "compact" }, el("tbody", null, ...Object.entries(ex.by_lead).map(([lead, n]) => el("tr", { class: "no-click" },
-          el("td", null, lead), el("td", { class: "num" }, `${n.started} started · ${n.planned} to start`))))))));
+        el("table", { class: "compact" }, el("tbody", null, ...Object.entries(ex.by_site || {}).map(([site, n]) => el("tr", { class: "no-click" },
+          el("td", null, el("strong", null, site)), el("td", { class: "num" }, `${n.started} started · ${n.planned} to start`))))),
+        el("div", { class: "muted small", style: "margin-top:6px" }, "By lead: " + Object.entries(ex.by_lead).map(([lead, n]) => `${lead} ${n.started}/${n.started + n.planned}`).join(" · ")))));
   }
 }
 
@@ -213,22 +222,30 @@ function cycleDecision(plan, c, reload) {
 }
 
 async function cycleDistribute(plan, c, reload) {
-  let people;
-  try { people = await API.get(`/api/assurance-plans/${plan.id}/cycle/recipients`); } catch (err) { toast(err.message, "error"); return; }
+  let dests; let people;
+  try {
+    [dests, people] = await Promise.all([API.get(`/api/assurance-plans/${plan.id}/cycle/destinations`),
+      API.get(`/api/assurance-plans/${plan.id}/cycle/recipients`)]);
+  } catch (err) { toast(err.message, "error"); return; }
   const already = new Set(c.distribution.filter((d) => d.version === c.current_version).map((d) => d.user_id));
-  const options = people.filter((p) => !already.has(p.id));
-  if (!options.length) { toast("Everyone has already received this version", "error"); return; }
+  const siteOpts = dests.filter((d) => d.id !== null).map((d) => ({ value: String(d.id),
+    label: `${d.destination} - ${d.name} · ${d.engagements} engagement(s), ${d.hours}h · ${d.recipients.length
+      ? `to ${d.recipients.map((r) => r.name).join(", ")}` : "NOBODY REGISTERED (set 'Where I work')"}` }));
+  const unassigned = dests.find((d) => d.id === null);
   openForm({
-    title: `Distribute approved version ${c.current_version}`, draftable: false, width: 640,
-    intro: "Controlled distribution: each recipient is notified and must acknowledge receipt. PIAs and Audit Managers are pre-selected.",
+    title: `Distribute approved version ${c.current_version}`, draftable: false, width: 720,
+    intro: "GM Audit controlled distribution. Each destination (HQ and each port's PIA) receives its copy, is notified and must acknowledge receipt."
+      + (unassigned ? ` ${unassigned.engagements} engagement(s) have no responsible site yet.` : ""),
     fields: [
-      { name: "user_ids", label: "Recipients", type: "checklist", required: true, full: true,
-        options: options.map((p) => ({ value: String(p.id), label: `${p.name}${p.job_role ? ` · ${p.job_role}` : ""}` })) },
+      { name: "site_ids", label: "Destinations", type: "checklist", full: true, options: siteOpts },
+      { name: "user_ids", label: "Also send a copy to (optional)", type: "checklist", full: true,
+        options: people.filter((p) => !already.has(p.id)).map((p) => ({ value: String(p.id), label: `${p.name}${p.job_role ? ` · ${p.job_role}` : ""}` })) },
       { name: "note", label: "Covering note", type: "textarea", maxLength: 4000, full: true },
     ],
-    initial: { user_ids: options.filter((p) => p.suggested).map((p) => String(p.id)) },
+    initial: { site_ids: dests.filter((d) => d.id !== null && d.recipients.length).map((d) => String(d.id)), user_ids: [] },
     submitLabel: "Distribute",
-    onSubmit: (v) => API.post(`/api/assurance-plans/${plan.id}/cycle/distribute`, { user_ids: (v.user_ids || []).map(Number), note: v.note || "" }),
+    onSubmit: (v) => API.post(`/api/assurance-plans/${plan.id}/cycle/distribute`, {
+      site_ids: (v.site_ids || []).map(Number), user_ids: (v.user_ids || []).map(Number), note: v.note || "" }),
     onDone: () => { toast("Plan distributed"); reload(); },
   });
 }

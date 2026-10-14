@@ -55,6 +55,9 @@ class PlanDistribution(Base):
     plan_id: Mapped[int] = mapped_column(ForeignKey("assurance_plans.id", ondelete="CASCADE"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Destination the copy went to (Head Office or a port); None = an individual copy.
+    site_entity_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"),
+                                                       nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

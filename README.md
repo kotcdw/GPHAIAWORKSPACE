@@ -221,7 +221,11 @@ cycle) → Audit Managers' planning meeting (date, attendees, minutes) → Draft
 e-signature, or return with comments) → Submission to the approving authority → Audit Committee decision
 (Approved / Approved with amendments / Deferred / Returned) → Approved version (numbered, frozen snapshot with a
 Word "controlled copy") → GM Audit controlled distribution (named PIAs and Audit Managers, receipt acknowledged)
-→ PIA / Manager execution (engagements started, by lead). Two switches under Configuration › Plan configuration
+→ PIA / Manager execution (engagements started, by site and by lead).
+Each engagement has a **responsible site** (Head Office or a port). The GM Audit distributes the approved version
+by destination - **HQ, PIA Tema, PIA Takoradi** (one per Head Office / port entity) - to the PIA / Audit Managers
+registered there ("Where I work"); each destination gets its own Word controlled copy with its engagements, and
+every recipient acknowledges receipt. Audits started from an engagement belong to its site. Two switches under Configuration › Plan configuration
 control enforcement: `plan_cycle_enforced` and `plan_distribution_before_execution` (both on by default).
 Plan statuses shown to users: **Draft, In Review, Submitted, Returned, Approved, Distributed, In Execution,
 Revised, Closed, Archived** (`lifecycle_status`, kept in step automatically; Archived = a closed year archived

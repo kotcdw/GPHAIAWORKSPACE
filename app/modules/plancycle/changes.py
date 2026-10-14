@@ -47,6 +47,7 @@ class Item(BaseModel):
     planned_quarter: str | None = Field(None, pattern=r"^Q[1-4]$")
     budget_hours: int | None = Field(None, ge=0, le=10000)
     lead_auditor_id: int | None = None
+    site_entity_id: int | None = None  # responsible site: Head Office or a port
     rationale: str = Field("", max_length=5000)
 
     @model_validator(mode="after")
@@ -105,6 +106,7 @@ def _rows(plan: AssurancePlan) -> list[dict]:
             "planned_quarter": e.planned_quarter,
             "budget_hours": e.budget_hours,
             "lead_auditor_id": e.lead_auditor_id,
+            "site_entity_id": e.site_entity_id,
             "status": e.status.value,
         }
         for e in plan.engagements
@@ -126,6 +128,10 @@ def _validate(db: DBSession, plan: AssurancePlan, items: list[Item]) -> None:
                 raise field_error("items", f"item {i}: '{e.title}' is already cancelled")
             if it.action == "cancel" and e.status != EngagementStatus.Planned:
                 raise field_error("items", f"item {i}: '{e.title}' has started and cannot be cancelled")
+        if it.site_entity_id is not None:
+            from app.modules.planning.router import check_site
+
+            check_site(db, it.site_entity_id)
         if it.entity_unit_id is not None and db.get(EntityUnit, it.entity_unit_id) is None:
             raise field_error("items", f"item {i}: unknown auditable unit")
         if it.lead_auditor_id is not None:
@@ -134,7 +140,7 @@ def _validate(db: DBSession, plan: AssurancePlan, items: list[Item]) -> None:
                 raise field_error("items", f"item {i}: the lead is not an active user")
         if it.action == "change" and not any(
             getattr(it, f) is not None
-            for f in ("title", "entity_unit_id", "planned_quarter", "budget_hours", "lead_auditor_id")
+            for f in ("title", "entity_unit_id", "planned_quarter", "budget_hours", "lead_auditor_id", "site_entity_id")
         ):
             raise field_error("items", f"item {i}: nothing to change")
 
@@ -154,6 +160,7 @@ def compute_impact(db: DBSession, plan: AssurancePlan, items: list[Item]) -> dic
                 "planned_quarter": it.planned_quarter or "Q1",
                 "budget_hours": it.budget_hours or 0,
                 "lead_auditor_id": it.lead_auditor_id,
+                "site_entity_id": it.site_entity_id,
                 "status": EngagementStatus.Planned.value,
             }
             after_rows.append(row)
@@ -165,7 +172,14 @@ def compute_impact(db: DBSession, plan: AssurancePlan, items: list[Item]) -> dic
         else:
             r = by_id[it.engagement_id]
             parts = []
-            for f in ("title", "entity_unit_id", "planned_quarter", "budget_hours", "lead_auditor_id"):
+            for f in (
+                "title",
+                "entity_unit_id",
+                "planned_quarter",
+                "budget_hours",
+                "lead_auditor_id",
+                "site_entity_id",
+            ):
                 v = getattr(it, f)
                 if v is not None and v != r[f]:
                     parts.append(f"{f.replace('_', ' ')} {r[f]} -> {v}")
@@ -549,6 +563,7 @@ def _apply(db: DBSession, plan: AssurancePlan, cr: PlanChangeRequest, items: lis
                 planned_quarter=it.planned_quarter or "Q1",
                 budget_hours=it.budget_hours or 0,
                 lead_auditor_id=it.lead_auditor_id,
+                site_entity_id=it.site_entity_id,
                 rationale=it.rationale,
                 created_by=user.id,
             )
@@ -580,7 +595,7 @@ def _apply(db: DBSession, plan: AssurancePlan, cr: PlanChangeRequest, items: lis
             )
             continue
         parts = []
-        for f in ("title", "entity_unit_id", "planned_quarter", "budget_hours", "lead_auditor_id"):
+        for f in ("title", "entity_unit_id", "planned_quarter", "budget_hours", "lead_auditor_id", "site_entity_id"):
             v = getattr(it, f)
             if v is not None and v != getattr(eng, f):
                 parts.append(f"{f.replace('_', ' ')} {getattr(eng, f)} -> {v}")
@@ -625,19 +640,20 @@ def _apply(db: DBSession, plan: AssurancePlan, cr: PlanChangeRequest, items: lis
     )
     # Controlled re-distribution: everyone who held the previous version receives the new one.
     previous = {
-        d.user_id
+        d.user_id: d.site_entity_id
         for d in db.execute(
             select(PlanDistribution).where(
                 PlanDistribution.plan_id == plan.id, PlanDistribution.version == cr.base_version
             )
         ).scalars()
     }
-    for uid in previous:
+    for uid, site_id in previous.items():
         db.add(
             PlanDistribution(
                 plan_id=plan.id,
                 version=plan.current_version,
                 user_id=uid,
+                site_entity_id=site_id,
                 sent_by=user.id,
                 note=f"Amended by {cr.cr_ref}: {cr.title}",
             )

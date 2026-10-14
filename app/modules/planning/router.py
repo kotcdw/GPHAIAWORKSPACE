@@ -186,6 +186,13 @@ def _require_draft(plan: AssurancePlan) -> None:
 
 def _engagement_out(eng: PlanEngagement) -> EngagementOut:
     out = EngagementOut.model_validate(eng)
+    if eng.site_entity_id:
+        from sqlalchemy.orm import object_session
+
+        from app.modules.organizations.models import Organization
+
+        site = object_session(eng).get(Organization, eng.site_entity_id)
+        out.site_name = site.name if site else None
     if eng.entity_unit is not None:
         out.entity_unit_name = f"{eng.entity_unit.location.name} / {eng.entity_unit.name}"
         out.entity_risk_score = eng.entity_unit.risk_score
@@ -399,6 +406,20 @@ def _engagement_or_404(db: DBSession, eng_id: int) -> PlanEngagement:
     return eng
 
 
+def check_site(db: DBSession, site_entity_id: int | None) -> None:
+    """The responsible site must be Head Office or a port (Configuration > Organizations > port categories)."""
+    if site_entity_id is None:
+        return
+    from app.modules.organizations.router import Index
+
+    idx = Index(db)
+    site = idx.rows.get(site_entity_id)
+    if site is None or not idx.is_port(site):
+        from app.core.errors import field_error
+
+        raise field_error("site_entity_id", "must be Head Office or a port")
+
+
 def _check_refs(db: DBSession, entity_unit_id: int | None, lead_auditor_id: int | None) -> None:
     if entity_unit_id is not None:
         unit = db.get(EntityUnit, entity_unit_id)
@@ -421,6 +442,7 @@ def add_engagement(
     plan = _plan_or_404(db, plan_id)
     _require_draft(plan)
     _check_refs(db, payload.entity_unit_id, payload.lead_auditor_id)
+    check_site(db, payload.site_entity_id)
     duplicate = next(
         (
             e
@@ -450,6 +472,7 @@ def update_engagement(
     eng = _engagement_or_404(db, eng_id)
     _require_draft(eng.plan)
     _check_refs(db, payload.entity_unit_id, payload.lead_auditor_id)
+    check_site(db, payload.site_entity_id)
     changes = payload.model_dump(exclude_none=True)
     for key, value in changes.items():
         setattr(eng, key, value)
@@ -523,7 +546,7 @@ def start_engagement(
         created_by=user.id,
         plan_id=eng.plan_id,
         entity_unit_id=eng.entity_unit_id,
-        port_entity_id=_home_port(db, user),
+        port_entity_id=eng.site_entity_id or _home_port(db, user),
     )
     db.add(audit)
     db.flush()

@@ -23,6 +23,8 @@ async function changeRequestEditor(plan, existing = null, onDone = null) {
   const unitOpts = units.sort((a, b) => b.risk_score - a.risk_score).map((u) => ({ value: u.id, label: `${u.location_name} / ${u.name} (risk ${u.risk_score})` }));
   const leadOpts = [{ value: state.user.id, label: `${state.user.full_name || state.user.username} (me)` },
     ...staff.map((s) => ({ value: s.id, label: `${s.name}${s.job_role ? ` · ${s.job_role}` : ""}` }))];
+  let siteOpts = [];
+  try { siteOpts = (await loadEntityConfig()).entities.filter((e) => e.is_port).map((e) => ({ value: e.id, label: e.name })); } catch { /* optional */ }
   const engOpts = live.map((e) => ({ value: e.id, label: `${e.title} (${e.planned_quarter}, ${e.budget_hours}h, ${e.status})` }));
 
   function control(it, key, node, parse = (v) => v) {
@@ -40,6 +42,7 @@ async function changeRequestEditor(plan, existing = null, onDone = null) {
         t.addEventListener("input", () => { it.title = t.value || null; });
         fields.push(field(it.action === "add" ? "Title" : "New title", t),
           field("Auditable unit", control(it, "entity_unit_id", el("select", null, ...opt(unitOpts, it.entity_unit_id, it.action === "add" ? "- none -" : "(unchanged)")), num)),
+          field("Responsible site", control(it, "site_entity_id", el("select", null, ...opt(siteOpts, it.site_entity_id, it.action === "add" ? "- choose -" : "(unchanged)")), num)),
           field("Quarter", control(it, "planned_quarter", el("select", null, ...opt(QUARTERS.map((q) => ({ value: q, label: q })), it.planned_quarter, it.action === "add" ? null : "(unchanged)")))),
           field("Budget hours", control(it, "budget_hours", el("input", { type: "number", min: "0", max: "10000", value: it.budget_hours ?? "", placeholder: it.action === "change" ? "(unchanged)" : "0" }), num)),
           field("Lead", control(it, "lead_auditor_id", el("select", null, ...opt(leadOpts, it.lead_auditor_id, it.action === "add" ? "- not assigned -" : "(unchanged)")), num)));
