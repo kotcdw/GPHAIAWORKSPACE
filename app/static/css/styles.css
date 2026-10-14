@@ -809,3 +809,5 @@ table.perm-matrix tfoot td { position: sticky; bottom: 0; background: var(--pane
 .badge-awaiting-committee { background: #8e4ec61f; color: #c9a6f2; border-color: #8e4ec655; }
 .badge-endorsed { background: #2f6fed22; color: #9dbcff; border-color: #2f6fed44; }
 .badge-withdrawn { background: #ffffff0d; color: var(--muted); border-color: var(--border); }
+/* Two-step set-up required: hide the navigation until it is done (sign-out stays). */
+body.mfa-gate #sidebarNav, body.mfa-gate .topbar-search, body.mfa-gate #bellBtn { display: none; }

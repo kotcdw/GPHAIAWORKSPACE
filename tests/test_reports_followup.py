@@ -85,10 +85,16 @@ def test_report_review_chain_and_exports(client, client2, db):
 
     not_ready = client.post(f"/api/reports/{rid}/submit-for-review", headers=ph)
     assert not_ready.status_code == 400 and "overall rating" in not_ready.json()["detail"]
-    upd = client.patch(f"/api/reports/{rid}", json={
-        "overall_rating": "Needs Improvement", "executive_summary": "Payroll controls need work.",
-        "overall_opinion": "Controls are partly effective.", "distribution_list": "MD, DMD Finance",
-    }, headers=ph)
+    upd = client.patch(
+        f"/api/reports/{rid}",
+        json={
+            "overall_rating": "Needs Improvement",
+            "executive_summary": "Payroll controls need work.",
+            "overall_opinion": "Controls are partly effective.",
+            "distribution_list": "MD, DMD Finance",
+        },
+        headers=ph,
+    )
     assert upd.status_code == 200 and upd.json()["blockers"] == ["1 finding(s) still need a management response."]
 
     sent = client.post(f"/api/reports/{rid}/send-to-management", headers=ph)
@@ -98,11 +104,22 @@ def test_report_review_chain_and_exports(client, client2, db):
 
     seen = client2.get(f"/api/reports/{rid}")
     assert seen.status_code == 200 and seen.json()["can_comment"] is True
-    assert client2.put(f"/api/reports/{rid}/management-comments",
-                       json={"management_comments": "We accept the findings."}, headers=ah).status_code == 200
-    assert client2.post(f"/api/findings/{finding['id']}/response",
-                        json={"management_response": "Leavers removed; HR checklist updated."},
-                        headers=ah).status_code == 200
+    assert (
+        client2.put(
+            f"/api/reports/{rid}/management-comments",
+            json={"management_comments": "We accept the findings."},
+            headers=ah,
+        ).status_code
+        == 200
+    )
+    assert (
+        client2.post(
+            f"/api/findings/{finding['id']}/response",
+            json={"management_response": "Leavers removed; HR checklist updated."},
+            headers=ah,
+        ).status_code
+        == 200
+    )
 
     sub = client.post(f"/api/reports/{rid}/submit-for-review", headers=ph)
     assert sub.status_code == 200 and sub.json()["status"] == "Manager Review"
@@ -114,9 +131,11 @@ def test_report_review_chain_and_exports(client, client2, db):
 
     with TestClient(app) as c3:
         mh = csrf_headers(login(c3, manager.username))
-        back = c3.post(f"/api/reports/{rid}/manager-review",
-                       json={"password": DEFAULT_PASSWORD, "decision": "Reject", "comment": "Add root cause"},
-                       headers=mh)
+        back = c3.post(
+            f"/api/reports/{rid}/manager-review",
+            json={"password": DEFAULT_PASSWORD, "decision": "Reject", "comment": "Add root cause"},
+            headers=mh,
+        )
         assert back.status_code == 200 and back.json()["status"] == "Draft"
         assert any("returned" in n.title for n in _notes(db, preparer.id))
         assert client.post(f"/api/reports/{rid}/submit-for-review", headers=ph).status_code == 200
@@ -162,15 +181,17 @@ def test_owner_implements_auditor_rejects_then_escalation(client, client2, db):
     oh = csrf_headers(login(client2, owner.username))
     short = client2.post(f"/api/capa/{cid}/implement", json={"evidence": "done"}, headers=oh)
     assert short.status_code == 422
-    done = client2.post(f"/api/capa/{cid}/implement",
-                        json={"evidence": "Monthly reconciliation now signed by the FM."}, headers=oh)
+    done = client2.post(
+        f"/api/capa/{cid}/implement", json={"evidence": "Monthly reconciliation now signed by the FM."}, headers=oh
+    )
     assert done.status_code == 200 and done.json()["status"] == "Review"
     assert any("Ready to validate" in n.title for n in _notes(db, auditor.id))
 
     no_reason = client.post(f"/api/capa/{cid}/validate", json={"result": "Not Effective"}, headers=h)
     assert no_reason.status_code == 422
-    reopened = client.post(f"/api/capa/{cid}/validate",
-                           json={"result": "Not Effective", "comment": "No sign-off for March"}, headers=h)
+    reopened = client.post(
+        f"/api/capa/{cid}/validate", json={"result": "Not Effective", "comment": "No sign-off for March"}, headers=h
+    )
     assert reopened.status_code == 200
     assert reopened.json()["status"] == "In Progress" and reopened.json()["reopen_count"] == 1
     assert any("reopened" in n.title for n in _notes(db, owner.id))
@@ -209,14 +230,20 @@ def test_totp_mfa_enrol_login_and_disable(client, db):
     with TestClient(app) as fresh:
         need = fresh.post("/api/auth/login", json={"username": user.username, "password": DEFAULT_PASSWORD})
         assert need.status_code == 401 and need.json()["detail"].startswith("MFA_REQUIRED")
-        wrong = fresh.post("/api/auth/login",
-                           json={"username": user.username, "password": DEFAULT_PASSWORD, "otp": "123456"})
+        wrong = fresh.post(
+            "/api/auth/login", json={"username": user.username, "password": DEFAULT_PASSWORD, "otp": "123456"}
+        )
         assert wrong.status_code == 401
-        good = fresh.post("/api/auth/login", json={
-            "username": user.username, "password": DEFAULT_PASSWORD, "otp": totp.code_at(secret, time.time())})
+        good = fresh.post(
+            "/api/auth/login",
+            json={"username": user.username, "password": DEFAULT_PASSWORD, "otp": totp.code_at(secret, time.time())},
+        )
         assert good.status_code == 200
-    off = client.post("/api/auth/mfa/disable",
-                      json={"password": DEFAULT_PASSWORD, "code": totp.code_at(secret, time.time())}, headers=h)
+    off = client.post(
+        "/api/auth/mfa/disable",
+        json={"password": DEFAULT_PASSWORD, "code": totp.code_at(secret, time.time())},
+        headers=h,
+    )
     assert off.status_code == 200 and off.json()["user"]["mfa_enabled"] is False
 
 
@@ -228,6 +255,17 @@ def test_mfa_required_role_is_enforced(client, db, monkeypatch):
     assert me["mfa_setup_required"] is True
     blocked = client.get("/api/audits")
     assert blocked.status_code == 403 and "two-step" in blocked.json()["detail"]
+    # A link opened in the browser (e.g. a Word copy) goes to the set-up screen instead of raw JSON.
+    nav = client.get(
+        "/api/audits",
+        headers={"Accept": "text/html,application/xhtml+xml", "Sec-Fetch-Mode": "navigate"},
+        follow_redirects=False,
+    )
+    assert nav.status_code == 303 and nav.headers["location"] == "/#mfa-setup"
+    # Signed out: back to the sign-in page.
+    client.post("/api/auth/logout", headers=csrf_headers(client.cookies.get("gpha_csrf") or ""))
+    anon = client.get("/api/audits", headers={"Accept": "text/html"}, follow_redirects=False)
+    assert anon.status_code in (303, 401)
 
 
 def test_login_throttle_and_security_headers(client, db, monkeypatch):
@@ -235,8 +273,7 @@ def test_login_throttle_and_security_headers(client, db, monkeypatch):
     from app.modules.auth import router as auth_router
 
     auth_router._ATTEMPTS.clear()
-    codes = [client.post("/api/auth/login", json={"username": "nobody", "password": "x"}).status_code
-             for _ in range(4)]
+    codes = [client.post("/api/auth/login", json={"username": "nobody", "password": "x"}).status_code for _ in range(4)]
     assert codes[:3] == [401, 401, 401] and codes[3] == 429
     auth_router._ATTEMPTS.clear()
     page = client.get("/")

@@ -518,6 +518,23 @@ async function boot() {
   }
 }
 
+function renderMfaGate() {
+  clear(viewRoot);
+  viewRoot.append(viewHeader("Set up two-step verification", null,
+    { sub: "Your role must use two-step verification. The workspace opens as soon as it is set up." }));
+  const steps = el("div", { class: "card" },
+    el("h3", null, "What you need"),
+    el("ol", { class: "steps-list" },
+      el("li", null, "An authenticator app on your phone (Microsoft Authenticator, Google Authenticator or similar)."),
+      el("li", null, "Press ", el("strong", null, "Set up two-step verification"), ", add the key to the app, then type the 6-digit code it shows.")),
+    el("p", { class: "muted small" }, "No authenticator app available? Ask a Platform Administrator, who can change which roles must use two-step verification under Configuration > Security (or on the server with ",
+      el("code", null, "uv run python -m scripts.mfa_policy"), ")."));
+  const holder = el("div", { class: "two-cols" });
+  viewRoot.append(holder);
+  renderMfaCard(holder);
+  holder.append(steps);
+}
+
 function showApp() {
   authView.classList.add("hidden");
   appView.classList.remove("hidden");
@@ -532,13 +549,17 @@ function showApp() {
   });
   document.querySelectorAll("#sidebarNav [data-staff]").forEach((n) => n.classList.toggle("hidden", state.user.role === "Auditee"));
   applyNavPermissions();
+  // Two-step verification is mandatory for this role and not set up yet: only the set-up screen is
+  // available (every other request would be refused), so show it alone instead of a page of errors.
+  document.body.classList.toggle("mfa-gate", !!state.mfaSetupRequired);
+  if (state.mfaSetupRequired) { renderMfaGate(); return; }
+  if (window.location.hash === "#mfa-setup") history.replaceState(null, "", window.location.pathname);
   checkHealth();
   refreshDraftCount();
   initBell();
   initGlobalSearch();
   const helpBtn = qs("#helpBtn");
   if (helpBtn && !helpBtn.dataset.ready) { helpBtn.dataset.ready = "1"; helpBtn.addEventListener("click", openHelp); }
-  if (state.mfaSetupRequired) { navigate("profile"); toast("Set up two-step verification to continue", "error"); return; }
   // Deep link from an e-mail: #open/<type>/<id>
   const link = /^#open\/([a-z_]+)\/(\d+)$/.exec(window.location.hash);
   if (link) { history.replaceState(null, "", window.location.pathname); openLink(link[1], Number(link[2])); return; }

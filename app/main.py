@@ -9,10 +9,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import DBAPIError, OperationalError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -273,6 +275,23 @@ async def database_error_handler(request, exc: DBAPIError):  # noqa: ANN001, ANN
             "code": "database_unavailable",
         },
     )
+
+
+MFA_SETUP_MESSAGE = "Set up two-step verification in your profile before continuing"
+
+
+@app.exception_handler(StarletteHTTPException)
+async def browser_aware_http_handler(request, exc: StarletteHTTPException):  # noqa: ANN001, ANN201
+    """A link opened in the browser (a Word copy, a report, an export) that needs sign-in or two-step set-up
+    goes back to the workspace instead of showing raw JSON; API calls keep their JSON errors."""
+    navigation = (request.method == "GET" and request.url.path.startswith("/api/")
+                  and "text/html" in request.headers.get("accept", "")
+                  and request.headers.get("sec-fetch-mode", "navigate") == "navigate")
+    if navigation and exc.status_code == 401:
+        return RedirectResponse("/", status_code=303)
+    if navigation and exc.status_code == 403 and exc.detail == MFA_SETUP_MESSAGE:
+        return RedirectResponse("/#mfa-setup", status_code=303)
+    return await http_exception_handler(request, exc)
 
 
 @app.exception_handler(FieldValidationError)

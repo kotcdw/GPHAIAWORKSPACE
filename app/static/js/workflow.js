@@ -397,8 +397,10 @@ function mfaEnrol(card, setup) {
     submitLabel: "Turn on",
     onSubmit: (v) => API.post("/api/auth/mfa/enable", v),
     onDone: (me) => {
+      const wasGated = !!state.mfaSetupRequired;
       state.user = me.user; state.perms = me.permissions || state.perms; state.mfaSetupRequired = me.mfa_setup_required;
       toast("Two-step verification is on");
+      if (wasGated && !state.mfaSetupRequired) { showApp(); return; }  // unlock the whole workspace
       paintMfa(card);
     },
   });

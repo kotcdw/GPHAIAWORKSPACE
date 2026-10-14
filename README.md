@@ -252,6 +252,13 @@ approved. A full revision ("Revise plan")
 needs a reason and goes back through internal review and the Audit Committee.
 API: `/api/assurance-plans/{id}/change-requests[/impact]`, `/api/plan-change-requests/{id}/review|approve|withdraw|resubmit`.
 
+### Two-step verification required
+
+When Configuration › Security makes two-step verification mandatory for a role, its users see only the set-up
+screen until they enrol (links opened directly, e.g. Word copies, return to that screen instead of an error).
+An administrator locked out without an authenticator app can change the policy on the server:
+`uv run python -m scripts.mfa_policy` (show), `--clear` (optional for all), `--roles Admin` (require for Admin).
+
 ## Quick start
 
 ```powershell
