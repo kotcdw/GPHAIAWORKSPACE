@@ -40,6 +40,9 @@ def seed_admin() -> None:
         if existing is not None:
             print(f"[init_db] admin user '{existing.username}' already exists (id={existing.id})")
             return
+        if not settings.admin_password:
+            print("[init_db] GPHA_ADMIN_PASSWORD is empty - no administrator created")
+            return
 
         admin = User(
             username=settings.admin_username,

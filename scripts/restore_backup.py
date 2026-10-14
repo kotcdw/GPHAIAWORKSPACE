@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from alembic.config import Config  # noqa: E402
-from sqlalchemy import DateTime, delete, func, insert, select  # noqa: E402
+from sqlalchemy import DateTime, delete, func, insert, select, text  # noqa: E402
 from sqlalchemy.exc import SAWarning  # noqa: E402
 from sqlalchemy.schema import sort_tables  # noqa: E402
 
@@ -100,6 +100,11 @@ def restore_json(payload: dict, *, assume_yes: bool) -> None:
             if answer.strip().lower() != "y":
                 sys.exit("Aborted.")
 
+        # The snapshot is internally consistent, but some tables reference each other (users <-> organizations,
+        # NC <-> CAPA ...). On MySQL foreign-key checks are paused for this session while rows go in.
+        mysql = db.get_bind().dialect.name == "mysql"
+        if mysql:
+            db.execute(text("SET FOREIGN_KEY_CHECKS=0"))
         for name in _REPLACEABLE:
             if name in tables:
                 db.execute(delete(Base.metadata.tables[name]))
@@ -122,6 +127,8 @@ def restore_json(payload: dict, *, assume_yes: bool) -> None:
                 values = {c: row.get(c) for c in cols if row.get(c) is not None}
                 if values:
                     db.execute(table.update().where(table.c.id == row["id"]).values(**values))
+        if mysql:
+            db.execute(text("SET FOREIGN_KEY_CHECKS=1"))
         db.commit()
         print("Restore complete. Users must sign in again (sessions are never backed up).")
     finally:
