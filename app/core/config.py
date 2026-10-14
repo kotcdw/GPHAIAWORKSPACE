@@ -105,6 +105,8 @@ class Settings(BaseSettings):
     require_findings_actioned_to_close: bool = True
     # Fieldwork may only start once the planning memo is approved (GIAS 13.6).
     require_memo_approval_for_fieldwork: bool = True
+    # Independence / conflict-of-interest declarations before fieldwork (IIA GIAS 2, 7.1).
+    require_engagement_declaration: bool = True
 
     # Per-IP throttle on sign-in attempts (in addition to account lockout).
     login_rate_limit_per_minute: int = 10
@@ -112,6 +114,9 @@ class Settings(BaseSettings):
     # Roles that must use multi-factor authentication (comma separated,
     # e.g. "Admin,Auditor"). Empty = optional for everyone.
     mfa_required_roles: str = ""
+    # Required-role MFA is enforced on a production installation (GPHA_ENVIRONMENT=production). Set this to true
+    # to enforce it on development / test installations as well.
+    mfa_enforce_outside_production: bool = False
 
     # AI Service secret (GPHA_AI_API_KEY). Kept in the environment only - never stored in the database.
     # Whether AI is used at all, and which provider/model, is set by administrators under Configuration > AI.

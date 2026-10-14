@@ -591,6 +591,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
   // Criteria library (GIAS 13.4): pick a standard criterion; its text fills the Criteria box.
   const library = canWrite ? (await safeGet("/api/criteria?status=Active", { items: [] })).items : [];
   const current = f && f.criterion_id ? await safeGet(`/api/criteria/${f.criterion_id}`, null) : null;
+  const cfDefs = customFieldDefs(await safeGet("/api/custom-fields?module=findings", [])).map((x) => ({ ...x, name: x.key, disabled: ro }));
   if (current && !library.some((c) => c.id === current.id)) library.push(current);
   const fields = [
     { name: "title", label: "Issue title", required: true, maxLength: 255, singleLine: true, disabled: ro },
@@ -608,6 +609,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     { name: "recommendation", label: "Recommendation", type: "textarea", maxLength: 20000, disabled: ro },
     { name: "root_cause_whys", label: "Root cause - 5 Whys", type: "whys", disabled: ro },
     { name: "description", label: "Additional notes", type: "textarea", maxLength: 20000, disabled: ro },
+    ...cfDefs,
     ...(isNew ? [] : [{ name: "management_response", label: "Management response (auditee / process owner)", type: "textarea", maxLength: 10000 }]),
   ];
   const raiseAction = !isNew && canWrite ? el("button", { class: "btn secondary", type: "button", onclick: async () => {
@@ -620,7 +622,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     key: isNew ? `finding:new:${auditId}` : `finding:edit:${f.id}`,
     meta: { title: isNew ? "New finding" : `Issue #${f.id} ${f.title}`, record_type: "audit", record_id: auditId },
     fields,
-    initial: f || { risk_rating: "Medium", status: "Open" },
+    initial: f ? { ...f, ...Object.fromEntries(Object.entries(f.custom_fields || {}).map(([k, x]) => [`cf_${k}`, x])) } : { risk_rating: "Medium", status: "Open" },
     width: 900,
     actions: [aiAction, raiseAction].filter(Boolean),
     validate: (v) => (v.status === "Closed" && !respondOnly && !(v.recommendation || "").trim() && !(v.condition || "").trim()
@@ -631,8 +633,11 @@ async function issueForm(f, auditId, canWrite, onSaved) {
         if (!(v.management_response || "").trim()) throw Object.assign(new Error("Enter a response"), { errors: [{ field: "management_response", message: "Enter your response" }] });
         return API.post(`/api/findings/${f.id}/response`, { management_response: v.management_response.trim() });
       }
-      const { management_response: response, ...rest } = v;
-      const body = { ...rest, assigned_owner_email: rest.assigned_owner_email || null };
+      const { management_response: response, ...all } = v;
+      const rest = {};
+      const custom = {};
+      Object.entries(all).forEach(([k, x]) => { if (k.startsWith("cf_")) custom[k.slice(3)] = x === "" ? null : x; else rest[k] = x; });
+      const body = { ...rest, assigned_owner_email: rest.assigned_owner_email || null, ...(cfDefs.length ? { custom_fields: custom } : {}) };
       const saved = isNew ? await API.post(`/api/audits/${auditId}/findings`, body) : await API.patch(`/api/findings/${f.id}`, body);
       if (!isNew && (response || "").trim() && response !== (f.management_response || "")) {
         await API.post(`/api/findings/${f.id}/response`, { management_response: response.trim() });

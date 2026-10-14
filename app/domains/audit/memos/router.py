@@ -275,6 +275,9 @@ def ensure_fieldwork_can_start(db: DBSession, audit: Audit) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="Fieldwork cannot start until the planning memo is approved by an Audit Manager or the CAE",
         )
+    from app.domains.audit.proficiency.service import ensure_declarations
+
+    ensure_declarations(db, audit)
 
 
 @router.get("/api/audits/{audit_id}/planning-memo.docx")

@@ -16,7 +16,9 @@ from app.core.enums import CapaStatus, Role, ValidationResult, utcnow
 from app.core.history import log_record_history
 from app.domains.issues.capa.models import Capa
 from app.domains.issues.capa.schemas import CapaOut
+from app.domains.issues.capa.status import FULLY, NOT_IMPLEMENTED, PARTIALLY
 from app.domains.issues.followup.service import LEVEL_NAMES, overdue_actions, run_escalations
+from app.platform.automations.engine import capa_context, emit
 from app.platform.notifications.service import notify, notify_many, user_id_by_email
 from app.platform.users.models import User
 
@@ -102,6 +104,7 @@ def record_implementation(
     notify(db, capa.created_by, f"Ready to validate: {capa.capa_ref}",
            f"{user.full_name or user.username} recorded the implementation of \"{capa.title}\".",
            link_type="capa", link_id=capa.id)
+    emit(db, "action.implemented", "capa", capa.id, capa_context(db, capa), period=f"impl{capa.reopen_count or 0}")
     db.commit()
     db.refresh(capa)
     return capa
@@ -140,11 +143,14 @@ def validate_implementation(
     owner = user_id_by_email(db, capa.owner_email)
     if payload.result == ValidationResult.NotEffective:
         capa.status = CapaStatus.InProgress
+        capa.implementation_status = PARTIALLY
         capa.reopen_count = (capa.reopen_count or 0) + 1
+        emit(db, "action.reopened", "capa", capa.id, capa_context(db, capa), period=f"reopen{capa.reopen_count}")
         notify_many(db, [owner, capa.implemented_by], f"Action reopened: {capa.capa_ref}",
                     f"The auditor found the action not effective: {payload.comment}",
                     link_type="capa", link_id=capa.id)
     else:
+        capa.implementation_status = FULLY
         notify_many(db, [owner, capa.created_by], f"Action validated: {capa.capa_ref}",
                     "The auditor confirmed the action is effective. It can now be closed with an e-signature.",
                     link_type="capa", link_id=capa.id)
@@ -174,3 +180,63 @@ def list_overdue(db: DBSession = Depends(get_db), user: User = Staff) -> list[Ov
 def trigger_escalations(db: DBSession = Depends(get_db),
                         user: User = Depends(require_perm("followup.manage"))) -> dict:
     return {"escalated": run_escalations(db)}
+
+
+class ProgressIn(BaseModel):
+    status: str
+    note: str = Field(min_length=10, max_length=10000)
+
+    @field_validator("status")
+    @classmethod
+    def _status(cls, value: str) -> str:
+        if value not in (NOT_IMPLEMENTED, PARTIALLY):
+            raise ValueError(f"must be {NOT_IMPLEMENTED} or {PARTIALLY}; full implementation is recorded with "
+                             "evidence and validated by an auditor")
+        return value
+
+
+@router.post("/api/capa/{capa_id}/progress", response_model=CapaOut)
+def record_progress(capa_id: int, payload: ProgressIn, request: Request, db: DBSession = Depends(get_db),
+                    user: User = Depends(require_active_user)) -> Capa:
+    """A progress update between due dates (shown in the quarterly follow-up report)."""
+    capa = _load(db, capa_id)
+    ensure_can_view(db, user, "capa", capa)
+    if not (is_privileged(user) or _same_email(capa.owner_email, user.email)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the action owner can record this")
+    if capa.status not in (CapaStatus.Open, CapaStatus.InProgress):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The action is not open")
+    capa.implementation_status = payload.status
+    capa.progress_note = f"{utcnow():%d %b %Y}: {payload.note.strip()}"
+    if capa.status == CapaStatus.Open and payload.status == PARTIALLY:
+        capa.status = CapaStatus.InProgress
+    log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
+                       action=f"PROGRESS {payload.status}", request=request)
+    log_action(db, user_id=user.id, action=f"REMEDIATION_PROGRESS id={capa.id} {payload.status}", request=request)
+    db.commit()
+    db.refresh(capa)
+    return capa
+
+
+class WithdrawalIn(BaseModel):
+    reason: str = Field(min_length=20, max_length=5000)
+
+
+@router.post("/api/capa/{capa_id}/propose-withdrawal", response_model=CapaOut)
+def propose_withdrawal(capa_id: int, payload: WithdrawalIn, request: Request, db: DBSession = Depends(get_db),
+                       user: User = Depends(require_perm("followup.manage"))) -> Capa:
+    """Re-evaluation: a recommendation no longer relevant or feasible goes to the Audit Committee to withdraw
+    (MoF instructions s.6.1(8), s.7.7)."""
+    capa = _load(db, capa_id)
+    if capa.status == CapaStatus.Closed:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The action is already closed")
+    capa.withdrawal_reason = payload.reason.strip()
+    capa.withdrawal_proposed_by = user.id
+    capa.withdrawal_proposed_at = utcnow()
+    log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
+                       action="WITHDRAWAL PROPOSED to the Audit Committee", request=request)
+    log_action(db, user_id=user.id, action=f"REMEDIATION_WITHDRAWAL_PROPOSED id={capa.id}", request=request)
+    emit(db, "action.withdrawal_proposed", "capa", capa.id, capa_context(db, capa),
+         period=f"wd{capa.withdrawal_proposed_at:%Y%m%d%H%M}")
+    db.commit()
+    db.refresh(capa)
+    return capa

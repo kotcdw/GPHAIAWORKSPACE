@@ -50,5 +50,25 @@ class AuditReport(Base):
     cae_approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     cae_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     issued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Management response deadline on the draft (L.I. 1994 reg. 43(2)).
+    draft_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    response_due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    response_received_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class ReportDistribution(Base):
+    """A copy of an issued report sent to a recipient (Internal Audit Agency Act, 2003 s.16)."""
+
+    __tablename__ = "report_distributions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("audit_reports.id", ondelete="CASCADE"), nullable=False,
+                                           index=True)
+    recipient: Mapped[str] = mapped_column(String(160), nullable=False)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False, default="Letter")
+    sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

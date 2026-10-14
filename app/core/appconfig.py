@@ -44,6 +44,7 @@ class Rule:
     min: int | None = None
     max: int | None = None
     options: list[str] = field(default_factory=list)
+    allow_empty: bool = False  # list rules: an empty list is a valid value
 
     def default_value(self) -> Any:
         if self.default_attr:
@@ -135,8 +136,79 @@ RULES: list[Rule] = [
     Rule("mfa_required_roles", "Roles that must use two-step verification", "Security", "roles",
          "Users in these roles are asked to set it up at their next sign-in.", default_attr="mfa_required_roles",
          options=["Admin", "Auditor", "Auditee"]),
+    Rule("mfa_enforce_outside_production", "Also require two-step verification on development / test "
+         "installations", "Security", "bool",
+         "Off: the roles above must use two-step verification only once the workspace is published "
+         "(GPHA_ENVIRONMENT=production). Anyone can still turn it on for themselves in their profile.",
+         default_attr="mfa_enforce_outside_production"),
     Rule("login_rate_limit_per_minute", "Sign-in attempts allowed per computer per minute (0 = no limit)",
          "Security", "int", default_attr="login_rate_limit_per_minute", min=0, max=1000),
+    # --- follow-up of recommendations (MoF Audit Recommendations Implementation and Follow-up Instructions)
+    Rule("draft_report_response_working_days", "Working days management has to respond to a draft audit report",
+         "Follow-up & reporting", "int", "Internal Audit Regulations, 2011 (L.I. 1994) reg. 43(2): ten working days. "
+         "The due date is set when the draft goes to management; weekends and the public holidays below are skipped.",
+         default=10, min=1, max=90),
+    Rule("public_holidays", "Public holidays (not counted as working days)", "Follow-up & reporting", "list",
+         "One date per line as YYYY-MM-DD.", default=[], allow_empty=True),
+    Rule("recommendation_sources", "Where recommendations come from", "Follow-up & reporting", "list",
+         "The first entry is used for recommendations raised from internal audit findings. Others cover the "
+         "Auditor-General's management letter, PAC and Parliament decisions (PFM Act 2016, Act 921, s.88).",
+         default=["Internal Audit", "Auditor-General (Management Letter)", "Public Accounts Committee",
+                  "Parliament", "Audit Committee", "Regulator / other body"]),
+    Rule("action_timeframes", "Implementation timeframes for management action plans", "Follow-up & reporting",
+         "list", default=["Short term (within 3 months)", "Medium term (3 to 12 months)",
+                          "Long term (over 12 months)"]),
+    Rule("committee_closes_recommendations", "Internal audit recommendations are closed by an Audit Committee "
+         "decision (not by e-signature alone)", "Follow-up & reporting", "bool",
+         "MoF instructions s.7.7: the Audit Committee closes internal audit recommendations once the evidence is "
+         "sufficient. Recommendations from external bodies always need the external body's closure reference.",
+         default=False),
+    Rule("quarterly_report_recipients", "Recipients of the quarterly follow-up report", "Follow-up & reporting",
+         "list", "Act 921 s.83(5)(e); MoF instructions s.6.1(3).",
+         default=["Audit Committee", "Internal Audit Agency"]),
+    Rule("annual_statement_recipients", "Recipients of the annual statement on implementation of recommendations",
+         "Follow-up & reporting", "list", "Act 921 s.88(1)(b).",
+         default=["Minister for Finance", "Parliament", "Office of the President", "Auditor-General",
+                  "Internal Audit Agency"]),
+    Rule("annual_statement_due", "Annual statement due date (MM-DD of the following year)", "Follow-up & reporting",
+         "text", "Act 921 s.88(1)(b): not later than 30 June.", default="06-30"),
+    Rule("report_statutory_recipients", "Who must receive a copy of every issued audit report",
+         "Follow-up & reporting", "list",
+         "Internal Audit Agency Act, 2003 (Act 658) s.16(3)-(5). Adjust to GPHA's reporting route.",
+         default=["Director-General (Management)", "Audit Committee", "Internal Audit Agency (Director-General)",
+                  "Auditor-General"]),
+    # --- professional practice (IIA GIAS Domains II and III)
+    Rule("require_engagement_declaration", "Require independence / conflict-of-interest declarations before "
+         "fieldwork starts", "Professional practice", "bool",
+         "IIA GIAS 2.1-2.3 and 7.1: the GM Audit, the engagement creator and the lead auditor must hold a current "
+         "annual declaration and have declared for this engagement.", default_attr="require_engagement_declaration"),
+    Rule("declaration_text_annual", "Annual declaration text", "Professional practice", "longtext",
+         default=("I confirm that during this year I will comply with the IIA Code of Ethics and the Global Internal "
+                  "Audit Standards (integrity, objectivity, competency, due professional care and confidentiality), "
+                  "and with sections 18 to 20 of the Internal Audit Agency Act, 2003 (Act 658). I will keep "
+                  "information obtained in the course of my work confidential, and I will disclose promptly any "
+                  "relationship, interest or circumstance that could impair, or appear to impair, my objectivity.")),
+    Rule("declaration_text_engagement", "Engagement declaration text", "Professional practice", "longtext",
+         default=("For this engagement I confirm that I have no personal, financial or professional relationship "
+                  "with the area under review, I have not been responsible for the activities under review in the "
+                  "past 12 months, and I am not aware of anything that impairs my objectivity. Any conflict is "
+                  "disclosed below.")),
+    Rule("cpd_target_hours", "Continuing professional development hours expected per auditor per year",
+         "Professional practice", "int", "IIA GIAS 3.2.", default=40, min=0, max=200),
+    Rule("cpd_ethics_hours", "Of which ethics hours", "Professional practice", "int", default=2, min=0, max=40),
+    Rule("charter_review_months", "Review the internal audit charter every (months)", "Professional practice",
+         "int", "IIA GIAS 6.2: the charter is reviewed with the board periodically.", default=12, min=1, max=60),
+    Rule("eqa_interval_years", "External quality assessment at least every (years)", "Professional practice", "int",
+         "IIA GIAS 8.4.", default=5, min=1, max=5),
+    Rule("conformance_statement", "Conformance statement for Audit Committee reports", "Professional practice",
+         "longtext", "Shown in the Committee pack with the latest internal and external assessment results "
+         "(IIA GIAS 8.3, 15.1).",
+         default=("The Internal Audit Department conducts its work in conformance with the IIA Global Internal Audit "
+                  "Standards and the standards and procedures of the Internal Audit Agency, as confirmed by the "
+                  "results of the quality assurance and improvement programme summarised below.")),
+    Rule("retention_years", "Keep closed audit files for (years) before review for disposal", "Professional practice",
+         "int", "Set according to GPHA's records management policy. Nothing is deleted automatically; records past "
+         "this period are listed for review.", default=7, min=1, max=50),
     # --- AI service (pluggable, off by default)
     Rule("ai_enabled", "Allow AI drafting assistance", "AI", "bool",
          "Off by default. When on, users with the 'Use AI drafting assistance' permission can ask for drafts of "
@@ -249,10 +321,10 @@ def validate(rule: Rule, value: Any) -> Any:
                 raise ValueError("each entry must be 100 characters or fewer")
             if item and item.lower() not in [c.lower() for c in clean]:
                 clean.append(item)
-        if not clean:
+        if not clean and not rule.allow_empty:
             raise ValueError("enter at least one entry")
-        if len(clean) > 50:
-            raise ValueError("enter at most 50 entries")
+        if len(clean) > 100:
+            raise ValueError("enter at most 100 entries")
         return clean
     text = str(value or "").strip()
     if rule.kind == "text" and (not text or len(text) > 200):

@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import delete, func, insert, select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core.appconfig import cfg
 from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
@@ -735,10 +736,16 @@ def raise_action(finding_id: int, request: Request, db: DBSession = Depends(get_
         due_date=default_due_date(_SEVERITY[finding.risk_rating]),
         source_type="finding",
         source_id=finding.id,
+        source_body=(cfg("recommendation_sources") or ["Internal Audit"])[0],
+        source_year=utcnow().year,
+        custom_fields="{}",
         created_by=user.id,
     )
     db.add(capa)
     db.flush()
+    from app.platform.automations.engine import capa_context, emit
+
+    emit(db, "action.created", "capa", capa.id, capa_context(db, capa))
     if finding.status == FindingStatus.Open:
         finding.status = FindingStatus.Remediating
     auto_task_for_record(db, record_type="capa", record=capa, action="Action remediation", assignor_id=user.id)

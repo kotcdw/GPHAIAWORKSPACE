@@ -178,6 +178,9 @@ def save_management_comments(report_id: int, payload: ManagementComments, reques
     if not (is_privileged(user) or report.audit_id in assigned_audit_ids(db, user)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not an auditee of this audit")
     report.management_comments = payload.management_comments
+    if report.status == ReportStatus.ManagementReview and report.response_received_at is None \
+            and payload.management_comments.strip():
+        report.response_received_at = utcnow()
     _history(db, report, user, "COMMENTED management comments saved", request)
     notify(db, report.created_by, f"Management comments on {report.report_ref}",
            f"{user.full_name or user.username} added comments to the draft report.",
@@ -200,12 +203,22 @@ def send_to_management(report_id: int, request: Request, db: DBSession = Depends
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Add the overall rating and executive summary before sending to management")
     report.status = ReportStatus.ManagementReview
+    from app.core.workdays import add_working_days
+
+    report.draft_sent_at = utcnow()
+    report.response_due_at = add_working_days(report.draft_sent_at, int(cfg("draft_report_response_working_days")))
+    report.response_received_at = None
     owners = [user_id_by_email(db, f.assigned_owner_email)
               for f in db.execute(select(Finding).where(Finding.audit_id == report.audit_id)).scalars()]
     notify_many(db, _auditee_ids(db, report.audit_id) + owners, f"Draft audit report for your comments: {report.title}",
-                "Please review the draft report and add management comments and responses to each finding.",
+                "Please review the draft report and add management comments and responses to each finding. "
+                f"Your response is due by {report.response_due_at:%d %B %Y} "
+                f"({cfg('draft_report_response_working_days')} working days).",
                 link_type="audit_report", link_id=report.id)
     _history(db, report, user, "SENT to management for comments", request)
+    from app.platform.automations.engine import emit, report_context
+
+    emit(db, "report.sent_to_management", "audit_report", report.id, report_context(db, report))
     db.commit()
     db.refresh(report)
     return _out(db, report, user)
@@ -293,6 +306,9 @@ def cae_approve(report_id: int, payload: ESignRequest, request: Request, db: DBS
         notify_many(db, _auditee_ids(db, report.audit_id) + [report.created_by, report.manager_reviewed_by],
                     f"Audit report issued: {report.title}", f"{report.report_ref} has been approved and issued.",
                     link_type="audit_report", link_id=report.id)
+        from app.platform.automations.engine import emit, report_context
+
+        emit(db, "report.issued", "audit_report", report.id, report_context(db, report))
     else:
         report.status = ReportStatus.Draft
         notify_many(db, [report.created_by, report.manager_reviewed_by], f"Report returned by CAE: {report.report_ref}",

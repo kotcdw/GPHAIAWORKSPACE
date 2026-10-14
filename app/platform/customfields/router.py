@@ -22,7 +22,7 @@ from app.platform.users.models import User
 
 router = APIRouter(prefix="/api/custom-fields", tags=["custom fields"])
 Admin = Depends(require_perm("system.reference"))
-MODULES = ("organizations",)  # modules whose records carry custom fields
+MODULES = ("organizations", "audits", "findings", "capa")  # modules whose records carry custom fields
 _MODULE_PATTERN = "^(" + "|".join(MODULES) + ")$"
 
 

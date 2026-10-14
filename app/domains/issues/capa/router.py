@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -9,11 +10,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.access import ensure_can_view, ensure_deletable, visible
+from app.core.appconfig import cfg
 from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_active_user, require_module_tier
-from app.core.enums import CapaStatus, NCStatus, Role, Severity, ValidationResult
+from app.core.enums import CapaStatus, NCStatus, Role, Severity, ValidationResult, utcnow
+from app.core.errors import field_error
 from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.core.schemas import ESignRequest, MessageOut
@@ -21,6 +24,7 @@ from app.core.tasksvc import auto_task_for_record
 from app.domains.audit.audits.lifecycle import default_due_date
 from app.domains.issues.capa.models import Capa
 from app.domains.issues.capa.schemas import CapaCreate, CapaLink, CapaList, CapaOut, CapaUpdate
+from app.domains.issues.capa.status import FULLY, IMPLEMENTATION_STATUSES, is_internal
 from app.domains.issues.nonconformances.models import Nonconformance
 from app.platform.users.models import User
 
@@ -29,6 +33,30 @@ router = APIRouter(prefix="/api/capa", tags=["capa"])
 WriteCapa = Depends(require_module_tier("capa", Role.Admin, Role.Auditor))
 AdminCapa = Depends(require_module_tier("capa", Role.Admin))
 _CLOSE_VIA_ESIGN = "A remediation can only be closed by an e-signed sign-off (POST /api/capa/{id}/close)"
+_FOLLOWUP_FIELDS = ("timeframe", "source_body", "source_reference", "source_year", "followup_comment",
+                    "external_closure_ref")
+
+
+def _apply_followup_fields(db: DBSession, capa: Capa, payload: CapaCreate | CapaUpdate, changes: list[str]) -> None:
+    """Source of the recommendation, timeframe, IAU comment and admin-defined custom fields."""
+    sent = payload.model_fields_set
+    if "source_body" in sent and payload.source_body:
+        if payload.source_body not in (cfg("recommendation_sources") or []):
+            raise field_error("source_body", "choose one of the configured sources")
+    if "timeframe" in sent and payload.timeframe:
+        if payload.timeframe not in (cfg("action_timeframes") or []):
+            raise field_error("timeframe", "choose one of the configured timeframes")
+    for name in _FOLLOWUP_FIELDS:
+        if name in sent:
+            value = getattr(payload, name)
+            setattr(capa, name, value.strip() if isinstance(value, str) else value)
+            changes.append(name)
+    if "custom_fields" in sent:
+        from app.platform.customfields.router import clean_values
+
+        capa.custom_fields = json.dumps(clean_values(db, "capa", payload.custom_fields,
+                                                     json.loads(capa.custom_fields or "{}")))
+        changes.append("custom fields")
 
 
 def _get_or_404(db: DBSession, capa_id: int) -> Capa:
@@ -45,6 +73,8 @@ def list_capa(
     q: str | None = Query(default=None),
     status_filter: CapaStatus | None = Query(default=None, alias="status"),
     severity: Severity | None = Query(default=None),
+    source_body: str | None = Query(default=None),
+    implementation_status: str | None = Query(default=None),
 ) -> CapaList:
     stmt = select(Capa).order_by(Capa.id.desc())
     if q:
@@ -53,6 +83,10 @@ def list_capa(
         stmt = stmt.where(Capa.status == status_filter)
     if severity is not None:
         stmt = stmt.where(Capa.severity == severity)
+    if source_body:
+        stmt = stmt.where(Capa.source_body == source_body)
+    if implementation_status in IMPLEMENTATION_STATUSES:
+        stmt = stmt.where(Capa.implementation_status == implementation_status)
     items = visible(db, user, "capa", list(db.execute(stmt).scalars().all()))
     return CapaList(total=len(items), items=[CapaOut.model_validate(c) for c in items])
 
@@ -80,10 +114,18 @@ def create_capa(
         owner_email=payload.owner_email,
         due_date=payload.due_date or default_due_date(payload.severity),
         linked_nc_id=payload.linked_nc_id,
+        custom_fields="{}",
+        source_year=utcnow().year,
         created_by=user.id,
     )
+    _apply_followup_fields(db, capa, payload, [])
+    if not capa.source_body:
+        capa.source_body = (cfg("recommendation_sources") or ["Internal Audit"])[0]
     db.add(capa)
     db.flush()
+    from app.platform.automations.engine import capa_context, emit
+
+    emit(db, "action.created", "capa", capa.id, capa_context(db, capa))
     if capa.linked_nc_id is not None:
         nc = db.get(Nonconformance, capa.linked_nc_id)
         if nc is not None:
@@ -137,6 +179,7 @@ def update_capa(
         if value is not None:
             setattr(capa, field, value)
             changes.append(field)
+    _apply_followup_fields(db, capa, payload, changes)
     log_action(db, user_id=user.id, action=f"REMEDIATION_UPDATE id={capa.id} [{', '.join(changes)}]", request=request)
     log_record_history(
         db,
@@ -179,6 +222,11 @@ def copy_capa(capa_id: int, request: Request, db: DBSession = Depends(get_db), u
         status=CapaStatus.Open,
         owner_email=source.owner_email,
         due_date=source.due_date,
+        timeframe=source.timeframe,
+        source_body=source.source_body,
+        source_reference=source.source_reference,
+        source_year=source.source_year,
+        custom_fields=source.custom_fields or "{}",
         created_by=user.id,
     )
     db.add(copy)
@@ -249,9 +297,18 @@ def close_capa(
             status_code=status.HTTP_409_CONFLICT,
             detail="An auditor must validate the implementation as Effective before the action can be closed",
         )
+    if is_internal(capa) and cfg("committee_closes_recommendations"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Internal audit recommendations are closed by an Audit Committee decision. "
+                                   "Record the decision in the Committee meetings register.")
+    if not is_internal(capa) and not (capa.external_closure_ref or "").strip():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Recommendations from {capa.source_body} are closed by that body. Record its "
+                                   "closure reference (e.g. the Auditor-General's letter) before closing.")
 
     def _on_approve(session: DBSession) -> None:
         capa.status = CapaStatus.Closed
+        capa.implementation_status = FULLY
         capa.closed_by = user.id
         capa.closed_at = datetime.now(UTC).replace(tzinfo=None)
         if capa.linked_nc_id is not None:

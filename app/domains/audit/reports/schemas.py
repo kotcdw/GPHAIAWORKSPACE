@@ -76,6 +76,9 @@ class ReportOut(BaseModel):
     cae_approved_by: int | None
     cae_approved_at: datetime | None
     issued_at: datetime | None
+    draft_sent_at: datetime | None = None
+    response_due_at: datetime | None = None
+    response_received_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     # Computed for the screen: what the signed-in user may do next.

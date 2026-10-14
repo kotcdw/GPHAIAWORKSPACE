@@ -27,6 +27,7 @@ MODULES = {
     "views": "Saved views and filters",
     "dataio": "Import and export",
     "backups": "Encrypted database backups",
+    "automations": "Admin-defined automation rules: reminders, routing and escalation",
 }
 
 
@@ -34,6 +35,7 @@ def routers() -> list:
     from app.platform.approvals.router import router as approvals
     from app.platform.architecture import router as architecture
     from app.platform.auth.router import router as auth
+    from app.platform.automations.router import router as automations
     from app.platform.backups.router import router as backups
     from app.platform.configuration.router import router as configuration
     from app.platform.customfields.router import router as customfields
@@ -50,4 +52,4 @@ def routers() -> list:
     from app.platform.views.router import router as views
 
     return [auth, users, history, records_router, organizations, stakeholders, tasks, approvals, backups,
-            drafts, notifications, configuration, dataio, views, customfields, roles, architecture]
+            drafts, notifications, configuration, dataio, views, customfields, roles, architecture, automations]

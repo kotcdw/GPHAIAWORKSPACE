@@ -459,13 +459,58 @@ app/
     documents/       Word documents (letterhead + classification footer) and encrypted file storage
   main.py            layer router registry + lifespan (backup scheduler, escalations)
   static/            HTML/CSS/JS front end (index.html, css/, js/, img/)
-alembic/versions/    migrations 0001 .. 0021
+alembic/versions/    migrations 0001 .. 0022
 mysql/init/          init SQL mounted into the Docker container at first boot
 scripts/             init_db.py, seed_demo.py, restore_backup.py, mfa_policy.py
 tests/               pytest suite (runs on MySQL)
 uploads/             uploaded working papers and evidence (git-ignored)
 backups/             database snapshots (git-ignored)
 ```
+
+### Statutory follow-up, Audit Committee and professional practice
+
+Aligned with the Internal Audit Agency Act, 2003 (Act 658), the PFM Act, 2016 (Act 921), the MoF *Audit
+Recommendations Implementation and Follow-up Instructions* and the IIA Global Internal Audit Standards:
+
+- **Draft report response deadline** - set when a draft goes to management: 10 working days by default
+  (L.I. 1994 reg. 43(2)), skipping weekends and the public holidays configured by admins.
+- **Recommendations** carry their source (Internal Audit, Auditor-General management letter, PAC, Parliament...),
+  reference, timeframe (short / medium / long term), Internal Audit follow-up comment and an implementation status
+  of *Not / Partially / Fully Implemented / Withdrawn*. Owners post progress updates; withdrawal is proposed to the
+  Audit Committee. External recommendations need the external body's closure reference.
+- **Remediation > Statutory reports** - quarterly follow-up report (Audit Committee and IAA; Act 921 s.83(5)(e))
+  and the annual statement on implementation (Act 921 s.88(1)(b), due 30 June) in Word and Excel, with a register
+  of submissions keeping a frozen copy of what was sent.
+- **Audit Committee > Meetings & decisions** - meetings register, attendance, quorum, minutes (approved and locked),
+  and decisions on recommendations (close, withdraw, extend, escalate) applied to the actions. Optional rule: internal
+  recommendations are closed only by Committee decision. The Committee pack now includes implementation status,
+  items for decision and a conformance statement.
+- **Report distribution register** - copies of each issued report sent to the required recipients (Act 658 s.16;
+  list configurable), with the register of audit reports in Excel.
+- **Professional practice** - annual and per-engagement independence / ethics / confidentiality declarations
+  (required before fieldwork, conflicts reviewed by the GM Audit), CPD hours against target and certifications,
+  internal audit charter versions approved by the Audit Committee with review dates, and external quality
+  assessments every five years.
+
+### Automations and customisation
+
+**Automations** (Platform Administrators and Audit Administrators): rules of the form *when <event or date>
+[and conditions] then notify people / create tasks*, addressed by job role, permission or the record's people
+(owner, auditees...). Twelve built-in rules (due-date reminders, overdue draft responses, distribution gaps,
+declarations, CPD, certifications, charter review, external assessment, quarterly report and annual statement
+due, High-risk findings) can be edited or switched off. Rules run hourly, fire once per record, can be previewed,
+and every run is logged.
+
+**Custom fields** can now be added to audits, findings and recommendations as well as organizations
+(Configuration). All new lists, deadlines and recipients are admin settings under Configuration >
+*Follow-up & reporting* and *Professional practice*.
+
+### Two-step verification before go-live
+
+Roles listed under Configuration > Security must use two-step verification once the workspace is published
+(`GPHA_ENVIRONMENT=production`). On development / test installations it is not enforced unless an administrator
+ticks *Also require two-step verification on development / test installations*. Anyone can still turn it on
+for themselves.
 
 ### AI Service (optional)
 

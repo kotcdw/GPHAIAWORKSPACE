@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
@@ -137,6 +139,7 @@ def create_audit(
         organization_id=payload.organization_id,
         audit_type=_audit_type(payload.audit_type),
         port_entity_id=_port(db, payload.port_entity_id) if payload.port_entity_id else _home_port(db, user),
+        custom_fields=json.dumps(_custom(db, payload.custom_fields, None)),
         created_by=user.id,
     )
     db.add(audit)
@@ -190,6 +193,9 @@ def update_audit(
     if "port_entity_id" in payload.model_fields_set:
         audit.port_entity_id = _port(db, payload.port_entity_id)
         changes.append("port")
+    if payload.custom_fields is not None:
+        audit.custom_fields = json.dumps(_custom(db, payload.custom_fields, audit.custom_fields))
+        changes.append("custom fields")
     if payload.status is not None:
         _check_transition(audit.status, payload.status)
         if payload.status != audit.status:
@@ -217,6 +223,12 @@ def update_audit(
     db.commit()
     db.refresh(audit)
     return audit
+
+
+def _custom(db: DBSession, values: dict | None, existing: str | None) -> dict:
+    from app.platform.customfields.router import clean_values
+
+    return clean_values(db, "audits", values, json.loads(existing or "{}"))
 
 
 @router.delete("/{audit_id}", response_model=MessageOut)

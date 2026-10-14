@@ -25,7 +25,13 @@ GROUP_PERMS = {
     "Organizations": "system.reference", "Reports": "method.reporting", "KPI targets": "method.reporting",
     "Audit methodology": "method.audit_types", "Plan configuration": "method.plan_config",
     "AI": "system.config",
+    "Follow-up & reporting": "system.workflow",
+    "Professional practice": "governance.charter",
 }
+
+# Admin-maintained lists every signed-in user's forms need (drop-down choices); nothing secret.
+PUBLIC_LISTS = ("recommendation_sources", "action_timeframes", "report_statutory_recipients",
+                "quarterly_report_recipients", "annual_statement_recipients", "audit_types")
 
 
 def _editable_groups(user: User) -> set[str]:
@@ -80,6 +86,11 @@ def _rules(user: User | None = None) -> list[RuleOut]:
 @router.get("", response_model=list[RuleOut])
 def get_config(user: User = Admin) -> list[RuleOut]:
     return _rules(user)
+
+
+@router.get("/lists")
+def public_lists(_: User = Depends(require_active_user)) -> dict:
+    return {key: cfg(key) for key in PUBLIC_LISTS if key in appconfig.RULES_BY_KEY}
 
 
 @router.put("", response_model=list[RuleOut])

@@ -84,6 +84,7 @@ async function renderReportTab(panel, auditId, canWrite) {
       el("div", null, el("strong", null, "Before it can go to review"),
         el("ul", null, ...r.blockers.map((b) => el("li", null, b))))));
   }
+  reportComplianceCards(panel, r);
   if (r.status === "Management Review" && !isStaff()) {
     panel.append(el("div", { class: "callout" }, el("i", { class: "bi bi-info-circle" }),
       el("div", null, "Please read the draft, add your management comments and respond to each finding on the Findings tab.")));
@@ -180,8 +181,9 @@ function renderCapaFollowup(panel, c, refresh) {
     if (c.validation_procedures) card.append(longBlock("Follow-up testing performed", c.validation_procedures, ""));
   }
   if (c.status === "Review" && c.validation_result === "Effective") {
-    card.append(el("p", { class: "muted small" }, "Validated as effective - an administrator can now close it with an e-signature."));
+    card.append(el("p", { class: "muted small" }, "Validated as effective - an administrator can now close it with an e-signature, or the Audit Committee closes it (see Audit Committee > Meetings)."));
   }
+  capaFollowupExtras(card, c, refresh);
   panel.append(card);
 }
 
@@ -483,7 +485,7 @@ function dataTable(items, columns, { onRow = null, pageSize = 25, exportName = n
 
 // ==================================================================== System Configuration (Admin)
 
-const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text", Organizations: "building", "KPI targets": "speedometer2", AI: "stars" };
+const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text", Organizations: "building", "KPI targets": "speedometer2", AI: "stars", "Follow-up & reporting": "file-earmark-bar-graph", "Professional practice": "person-check" };
 
 async function renderConfiguration() {
   clear(viewRoot);
@@ -532,6 +534,7 @@ async function renderConfiguration() {
     }
   });
   renderCustomFieldsCard(grid);
+  renderRecordFieldsCard(grid);
 }
 
 // ==================================================================== audit closure readiness
@@ -553,7 +556,18 @@ async function renderClosureCard(container, audit, canClose) {
 
 // ==================================================================== Audit Committee pack
 
-async function renderCommittee(year = null) {
+async function renderCommittee(year = null, tab = state.committeeTab || "pack") {
+  state.committeeTab = tab;
+  const committeeTabs = () => tabBar([{ key: "pack", label: "Reporting pack" }, { key: "meetings", label: "Meetings & decisions" }], tab,
+    (k) => renderCommittee(year, k));
+  if (tab === "meetings") {
+    clear(viewRoot);
+    viewRoot.append(viewHeader("Audit Committee", null, { sub: "Meetings register, minutes and decisions on recommendations" }), committeeTabs());
+    const b = el("div");
+    viewRoot.append(b);
+    renderCommitteeMeetings(b);
+    return;
+  }
   clear(viewRoot);
   const msg = el("div");
   let s;
@@ -564,7 +578,7 @@ async function renderCommittee(year = null) {
   yearSel.addEventListener("change", () => renderCommittee(Number(yearSel.value)));
   viewRoot.append(viewHeader("Audit Committee pack", [yearSel,
     el("a", { class: "btn small", href: `/api/committee/pack.docx?fiscal_year=${s.plan.fiscal_year}` }, el("i", { class: "bi bi-file-earmark-word" }), " Download Word pack")],
-  { sub: `Status of the Internal Audit Plan, reports and agreed actions · prepared ${fmtDate(s.generated_at)}` }), msg);
+  { sub: `Status of the Internal Audit Plan, reports and agreed actions · prepared ${fmtDate(s.generated_at)}` }), committeeTabs(), msg);
 
   const p = s.plan;
   const a = s.actions;

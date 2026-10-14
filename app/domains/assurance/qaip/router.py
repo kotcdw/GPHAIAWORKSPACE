@@ -573,3 +573,13 @@ def internal_assessment_report(request: Request, fiscal_year: int | None = None,
     log_action(db, user_id=user.id, action=f"QAIP_REPORT fy={fy}", request=request)
     db.commit()
     return docx_response(doc, f"internal-assessment-FY{fy}.docx")
+
+
+def latest_internal_assessment(db: DBSession) -> str:
+    """One line for the Committee pack: this year's internal assessment result (falls back to last year)."""
+    for fy in (utcnow().year, utcnow().year - 1):
+        q = qaip_summary(db, fy)
+        if q.reviews_completed:
+            return (f"FY{fy}: {conformance_rating(q.average_score)} - {q.reviews_completed} engagement quality "
+                    f"review(s), average conformance {q.average_score}%")
+    return "No engagement quality reviews completed yet"

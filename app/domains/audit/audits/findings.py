@@ -64,6 +64,12 @@ def _apply_issue_fields(db: DBSession, finding: Finding, payload, audit_id: int)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown criterion")
         finding.criterion_id = crit.id
         changed.append("criterion_id")
+    if "custom_fields" in payload.model_fields_set and payload.custom_fields is not None:
+        from app.platform.customfields.router import clean_values
+
+        finding.custom_fields = json.dumps(clean_values(db, "findings", payload.custom_fields,
+                                                        json.loads(finding.custom_fields or "{}")))
+        changed.append("custom fields")
     return changed
 
 
@@ -109,11 +115,18 @@ def create_finding(
         risk_rating=payload.risk_rating,
         status=payload.status,
         assigned_owner_email=str(payload.assigned_owner_email) if payload.assigned_owner_email else None,
+        custom_fields="{}",
         created_by=user.id,
     )
+    if "custom_fields" not in payload.model_fields_set:
+        payload.custom_fields = {}
+        payload.model_fields_set.add("custom_fields")
     _apply_issue_fields(db, finding, payload, audit_id)
     db.add(finding)
     db.flush()
+    from app.platform.automations.engine import emit, finding_context
+
+    emit(db, "finding.created", "finding", finding.id, finding_context(db, finding))
     log_action(
         db,
         user_id=user.id,
@@ -228,6 +241,12 @@ def respond_to_finding(
     ensure_can_view(db, user, "finding", finding)
     _ensure_audit_open(_get_audit_or_404(db, finding.audit_id))
     finding.management_response = payload.management_response
+    from app.core.enums import ReportStatus, utcnow
+    from app.domains.audit.reports.models import AuditReport
+
+    report = db.execute(select(AuditReport).where(AuditReport.audit_id == finding.audit_id)).scalars().first()
+    if report is not None and report.status == ReportStatus.ManagementReview and report.response_received_at is None:
+        report.response_received_at = utcnow()
     log_action(db, user_id=user.id, action=f"FINDING_RESPONSE id={finding.id}", request=request)
     log_record_history(
         db,

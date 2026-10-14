@@ -22,8 +22,9 @@ function viewAllowed(view) {
     portfolio: ["oversight.port", "oversight.portfolio", "governance.view"],
     programs: null,
     platform: ["system.technical", "system.config"],
+    automations: ["system.automation"],
   };
-  if (view === "programs") return state.user.role !== "Auditee";
+  if (view === "programs" || view === "practice") return state.user.role !== "Auditee";
   if (view === "logs" || view === "backups") return isAdmin() && hasPerm("system.technical");
   return rules[view] ? hasPerm(...rules[view]) : true;
 }

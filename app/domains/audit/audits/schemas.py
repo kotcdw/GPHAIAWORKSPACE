@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -22,6 +22,7 @@ class AuditCreate(BaseModel):
     organization_id: int | None = None
     audit_type: str | None = Field(default=None, max_length=60)
     port_entity_id: int | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class AuditUpdate(BaseModel):
@@ -32,6 +33,7 @@ class AuditUpdate(BaseModel):
     organization_id: int | None = None
     audit_type: str | None = Field(default=None, max_length=60)
     port_entity_id: int | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class AuditOut(ORMModel):
@@ -46,9 +48,20 @@ class AuditOut(ORMModel):
     entity_unit_id: int | None = None
     audit_type: str | None = None
     port_entity_id: int | None = None
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("custom_fields", mode="before")
+    @classmethod
+    def _cf(cls, value):  # noqa: ANN001, ANN206
+        if isinstance(value, str):
+            try:
+                return json.loads(value or "{}")
+            except ValueError:
+                return {}
+        return value or {}
 
 
 # --------------------------------------------------------------------------- findings
@@ -66,6 +79,7 @@ class FindingCreate(BaseModel):
     root_cause_whys: list[Annotated[str, Field(max_length=1000)]] | None = Field(default=None, max_length=5)
     control_id: int | None = None
     criterion_id: int | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class FindingUpdate(BaseModel):
@@ -82,6 +96,7 @@ class FindingUpdate(BaseModel):
     root_cause_whys: list[Annotated[str, Field(max_length=1000)]] | None = Field(default=None, max_length=5)
     control_id: int | None = None
     criterion_id: int | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class ManagementResponse(BaseModel):
@@ -106,9 +121,20 @@ class FindingOut(ORMModel):
     root_cause_whys: list[str] = []
     management_response: str | None = ""
     criterion_id: int | None = None
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("custom_fields", mode="before")
+    @classmethod
+    def _cf(cls, value):  # noqa: ANN001, ANN206
+        if isinstance(value, str):
+            try:
+                return json.loads(value or "{}")
+            except ValueError:
+                return {}
+        return value or {}
 
     @field_validator("root_cause_whys", mode="before")
     @classmethod

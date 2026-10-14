@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     # Make sure the database can accept writes (and is migrated) before serving.
     await asyncio.to_thread(ensure_schema)
+    await asyncio.to_thread(_seed_automations)
     tasks: list[asyncio.Task] = [asyncio.create_task(_schema_watcher())]
     if settings.escalation_check_minutes > 0:
         tasks.append(asyncio.create_task(_escalation_watcher()))
@@ -81,6 +82,19 @@ async def lifespan(app: FastAPI):
                 await task
 
 
+def _seed_automations() -> None:
+    """Make sure the built-in automation rules exist (admins may edit or switch them off)."""
+    from app.platform.automations.engine import ensure_builtins
+
+    db = SessionLocal()
+    try:
+        ensure_builtins(db)
+    except Exception:  # noqa: BLE001 - database not ready yet; seeded on the next start or first visit
+        logger.exception("Could not seed automation rules")
+    finally:
+        db.close()
+
+
 async def _escalation_watcher() -> None:
     """Escalate overdue actions on a timer (owner -> Audit Manager -> CAE)."""
     from app.domains.issues.followup.service import run_escalations
@@ -89,6 +103,13 @@ async def _escalation_watcher() -> None:
         db = SessionLocal()
         try:
             run_escalations(db)
+        finally:
+            db.close()
+        db = SessionLocal()
+        try:
+            from app.platform.automations.engine import run_scheduled
+
+            run_scheduled(db)
         finally:
             db.close()
 

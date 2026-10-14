@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.enums import CapaStatus, Severity
 from app.core.schemas import ORMModel
@@ -24,6 +25,13 @@ class CapaCreate(BaseModel):
     owner_email: OptEmail = None
     due_date: FutureDate = None
     linked_nc_id: int | None = None
+    timeframe: str | None = Field(default=None, max_length=60)
+    source_body: str | None = Field(default=None, max_length=100)
+    source_reference: str | None = Field(default=None, max_length=120)
+    source_year: int | None = Field(default=None, ge=1990, le=2100)
+    followup_comment: str | None = Field(default=None, max_length=10000)
+    external_closure_ref: str | None = Field(default=None, max_length=120)
+    custom_fields: dict[str, Any] | None = None
 
 
 class CapaUpdate(BaseModel):
@@ -39,6 +47,13 @@ class CapaUpdate(BaseModel):
     owner_email: OptEmail = None
     due_date: FutureDate = None
     linked_nc_id: int | None = None
+    timeframe: str | None = Field(default=None, max_length=60)
+    source_body: str | None = Field(default=None, max_length=100)
+    source_reference: str | None = Field(default=None, max_length=120)
+    source_year: int | None = Field(default=None, ge=1990, le=2100)
+    followup_comment: str | None = Field(default=None, max_length=10000)
+    external_closure_ref: str | None = Field(default=None, max_length=120)
+    custom_fields: dict[str, Any] | None = None
 
 
 class CapaLink(BaseModel):
@@ -74,11 +89,35 @@ class CapaOut(ORMModel):
     validated_at: datetime | None = None
     reopen_count: int = 0
     escalation_level: int = 0
+    implementation_status: str = "Not Implemented"
+    timeframe: str | None = None
+    source_body: str | None = None
+    source_reference: str | None = None
+    source_year: int | None = None
+    followup_comment: str | None = None
+    progress_note: str | None = None
+    withdrawal_reason: str | None = None
+    withdrawal_proposed_at: datetime | None = None
+    external_closure_ref: str | None = None
+    custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("custom_fields", mode="before")
+    @classmethod
+    def _cf(cls, v: Any) -> dict:
+        import json
+
+        if isinstance(v, str):
+            try:
+                return json.loads(v or "{}")
+            except ValueError:
+                return {}
+        return v or {}
 
 
 class CapaList(BaseModel):
     total: int
     items: list[CapaOut]
+

@@ -275,6 +275,8 @@ const MODULES = {
     title: "Remediation",
     endpoint: "/api/capa",
     wrapped: true,
+    prepare: (m) => prepareCapa(m),
+    customFields: true,
     recordType: "capa",
     refKey: "capa_ref",
     nameKey: "title",
@@ -609,6 +611,8 @@ function navigate(view) {
   if (view === "logs") return renderLogs();
   if (view === "backups") return renderBackups();
   if (view === "platform") return renderPlatform();
+  if (view === "practice") return renderPractice();
+  if (view === "automations") return renderAutomations();
 }
 
 // Page header: title, optional subtitle / meta chips, and actions on the right.
@@ -818,10 +822,12 @@ function renderRemediation(tab = state.remTab || "register") {
   }));
   const tabs = [{ key: "register", label: "Register" }];
   if (staff) tabs.push({ key: "followup", label: "Follow-up" });
+  if (hasPerm("followup.report", "governance.view")) tabs.push({ key: "reports", label: "Statutory reports" });
   if (tabs.length > 1) viewRoot.append(tabBar(tabs, tab, (k) => renderRemediation(k)));
   const body = el("div");
   viewRoot.append(body);
   if (tab === "followup") renderFollowup(body);
+  else if (tab === "reports") renderFollowupReports(body);
   else renderList("capa", { root: body });
 }
 
@@ -1081,6 +1087,7 @@ async function renderWorkspace() {
       { view: "plans", icon: "calendar3", name: "Assurance Plan", desc: "Annual risk-based audit plan by fiscal year", count: "plans" },
       { view: "universe", icon: "diagram-3", name: "Audit Universe", desc: "Auditable units and their risk ratings" },
       { view: "capacity", icon: "people-fill", name: "Capacity & time", desc: "Skills, available hours, time sheets, budgets" },
+      { view: "practice", icon: "person-check", name: "Professional practice", desc: "Declarations, CPD, charter and external assessment" },
     ] },
     { title: "Audit work", tiles: [
       { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: RCM, testing, findings, reports", count: "audits" },
@@ -1101,6 +1108,7 @@ async function renderWorkspace() {
       { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, audit types, plan settings, SLAs" },
       { view: "logs", icon: "journal-text", name: "Audit Log", desc: "Who did what, and when", admin: true },
       { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
+      { view: "automations", icon: "lightning-charge", name: "Automations", desc: "Reminders, routing and escalation rules" },
       { view: "platform", icon: "diagram-2", name: "Platform map", desc: "Core, domain modules, shared data and services (AI, analytics, documents)" },
     ] },
   ];
@@ -1323,18 +1331,22 @@ const AUDIT_FIELDS = [
 async function auditFields() {
   let types = []; let ports = [];
   try { const c = await loadEntityConfig(); types = c.types.audit_types || []; ports = c.entities.filter((e) => e.is_port); } catch { /* optional */ }
+  const defs = await safeGet("/api/custom-fields?module=audits", []);
   return [
     ...AUDIT_FIELDS.slice(0, 1),
     { name: "audit_type", label: "Audit type", type: "select", options: types, emptyLabel: "Select..." },
     { name: "port_entity_id", label: "Port", type: "select", options: ports.map((p) => ({ value: String(p.id), label: p.name })),
       emptyLabel: "Select...", help: "Defaults to the port where you work" },
     ...AUDIT_FIELDS.slice(1),
+    ...customFieldDefs(defs).map((f) => ({ ...f, name: f.key })),
   ];
 }
 
 function auditPayload(v) {
+  const custom = {};
+  Object.entries(v).forEach(([k, x]) => { if (k.startsWith("cf_")) custom[k.slice(3)] = x === "" ? null : x; });
   return { title: v.title, description: v.description || "", scope: v.scope || "", audit_type: v.audit_type || null,
-    port_entity_id: v.port_entity_id ? Number(v.port_entity_id) : null };
+    port_entity_id: v.port_entity_id ? Number(v.port_entity_id) : null, custom_fields: custom };
 }
 
 async function newAuditModal() {
@@ -1358,7 +1370,8 @@ async function editAuditModal(audit) {
     key: `audit:edit:${audit.id}`,
     meta: { title: `Edit audit: ${audit.title}`, record_type: "audit", record_id: audit.id },
     fields,
-    initial: { ...audit, audit_type: audit.audit_type || "", port_entity_id: audit.port_entity_id ? String(audit.port_entity_id) : "" },
+    initial: { ...audit, audit_type: audit.audit_type || "", port_entity_id: audit.port_entity_id ? String(audit.port_entity_id) : "",
+      ...Object.fromEntries(Object.entries(audit.custom_fields || {}).map(([k, x]) => [`cf_${k}`, x])) },
     submitLabel: "Save changes",
     onSubmit: (v) => API.patch(`/api/audits/${audit.id}`, auditPayload(v)),
     onDone: () => { toast("Audit saved"); openAudit(audit.id); refreshDraftCount(); },
@@ -1429,6 +1442,7 @@ async function openAudit(id, startTab = null) {
   if (canWrite) info.append(el("div", { class: "auditee-strip" }));
   viewRoot.append(info);
   if (canWrite) renderAuditees(info.querySelector(".auditee-strip"), id);
+  if (isStaff()) { const dslot = el("div"); viewRoot.append(dslot); renderDeclarationCard(dslot, audit); }
   if (canWrite && ["In Progress", "Review"].includes(audit.status)) {
     const slot = el("div");
     viewRoot.append(slot);

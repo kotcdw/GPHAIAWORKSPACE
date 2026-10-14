@@ -43,11 +43,19 @@ def get_current_user(
     return user
 
 
+def mfa_enforced() -> bool:
+    """Required-role MFA applies on the published (production) installation, or everywhere when an admin says so."""
+    from app.core.appconfig import cfg
+    from app.core.config import settings
+
+    return settings.environment.lower() == "production" or bool(cfg("mfa_enforce_outside_production"))
+
+
 def mfa_setup_required(user: User) -> bool:
     """True when the user's role must use MFA but it is not set up yet."""
     from app.core.appconfig import cfg
 
-    return user.role.value in cfg("mfa_required_roles") and not user.mfa_enabled
+    return mfa_enforced() and user.role.value in cfg("mfa_required_roles") and not user.mfa_enabled
 
 
 def require_active_user(user: User = Depends(get_current_user)) -> User:

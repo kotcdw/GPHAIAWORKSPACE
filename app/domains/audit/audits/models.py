@@ -37,6 +37,7 @@ class Audit(Base):
     # Assurance Plan linkage (set when the audit is started from a plan engagement).
     plan_id: Mapped[int | None] = mapped_column(ForeignKey("assurance_plans.id", ondelete="SET NULL"), nullable=True)
     audit_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     # The port / site the engagement belongs to (an organization entity of a port type).
     port_entity_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"),
                                                        nullable=True)
@@ -105,6 +106,7 @@ class Finding(Base):
     root_cause_whys: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     management_response: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     criterion_id: Mapped[int | None] = mapped_column(ForeignKey("criteria.id", ondelete="SET NULL"), nullable=True)
+    custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

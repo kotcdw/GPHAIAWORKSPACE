@@ -836,3 +836,9 @@ body.mfa-gate #sidebarNav, body.mfa-gate .topbar-search, body.mfa-gate #bellBtn 
 .ai-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 6px; }
 .ai-text { white-space: pre-wrap; font-size: 13px; }
 .ai-draft { background: #8b5cf60f; border-radius: 6px; padding: 6px 8px; }
+
+/* Follow-up extras, rule editor */
+.fu-extra { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.inline-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.inline-row > select, .inline-row > input { flex: 1; }
+.progress .bar { height: 100%; background: var(--ok); }

@@ -73,6 +73,9 @@ class CommitteeSummary(BaseModel):
     top_overdue: list[OverdueRow]
     plan_changes: list[dict] = []
     fiscal_years: list[int]
+    implementation_status: dict[str, int] = {}
+    for_decision: list[dict] = []
+    conformance: dict = {}
 
 
 def _age_bucket(days: int) -> str:
@@ -146,7 +149,15 @@ def build_summary(db: DBSession, fiscal_year: int | None = None) -> CommitteeSum
                    for c in db.execute(select(PlanChange).where(PlanChange.plan_id == plan.id,
                                                                 PlanChange.change_type != "Committee")
                                        .order_by(PlanChange.changed_at)).scalars()]
+    from app.domains.assurance.committee.meetings import for_decision
+    from app.domains.assurance.conformance.router import conformance_summary
+    from app.domains.issues.capa.status import IMPLEMENTATION_STATUSES
+
     return CommitteeSummary(
+        implementation_status={k: sum(1 for c in capas if c.implementation_status == k)
+                               for k in IMPLEMENTATION_STATUSES},
+        for_decision=for_decision(db, None),
+        conformance=conformance_summary(db),
         generated_at=now,
         plan=progress,
         audits_by_status=dict(Counter(a.status.value for a in audits)),
@@ -223,12 +234,24 @@ def committee_pack(request: Request, fiscal_year: int | None = None, db: DBSessi
     if s.top_overdue:
         table(["Action", "Description", "Owner", "Days overdue", "Escalated to"],
               [[o.capa_ref, o.title, o.owner or "-", o.days_overdue, o.escalated_to] for o in s.top_overdue])
+    doc.add_paragraph("Implementation status of all recommendations: " + ", ".join(
+        f"{k} {v}" for k, v in s.implementation_status.items()) + ".")
+    if s.for_decision:
+        doc.add_heading("Recommendations for the Committee's decision", level=2)
+        table(["Action", "Description", "Source", "For decision"],
+              [[d["capa_ref"], d["title"], d["source_body"] or "-", "; ".join(d["reasons"])] for d in s.for_decision])
     doc.add_heading("5. Changes to the approved plan", level=1)
     if s.plan_changes:
         table(["Date", "Change", "Description", "Reason"],
               [[c["date"], c["type"], c["description"], c["reason"]] for c in s.plan_changes])
     else:
         doc.add_paragraph("No changes since the plan was approved.")
+    doc.add_heading("6. Conformance with the Standards", level=1)
+    c = s.conformance
+    doc.add_paragraph(c.get("statement", ""))
+    table(["Element", "Status"], [["Internal audit charter", c.get("charter", "")],
+                                  ["Internal assessment (QAIP)", c.get("internal_assessment", "")],
+                                  ["External quality assessment", c.get("external_assessment", "")]])
     log_action(db, user_id=user.id, action=f"COMMITTEE_PACK fy={p.fiscal_year}", request=request)
     db.commit()
     return docx_response(doc, f"Audit-Committee-Pack-FY{p.fiscal_year}.docx")
