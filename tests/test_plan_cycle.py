@@ -113,3 +113,76 @@ def test_full_annual_planning_cycle(client, client2, db):
     # Returned by the Committee after a reopen -> back to drafting; re-approval makes version 2.
     client2.post(f"/api/assurance-plans/{pid}/reopen", headers=gh)
     assert client2.get(base).json()["stage"] == "drafting"
+
+
+def test_plan_lifecycle_statuses(client, client2, db):
+    """Draft -> In Review -> Returned -> In Review -> Submitted -> Approved -> Distributed -> In Execution
+    -> Revised -> ... -> Closed -> Archived."""
+    from tests.conftest import walk_plan_to_review
+
+    mgr = _u(db, "lsmgr", "audit_manager")
+    gm = _u(db, "lsgm", "gm_audit")
+    h = csrf_headers(login(client, mgr.username))
+    gh = csrf_headers(login(client2, gm.username))
+    for fy in _YEARS:
+        created = client.post("/api/assurance-plans", json={"fiscal_year": fy, "title": "Plan"}, headers=h)
+        if created.status_code == 201:
+            break
+    pid = created.json()["id"]
+    base = f"/api/assurance-plans/{pid}/cycle"
+
+    def st() -> str:
+        return client.get(f"/api/assurance-plans/{pid}").json()["lifecycle_status"]
+
+    assert st() == "Draft"
+    eng = client.post(f"/api/assurance-plans/{pid}/engagements", json={"title": "Stores", "budget_hours": 50},
+                      headers=h).json()
+    walk_plan_to_review(client, pid, h)
+    assert st() == "In Review"
+    client2.post(f"{base}/return", json={"comment": "Rework hours"}, headers=gh)
+    assert st() == "Returned"
+    client.patch(f"/api/plan-engagements/{eng['id']}", json={"budget_hours": 60}, headers=h)
+    assert st() == "Returned", "editing a returned plan keeps it Returned until resubmitted"
+    client.post(f"{base}/submit-review", json={}, headers=h)
+    assert st() == "In Review"
+    client2.post(f"/api/assurance-plans/{pid}/approve", json={"password": DEFAULT_PASSWORD}, headers=gh)
+    assert st() == "Submitted"
+    now = utcnow().isoformat()
+    client2.post(f"{base}/submit-authority", json={"submitted_on": now}, headers=gh)
+    assert st() == "Submitted"
+    client2.post(f"{base}/committee-decision", json={"decision": "Approved", "meeting_date": now, "reference": "AC/9"},
+                 headers=gh)
+    assert st() == "Approved"
+    client2.post(f"{base}/distribute", json={"user_ids": [mgr.id]}, headers=gh)
+    assert st() == "Distributed"
+    started = client.post(f"/api/plan-engagements/{eng['id']}/start", headers=h)
+    assert started.status_code == 200, started.text
+    assert st() == "In Execution"
+
+    # Mid-year revision of the approved version.
+    client2.post(f"/api/assurance-plans/{pid}/reopen", headers=gh)
+    assert st() == "Revised"
+    client.post(f"{base}/submit-review", json={}, headers=h)
+    assert st() == "In Review"
+    client2.post(f"/api/assurance-plans/{pid}/approve", json={"password": DEFAULT_PASSWORD}, headers=gh)
+    client2.post(f"{base}/submit-authority", json={"submitted_on": now}, headers=gh)
+    cyc = client2.post(f"{base}/committee-decision", json={"decision": "Approved", "meeting_date": now,
+                       "reference": "AC/10"}, headers=gh).json()
+    assert cyc["current_version"] == 2 and st() == "Approved"
+
+    # Close the year (the started audit must be closed first) and archive it.
+    from app.core.enums import AuditStatus
+    from app.modules.audits.models import Audit
+
+    db.rollback()
+    audit = db.get(Audit, started.json()["audit_id"])
+    audit.status = AuditStatus.Closed
+    db.commit()
+    assert client2.post(f"/api/assurance-plans/{pid}/archive", headers=gh).status_code == 409
+    assert client2.post(f"/api/assurance-plans/{pid}/close", headers=gh).status_code == 200
+    assert st() == "Closed"
+    assert client2.post(f"/api/assurance-plans/{pid}/archive", headers=gh).status_code == 200
+    assert st() == "Archived"
+    listed = [p["id"] for p in client.get("/api/assurance-plans").json()]
+    assert pid not in listed
+    assert pid in [p["id"] for p in client.get("/api/assurance-plans?include_archived=true").json()]

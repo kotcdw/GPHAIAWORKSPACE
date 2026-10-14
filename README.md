@@ -223,6 +223,9 @@ e-signature, or return with comments) → Submission to the approving authority 
 Word "controlled copy") → GM Audit controlled distribution (named PIAs and Audit Managers, receipt acknowledged)
 → PIA / Manager execution (engagements started, by lead). Two switches under Configuration › Plan configuration
 control enforcement: `plan_cycle_enforced` and `plan_distribution_before_execution` (both on by default).
+Plan statuses shown to users: **Draft, In Review, Submitted, Returned, Approved, Distributed, In Execution,
+Revised, Closed, Archived** (`lifecycle_status`, kept in step automatically; Archived = a closed year archived
+by the GM Audit, read-only and hidden from the default list).
 API: `/api/assurance-plans/{id}/cycle…`, `/api/assurance-plans/{id}/versions/{n}[/export.docx]`.
 
 ## Quick start

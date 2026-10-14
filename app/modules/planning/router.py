@@ -236,8 +236,14 @@ def _history(db: DBSession, plan_id: int, user: User, action: str, request: Requ
 
 
 @router.get("/api/assurance-plans", response_model=list[PlanOut])
-def list_plans(db: DBSession = Depends(get_db), _: User = Staff) -> list[AssurancePlan]:
-    return list(db.execute(select(AssurancePlan).order_by(AssurancePlan.fiscal_year.desc())).scalars())
+def list_plans(db: DBSession = Depends(get_db), _: User = Staff, include_archived: bool = False,
+               lifecycle_status: str | None = None) -> list[AssurancePlan]:
+    stmt = select(AssurancePlan).order_by(AssurancePlan.fiscal_year.desc())
+    if lifecycle_status:
+        stmt = stmt.where(AssurancePlan.lifecycle_status == lifecycle_status)
+    elif not include_archived:
+        stmt = stmt.where(AssurancePlan.archived_at.is_(None))
+    return list(db.execute(stmt).scalars())
 
 
 @router.post("/api/assurance-plans", response_model=PlanDetail, status_code=status.HTTP_201_CREATED)

@@ -76,6 +76,10 @@ class AssurancePlan(Base):
     cycle_stage: Mapped[str] = mapped_column(String(30), nullable=False, default="preparation",
                                              server_default="preparation")
     current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The status users see; kept in step with the cycle by app.modules.plancycle.status.
+    lifecycle_status: Mapped[str] = mapped_column(String(20), nullable=False, default="Draft", server_default="Draft")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     committee_meeting_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     committee_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
     committee_notes: Mapped[str | None] = mapped_column(Text, nullable=True)

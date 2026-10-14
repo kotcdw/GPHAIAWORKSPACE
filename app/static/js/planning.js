@@ -130,12 +130,19 @@ function editUnit(unit, locations = []) {
 
 // ==================================================================== assurance plan
 
-async function renderPlans() {
+const PLAN_STATUSES = ["Draft", "In Review", "Submitted", "Returned", "Approved", "Distributed", "In Execution", "Revised", "Closed", "Archived"];
+
+async function renderPlans(filter = state.planFilter || "") {
+  state.planFilter = filter;
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Assurance Plan", btn("New plan", () => newPlanModal())), msg);
+  const pick = el("select", { class: "compact", "aria-label": "Filter by status" }, el("option", { value: "" }, "All current plans"),
+    ...PLAN_STATUSES.map((s) => el("option", { value: s, selected: s === filter ? "1" : null }, s)));
+  pick.addEventListener("change", () => renderPlans(pick.value));
+  viewRoot.append(viewHeader("Assurance Plan", [pick, hasPerm("plan.prepare") ? btn("New plan", () => newPlanModal()) : null],
+    { sub: "Draft → In Review → Submitted → Approved → Distributed → In Execution → Closed → Archived (Returned and Revised when sent back or revised)" }), msg);
   try {
-    const plans = await API.get("/api/assurance-plans");
+    const plans = await API.get(filter ? `/api/assurance-plans?lifecycle_status=${encodeURIComponent(filter)}` : "/api/assurance-plans");
     const card = el("div", { class: "card" });
     if (!plans.length) card.append(el("div", { class: "empty" }, "No Assurance Plan yet. Create the plan for the fiscal year to start."));
     else card.append(el("table", null,
@@ -143,7 +150,8 @@ async function renderPlans() {
         el("th", null, "Status"), el("th", null, "Approved"))),
       el("tbody", null, ...plans.map((p) => el("tr", { onclick: () => openPlan(p.id) },
         el("td", { class: "ref" }, p.plan_ref), el("td", null, `FY${p.fiscal_year}`), el("td", null, p.title),
-        el("td", null, badge(p.status)), el("td", { class: "muted" }, fmtDate(p.approved_at)))))));
+        el("td", null, badge(p.lifecycle_status), p.current_version ? el("span", { class: "muted small" }, ` v${p.current_version}`) : null),
+        el("td", { class: "muted" }, fmtDate(p.approved_at)))))));
     viewRoot.append(card);
   } catch (err) { notify(msg, err.message, "error"); }
 }
@@ -198,8 +206,13 @@ async function openPlan(id) {
   setActiveNav("plans");
   viewRoot.append(viewHeader(plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`, [
     draft ? btn("Edit", () => editPlanModal(plan), "secondary") : null,
-    hasPerm("plan.amend") && approved ? btn("Reopen", async () => {
-      try { await API.post(`/api/assurance-plans/${id}/reopen`); toast("Plan reopened"); openPlan(id); }
+    hasPerm("plan.amend") && approved ? btn("Revise plan", async () => {
+      try { await API.post(`/api/assurance-plans/${id}/reopen`); toast("Plan reopened for revision"); openPlan(id); }
+      catch (err) { toast(err.message, "error"); }
+    }, "secondary") : null,
+    hasPerm("plan.amend") && plan.status === "Closed" && !plan.archived_at ? btn("Archive", async () => {
+      if (!window.confirm("Archive this plan year? It becomes read-only and leaves the default plan list.")) return;
+      try { await API.post(`/api/assurance-plans/${id}/archive`); toast("Plan archived"); openPlan(id); }
       catch (err) { toast(err.message, "error"); }
     }, "secondary") : null,
     hasPerm("plan.amend") && approved ? btn("Close year", async () => {
@@ -209,7 +222,9 @@ async function openPlan(id) {
     iconBtn("printer", "Print", () => window.print()),
   ], {
     back: () => navigate("plans"),
-    meta: [el("span", { class: "ref" }, plan.plan_ref), badge(plan.status), el("span", { class: "muted" }, `FY${plan.fiscal_year}`)],
+    meta: [el("span", { class: "ref" }, plan.plan_ref), badge(plan.lifecycle_status),
+      plan.current_version ? el("span", { class: "chip-mini" }, `Version ${plan.current_version}`) : null,
+      el("span", { class: "muted" }, `FY${plan.fiscal_year}`)],
     sub: plan.approved_at ? `Approved ${fmtDate(plan.approved_at)}` : null,
   }));
 

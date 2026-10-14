@@ -107,6 +107,21 @@ class PlanStatus(str, enum.Enum):
     Closed = "Closed"
 
 
+class PlanLifecycle(str, enum.Enum):
+    """The Assurance Plan status users see (``PlanStatus`` stays the internal edit lock)."""
+
+    Draft = "Draft"
+    InReview = "In Review"
+    Submitted = "Submitted"
+    Returned = "Returned"
+    Approved = "Approved"
+    Distributed = "Distributed"
+    InExecution = "In Execution"
+    Revised = "Revised"
+    Closed = "Closed"
+    Archived = "Archived"
+
+
 class EngagementStatus(str, enum.Enum):
     Planned = "Planned"
     Started = "Started"

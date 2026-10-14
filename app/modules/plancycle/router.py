@@ -29,6 +29,7 @@ from app.core.history import log_record_history
 from app.core.permissions import has_perm
 from app.modules.notifications.service import notify, notify_many
 from app.modules.plancycle.models import PlanCycleEvent, PlanDistribution, PlanVersion
+from app.modules.plancycle.status import mark_returned
 from app.modules.planning.models import AssurancePlan, EntityUnit
 from app.modules.users.models import User
 
@@ -114,6 +115,7 @@ def on_internal_decision(db: DBSession, plan: AssurancePlan, user: User, approve
            decision="Endorsed (CAE e-signature)" if approved else "Returned for revision", notes=comment or None)
     plan.cycle_stage = "submission" if approved else "drafting"
     if not approved:
+        mark_returned(plan)
         notify(db, plan.created_by, f"Assurance Plan FY{plan.fiscal_year} returned for revision", comment or "",
                link_type="assurance_plan", link_id=plan.id)
 
@@ -153,6 +155,7 @@ def record_committee_decision(db: DBSession, plan: AssurancePlan, user: User, de
         plan.approved_by = None
         plan.approved_at = None
         plan.cycle_stage = "drafting"
+        mark_returned(plan)
         notify(db, plan.created_by, f"Assurance Plan FY{plan.fiscal_year} returned by the Audit Committee",
                notes or reference, link_type="assurance_plan", link_id=plan.id)
         return None
@@ -634,3 +637,21 @@ def ensure_can_execute(plan: AssurancePlan) -> None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="Engagements start after the Audit Committee-approved plan has been distributed "
                                    "by the GM Audit")
+
+
+# ------------------------------------------------------------------ archive
+
+
+@router.post("/api/assurance-plans/{plan_id}/archive", response_model=CycleOut)
+def archive(plan_id: int, request: Request, db: DBSession = Depends(get_db), user: User = Staff) -> CycleOut:
+    """Archive a closed plan year: read-only, hidden from the default plan list, kept for the record."""
+    ensure_perm(user, "plan.amend")
+    plan = _plan(db, plan_id)
+    if plan.status != PlanStatus.Closed or plan.archived_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only a closed plan can be archived")
+    plan.archived_at = utcnow()
+    plan.archived_by = user.id
+    _event(db, plan, user, "execution", "Archived", request)
+    log_action(db, user_id=user.id, action=f"PLAN_ARCHIVE id={plan.id}", request=request)
+    db.commit()
+    return _cycle(db, plan, user)
