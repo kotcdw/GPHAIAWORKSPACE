@@ -126,9 +126,9 @@ JOB_ROLES: list[JobRole] = [
                                                             "governance.charter", "grc.view", "grc.manage"}),
             icon="gear-fill"),
     JobRole("manager", "Manager", Role.Auditor, ReviewLevel.Manager,
-            "Unit Heads, Audit Managers, Port Internal Auditors and the GM Audit: prepare the Assurance Plan, "
-            "allocate staff, supervise and review engagements and follow up recommendations. Only a Manager "
-            "with the GM Audit (CAE) approval level approves and distributes the plan and approves reports.",
+            "Unit Heads, Audit Managers, Port Internal Auditors and the GM Audit, each with that approval level. "
+            "Working papers and reports pass Unit Head, then Audit Manager, then PIA; only the GM Audit (CAE) "
+            "approves and distributes the plan and approves and issues reports.",
             frozenset(_FIELD | _REVIEW | {
                 "plan.prepare", "plan.approve", "plan.amend", "oversight.portfolio", "oversight.port",
                 "oversight.resources", "oversight.qaip", "oversight.reporting", "audit.create", "audit.memo_approve",

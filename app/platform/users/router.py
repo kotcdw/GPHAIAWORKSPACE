@@ -123,7 +123,8 @@ def update_user(
         role_service.guard_last_super_admin(db, user, target_code)
         if level and target_code != "manager":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="Only a Manager can hold an approval level (Manager or CAE)")
+                                detail="Only a Manager holds an approval level (Unit Head, Audit Manager, PIA "
+                                       "or GM Audit)")
         tier_before = user.role
         role_service.apply_role(user, target_code, level or None)
         changes.append(f"job_role={user.job_role} level={user.review_level.value if user.review_level else '-'}")

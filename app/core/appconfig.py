@@ -49,7 +49,7 @@ class Rule:
     def default_value(self) -> Any:
         if self.default_attr:
             value = getattr(settings, self.default_attr)
-            if self.kind == "roles":
+            if self.kind in ("roles", "list"):
                 return [r.strip() for r in str(value).split(",") if r.strip()]
             return value
         return self.default
@@ -67,6 +67,17 @@ RULES: list[Rule] = [
     Rule("require_memo_approval_for_fieldwork", "Require an approved planning memo before fieldwork starts",
          "Audit workflow", "bool", "IIA GIAS 13.6: the engagement work programme is approved before it is "
          "implemented.", default_attr="require_memo_approval_for_fieldwork"),
+    Rule("report_review_chain", "Review chain for audit reports (before GM Audit approval)", "Audit workflow", "list",
+         "In order, one per line: Unit Head, Audit Manager, PIA. Each level signs in turn; the GM Audit (CAE) then "
+         "approves and issues. Leave empty to go straight to the GM Audit.", default_attr="report_review_chain",
+         options=["Unit Head", "Audit Manager", "PIA"], allow_empty=True),
+    Rule("workpaper_review_chain", "Review chain for working papers", "Audit workflow", "list",
+         "In order, one per line: Unit Head, Audit Manager, PIA. A working paper is reviewed when every level has "
+         "signed it off. Leave empty to let any reviewer sign it off once.", default_attr="workpaper_review_chain",
+         options=["Unit Head", "Audit Manager", "PIA"], allow_empty=True),
+    Rule("review_higher_level_may_cover", "A higher review level may sign for an absent lower level", "Audit workflow",
+         "bool", "For example a PIA may sign the Unit Head stage when a unit has no Unit Head. Nobody signs two "
+         "stages of the same document.", default=True),
     Rule("survey_on_close", "Send the post-audit satisfaction survey to auditees when an audit closes",
          "Audit workflow", "bool", default=True),
     Rule("notify_auditees_on_fieldwork", "Notify auditees when fieldwork starts (audit moves to In Progress)",
@@ -353,6 +364,13 @@ def validate(rule: Rule, value: Any) -> Any:
                 clean.append(item)
         if not clean and not rule.allow_empty:
             raise ValueError("enter at least one entry")
+        if rule.options:
+            canon = {o.lower(): o for o in rule.options}
+            bad = [c for c in clean if c.lower() not in canon]
+            if bad:
+                raise ValueError(f"unknown entr{'y' if len(bad) == 1 else 'ies'}: {', '.join(bad)} "
+                                 f"(use {', '.join(rule.options)})")
+            clean = sorted((canon[c.lower()] for c in clean), key=rule.options.index)
         if len(clean) > 100:
             raise ValueError("enter at most 100 entries")
         return clean

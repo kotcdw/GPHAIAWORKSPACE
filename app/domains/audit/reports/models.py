@@ -47,6 +47,9 @@ class AuditReport(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     manager_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Review chain (Unit Head -> Audit Manager -> PIA): the level now due and who signed each stage (JSON).
+    review_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    review_trail: Mapped[str | None] = mapped_column(Text, nullable=True)
     cae_approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     cae_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     issued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

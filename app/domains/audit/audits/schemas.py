@@ -167,6 +167,22 @@ class WorkingPaperOut(ORMModel):
     finding_id: int | None = None
     reviewed_by: int | None = None
     reviewed_at: datetime | None = None
+    review_stage: str | None = None
+    review_trail: list[dict] = []
+
+    @field_validator("review_trail", mode="before")
+    @classmethod
+    def _trail(cls, v):  # noqa: ANN001, ANN206
+        from app.core.review_chain import trail
+
+        return trail(v) if isinstance(v, str) or v is None else v
+
+    @field_validator("review_stage", mode="before")
+    @classmethod
+    def _stage(cls, v):  # noqa: ANN001, ANN206
+        from app.core.review_chain import label
+
+        return label(v) if v else None
 
 
 class AuditeeAssign(BaseModel):

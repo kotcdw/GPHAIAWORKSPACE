@@ -423,7 +423,8 @@ const HELP = {
   ] },
   roles: { title: "Roles & permissions", items: [
     "There are five roles: Super Administrator (full control), Administrator, Manager, Auditor and Audit Client.",
-    "Managers cover Unit Heads, Audit Managers, PIAs and the GM Audit. Give the GM Audit the 'GM Audit (CAE)' approval level: only that level approves and distributes the plan and approves reports.",
+    "Managers cover Unit Heads, Audit Managers, PIAs and the GM Audit: give each Manager its approval level. Working papers and reports are signed off Unit Head, then Audit Manager, then PIA; only the GM Audit (CAE) approves and distributes the plan and approves reports.",
+    "The levels each document passes through are set under Configuration > Audit workflow (review chains).",
     "Only a Super Administrator changes the matrix (tick, untick, Save; Reset returns a role to the standard permissions) and appoints administrators.",
     "Change someone's role on the 'People by role' tab or under Profile & Users.",
   ] },

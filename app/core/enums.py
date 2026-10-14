@@ -187,8 +187,10 @@ def risk_level(score: int) -> str:
 class ReviewLevel(str, enum.Enum):
     """Supervisory level of a staff member in the report review chain."""
 
-    Manager = "Manager"
-    CAE = "CAE"
+    UnitHead = "Unit Head"
+    Manager = "Manager"  # Audit Manager
+    PIA = "PIA"  # Port Internal Auditor
+    CAE = "CAE"  # GM Audit (Chief Audit Executive)
 
 
 class ReportStatus(str, enum.Enum):

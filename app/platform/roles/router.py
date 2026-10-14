@@ -150,7 +150,7 @@ def reset_role(code: str, request: Request, db: DBSession = Depends(get_db), use
 
 class AssignIn(BaseModel):
     job_role: str
-    approval_level: Literal["Manager", "CAE"] | None = None
+    approval_level: Literal["Unit Head", "Manager", "PIA", "CAE"] | None = None
 
 
 @router.patch("/api/users/{user_id}/job-role")

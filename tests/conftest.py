@@ -47,6 +47,9 @@ os.environ["GPHA_REQUIRE_REPORT_TO_CLOSE"] = "false"
 os.environ["GPHA_REQUIRE_FINDINGS_ACTIONED_TO_CLOSE"] = "false"
 os.environ["GPHA_REQUIRE_MEMO_APPROVAL_FOR_FIELDWORK"] = "false"
 os.environ["GPHA_REQUIRE_ENGAGEMENT_DECLARATION"] = "false"
+# Older tests use one Audit Manager review and one working-paper sign-off; the chain has its own tests.
+os.environ["GPHA_REPORT_REVIEW_CHAIN"] = "Audit Manager"
+os.environ["GPHA_WORKPAPER_REVIEW_CHAIN"] = ""
 
 import pytest  # noqa: E402
 from alembic.config import Config  # noqa: E402

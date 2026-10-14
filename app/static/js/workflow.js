@@ -13,6 +13,13 @@ function longBlock(label, text, empty = "Not written yet") {
     el("div", { class: `lf-value ${text ? "" : "muted"}`.trim() }, text || empty));
 }
 
+// Report progress: Draft -> Management Review -> each review level -> GM Audit approval -> Issued.
+function reportStepper(r) {
+  const stages = ["Draft", "Management Review", ...(r.review_chain || []).map((x) => `${x} review`), "GM Audit approval", "Issued"];
+  const current = r.status === "Manager Review" ? `${r.review_stage_label} review` : r.status === "CAE Approval" ? "GM Audit approval" : r.status;
+  return stepper(stages, current);
+}
+
 function stepper(stages, current) {
   const at = stages.indexOf(current);
   return el("ol", { class: "stepper", "aria-label": "Progress" },
@@ -55,15 +62,15 @@ async function renderReportTab(panel, auditId, canWrite) {
       el("i", { class: "bi bi-send" }), " Send to management") : null,
     isStaff() && ["Draft", "Management Review"].includes(r.status) ? el("button", {
       class: "btn small", disabled: r.blockers.length ? "1" : null, title: r.blockers.join(" ") || "Send to the Audit Manager",
-      onclick: post(`/api/reports/${r.id}/submit-for-review`, "Submitted for Audit Manager review") },
+      onclick: post(`/api/reports/${r.id}/submit-for-review`, r.review_chain.length ? `Submitted for ${r.review_chain[0]} review` : "Submitted to the GM Audit") },
     el("i", { class: "bi bi-check2-circle" }), " Submit for review") : null,
     r.can_comment ? el("button", { class: "btn small", onclick: () => commentsForm(r, reload) },
       el("i", { class: "bi bi-chat-left-text" }), " Management comments") : null,
     r.can_manager_review ? el("button", { class: "btn small", onclick: () => eSignModal({
-      title: "Audit Manager review", pathOverride: `/api/reports/${r.id}/manager-review`, actionLabel: "Sign review",
-      allowReject: true, onDone: reload }) }, el("i", { class: "bi bi-pen" }), " Review (e-sign)") : null,
+      title: `${r.review_stage_label} review`, pathOverride: `/api/reports/${r.id}/manager-review`, actionLabel: "Sign review",
+      allowReject: true, onDone: reload }) }, el("i", { class: "bi bi-pen" }), ` Review as ${r.review_stage_label} (e-sign)`) : null,
     r.can_cae_approve ? el("button", { class: "btn small", onclick: () => eSignModal({
-      title: "CAE approval - issue report", pathOverride: `/api/reports/${r.id}/cae-approve`, actionLabel: "Approve & issue",
+      title: "GM Audit approval - issue report", pathOverride: `/api/reports/${r.id}/cae-approve`, actionLabel: "Approve & issue",
       allowReject: true, onDone: reload }) }, el("i", { class: "bi bi-patch-check" }), " Approve & issue (e-sign)") : null,
     el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/export.docx` }, el("i", { class: "bi bi-file-earmark-word" }), " Word"),
     el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/print`, target: "_blank", rel: "noopener" },
@@ -76,7 +83,7 @@ async function renderReportTab(panel, auditId, canWrite) {
           r.overall_rating ? el("span", { class: `rating rating-${r.overall_rating.toLowerCase().replace(/\s+/g, "-")}` }, r.overall_rating)
             : el("span", { class: "muted" }, "Not rated"))),
       actions),
-    stepper(REPORT_STAGES, r.status));
+    reportStepper(r));
   panel.append(head);
 
   if (r.blockers.length) {

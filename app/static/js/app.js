@@ -1566,6 +1566,21 @@ async function renderFindings(panel, id, canWrite) {
   }
 }
 
+// Review progress of a working paper along the review chain, with the next sign-off.
+function wpReviewCell(p, canWrite, reload) {
+  const trail = p.review_trail || [];
+  const steps = trail.map((t) => el("span", { class: "chip-mini ok", title: `${t.name} · ${fmtDate(t.at)}${t.acting_as ? ` (acting ${t.acting_as})` : ""}` }, el("i", { class: "bi bi-check2" }), ` ${t.level}`));
+  if (p.reviewed_at) return el("span", { class: "chips" }, ...steps, el("span", { title: fmtDate(p.reviewed_at) }, badge("Reviewed")));
+  const label = p.review_stage ? `Sign off as ${p.review_stage}` : "Sign off";
+  const btn = canWrite && p.uploaded_by !== state.user.id ? el("button", { class: "btn small", onclick: async () => {
+    try {
+      const r = await API.post(`/api/working-papers/${p.id}/review`);
+      toast(r.reviewed_at ? "Working paper reviewed" : `Signed off; next: ${r.review_stage}`); reload();
+    } catch (err) { toast(err.message, "error"); }
+  } }, label) : null;
+  return el("span", { class: "chips" }, ...steps, btn || badge(p.review_stage ? `Awaiting ${p.review_stage}` : "Not reviewed"));
+}
+
 async function renderPapers(panel, id, canWrite) {
   const card = el("div", { class: "card" }, el("h3", null, "Working papers"));
   panel.append(card);
@@ -1578,11 +1593,7 @@ async function renderPapers(panel, id, canWrite) {
       el("td", { class: "ref" }, p.wp_ref || "-"), el("td", null, p.title), el("td", null, `v${p.version_number}`),
       el("td", { class: "muted small" }, [p.test_id ? `Test #${p.test_id}` : null, p.finding_id ? `Finding #${p.finding_id}` : null].filter(Boolean).join(" · ") || "-"),
       el("td", { class: "muted" }, fmtDate(p.uploaded_at)),
-      el("td", null, p.reviewed_at ? el("span", { title: fmtDate(p.reviewed_at) }, badge("Reviewed"))
-        : (canWrite && p.uploaded_by !== state.user.id ? el("button", { class: "btn small", onclick: async () => {
-          try { await API.post(`/api/working-papers/${p.id}/review`); toast("Working paper signed off"); openAudit(id, "papers"); }
-          catch (err) { toast(err.message, "error"); }
-        } }, "Sign off") : badge("Not reviewed"))),
+      el("td", null, wpReviewCell(p, canWrite, () => openAudit(id, "papers"))),
       el("td", { class: "muted hide-sm", title: p.sha256 || "" }, p.sha256 ? `${p.sha256.slice(0, 12)}\u2026` : "-"),
       el("td", null, el("div", { class: "actions" },
         el("a", { href: `/api/working-papers/${p.id}/download` }, "Download"),

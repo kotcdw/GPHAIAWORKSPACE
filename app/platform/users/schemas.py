@@ -70,7 +70,7 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=128)
     # "Manager" / "CAE" sets the report review level; "" clears it.
-    review_level: Literal["", "Manager", "CAE"] | None = None
+    review_level: Literal["", "Unit Head", "Manager", "PIA", "CAE"] | None = None
     # True clears the user's MFA enrolment (lost phone).
     reset_mfa: bool | None = None
     # Where the user is based (an entity, normally a port); send null to clear.

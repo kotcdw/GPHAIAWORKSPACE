@@ -62,13 +62,24 @@ def live_findings(db: DBSession, audit_id: int) -> list[dict]:
 
 
 def signoffs(db: DBSession, report: AuditReport) -> list[dict]:
-    return [
-        {"role": "Prepared by", "name": _name(db, report.created_by), "at": report.created_at},
-        {"role": "Reviewed by (Audit Manager)", "name": _name(db, report.manager_reviewed_by),
-         "at": report.manager_reviewed_at},
-        {"role": "Approved by (Chief Audit Executive)", "name": _name(db, report.cae_approved_by),
-         "at": report.cae_approved_at},
-    ]
+    from app.core import review_chain
+
+    out = [{"role": "Prepared by", "name": _name(db, report.created_by), "at": report.created_at}]
+    trail = review_chain.trail(report.review_trail)
+    if trail:
+        for t in trail:
+            acting = f", acting {t['acting_as']}" if t.get("acting_as") else ""
+            at = datetime.fromisoformat(t["at"]) if t.get("at") else None
+            out.append({"role": f"Reviewed by ({t['level']}{acting})", "name": t.get("name"), "at": at})
+    elif report.manager_reviewed_by:  # reviewed before the review chain existed
+        out.append({"role": "Reviewed by (Audit Manager)", "name": _name(db, report.manager_reviewed_by),
+                    "at": report.manager_reviewed_at})
+    else:
+        out += [{"role": f"Reviewed by ({review_chain.label(x)})", "name": None, "at": None}
+                for x in review_chain.chain("report")]
+    out.append({"role": "Approved by (GM Audit)", "name": _name(db, report.cae_approved_by),
+                "at": report.cae_approved_at})
+    return out
 
 
 def take_snapshot(db: DBSession, report: AuditReport) -> str:

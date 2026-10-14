@@ -77,6 +77,9 @@ class WorkingPaper(Base):
     finding_id: Mapped[int | None] = mapped_column(ForeignKey("findings.id", ondelete="SET NULL"), nullable=True)
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Review chain progress: the level now due and who signed each stage (JSON). reviewed_* is set at the end.
+    review_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    review_trail: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     audit: Mapped[Audit] = relationship(back_populates="working_papers")
     uploader: Mapped[User | None] = relationship(foreign_keys="WorkingPaper.uploaded_by")

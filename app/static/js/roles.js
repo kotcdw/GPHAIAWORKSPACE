@@ -121,12 +121,15 @@ function rolesPeople(cat) {
     const list = el("div", { class: "member-list" });
     if (!r.members.length) list.append(el("p", { class: "muted small" }, "Nobody has this role."));
     r.members.forEach((m) => list.append(el("div", { class: `member-row ${m.active ? "" : "inactive"}` },
-      el("div", { class: "pi-main" }, el("strong", null, m.name), el("div", { class: "muted small" }, [m.username, m.approval_level === "CAE" ? "Chief Audit Executive (GM Audit)" : null, m.active ? null : "inactive"].filter(Boolean).join(" · "))),
+      el("div", { class: "pi-main" }, el("strong", null, m.name), el("div", { class: "muted small" }, [m.username, m.approval_level ? approvalLabel(m.approval_level) : null, m.active ? null : "inactive"].filter(Boolean).join(" · "))),
       cat.can_assign && m.id !== state.user.id ? el("div", { class: "member-actions" }, roleAssignControls({ id: m.id, username: m.username, job_role: r.code, review_level: m.approval_level }, cat, () => renderRolesPage("people"))) : null)));
     wrap.append(panel(`${r.name} (${r.members.length})`, list));
   });
   viewRoot.append(wrap);
 }
+
+const APPROVAL_LEVELS = [["Unit Head", "Unit Head"], ["Manager", "Audit Manager"], ["PIA", "PIA"], ["CAE", "GM Audit (CAE)"]];
+function approvalLabel(v) { const f = APPROVAL_LEVELS.find(([k]) => k === v); return f ? f[1] : v; }
 
 // Role and approval-level controls for one user (used on Roles & permissions and in user management).
 function roleAssignControls(u, cat, onChanged) {
@@ -134,16 +137,15 @@ function roleAssignControls(u, cat, onChanged) {
   const blocked = !cat.can_appoint_admins && ["super_admin", "admin"].includes(u.job_role);
   const sel = el("select", { class: "compact", "aria-label": `Role of ${u.username}`, disabled: blocked ? "1" : null },
     ...options.map((r) => el("option", { value: r.code, selected: r.code === u.job_role ? "1" : null, disabled: r.assignable ? null : "1" }, r.name)));
-  const lvl = el("select", { class: "compact", "aria-label": `Approval level of ${u.username}`, title: "Unit Heads, Audit Managers and PIAs review; the GM Audit (CAE) approves and distributes" },
-    el("option", { value: "Manager", selected: u.review_level !== "CAE" ? "1" : null }, "Reviewer"),
-    el("option", { value: "CAE", selected: u.review_level === "CAE" ? "1" : null }, "GM Audit (CAE)"));
+  const lvl = el("select", { class: "compact", "aria-label": `Approval level of ${u.username}`, title: "Review chain: Unit Head, then Audit Manager, then PIA; the GM Audit (CAE) approves and distributes" },
+    ...APPROVAL_LEVELS.map(([v, t]) => el("option", { value: v, selected: (u.review_level || "Manager") === v ? "1" : null }, t)));
   lvl.classList.toggle("hidden", u.job_role !== "manager");
   const send = async () => {
     try {
       const body = { job_role: sel.value };
       if (sel.value === "manager") body.approval_level = lvl.value;
       const res = await API.patch(`/api/users/${u.id}/job-role`, body);
-      toast(`${u.username} is now ${res.job_role_name}${res.review_level === "CAE" ? " (GM Audit)" : ""}${res.sessions_ended ? "; signed out" : ""}`);
+      toast(`${u.username} is now ${res.job_role_name}${res.review_level ? ` (${approvalLabel(res.review_level)})` : ""}${res.sessions_ended ? "; signed out" : ""}`);
       if (onChanged) onChanged();
     } catch (err) { toast(err.message, "error"); sel.value = u.job_role; }
   };

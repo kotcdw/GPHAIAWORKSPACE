@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core import review_chain
 from app.core.access import ensure_can_view
 from app.core.audit import log_action
 from app.core.database import get_db
@@ -492,7 +493,7 @@ class NoteOut(BaseModel):
 def _is_reviewer(user: User) -> bool:
     return (
         user.role == Role.Admin
-        or user.review_level in (ReviewLevel.Manager, ReviewLevel.CAE)
+        or user.review_level is not None
         or job_role_of(user) == "manager"
     )
 
@@ -753,18 +754,46 @@ def review_paper(paper_id: int, request: Request, db: DBSession = Depends(get_db
         )
     if wp.reviewed_at:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already signed off")
-    wp.reviewed_by = user.id
-    wp.reviewed_at = utcnow()
+    levels = review_chain.chain("workpaper")
+    if not levels:  # no chain configured: one sign-off by any reviewer
+        wp.reviewed_by = user.id
+        wp.reviewed_at = utcnow()
+        what = "REVIEWED"
+    else:
+        try:
+            stage = ReviewLevel(wp.review_stage) if wp.review_stage else levels[0]
+        except ValueError:
+            stage = levels[0]
+        allowed, why = review_chain.may_sign(user, stage, wp.review_trail, wp.uploaded_by)
+        if not allowed:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=why)
+        wp.review_trail = review_chain.sign(wp.review_trail, user, stage)
+        following = review_chain.next_stage("workpaper", stage)
+        if following is None:
+            wp.review_stage, wp.reviewed_by, wp.reviewed_at = None, user.id, utcnow()
+            what = f"REVIEWED ({review_chain.label(stage)}, final)"
+        else:
+            wp.review_stage = following.value
+            what = f"SIGNED OFF by {review_chain.label(stage)}; next {review_chain.label(following)}"
+            from app.platform.notifications.service import notify_many
+
+            notify_many(db, [u for u in review_chain.reviewers_for(db, following) if u != user.id],
+                        f"Working paper to review: {wp.wp_ref or wp.title}",
+                        f"{wp.title} v{wp.version_number} is ready for {review_chain.label(following)} review.",
+                        link_type="audit", link_id=wp.audit_id)
     log_record_history(
         db,
         record_type="audit",
         record_id=wp.audit_id,
         user_id=user.id,
-        action=f"WORKING PAPER REVIEWED {wp.wp_ref or ''} {wp.title} v{wp.version_number}".strip(),
+        action=f"WORKING PAPER {what} {wp.wp_ref or ''} {wp.title} v{wp.version_number}".strip(),
         request=request,
     )
     db.commit()
-    return {"id": wp.id, "reviewed_by": _name(db, user.id), "reviewed_at": wp.reviewed_at.isoformat()}
+    return {"id": wp.id, "reviewed_by": _name(db, wp.reviewed_by) if wp.reviewed_by else None,
+            "reviewed_at": wp.reviewed_at.isoformat() if wp.reviewed_at else None,
+            "review_stage": review_chain.label(wp.review_stage) if wp.review_stage else None,
+            "review_trail": review_chain.trail(wp.review_trail)}
 
 
 # ==================================================================== exit meeting

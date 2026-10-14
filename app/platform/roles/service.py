@@ -56,13 +56,14 @@ def apply_role(target: User, code: str, approval_level: str | None = None) -> bo
     target.job_role = role.code
     target.role = role.tier
     if role.code == "manager":
-        if approval_level in ("Manager", "CAE"):
+        if approval_level:
             target.review_level = ReviewLevel(approval_level)
-        elif target.review_level != ReviewLevel.CAE:
+        elif target.review_level is None:
             target.review_level = ReviewLevel.Manager
     else:
-        if approval_level == "CAE":
+        if approval_level:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                detail="Only a Manager can hold the Chief Audit Executive approval level")
+                                detail="Only a Manager holds an approval level (Unit Head, Audit Manager, PIA or "
+                                       "GM Audit)")
         target.review_level = None
     return tier_before != target.role

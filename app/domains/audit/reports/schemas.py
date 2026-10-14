@@ -73,6 +73,9 @@ class ReportOut(BaseModel):
     created_by: int | None
     manager_reviewed_by: int | None
     manager_reviewed_at: datetime | None
+    review_stage: str | None = None
+    review_stage_label: str | None = None
+    review_chain: list[str] = []
     cae_approved_by: int | None
     cae_approved_at: datetime | None
     issued_at: datetime | None

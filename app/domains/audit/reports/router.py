@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core import review_chain
 from app.core.access import assigned_audit_ids, is_privileged
 from app.core.appconfig import cfg
 from app.core.approvalsvc import sign
@@ -88,17 +89,30 @@ def _out(db: DBSession, report: AuditReport, user: User) -> ReportOut:
     out.can_comment = report.status == ReportStatus.ManagementReview and (
         staff or report.audit_id in assigned_audit_ids(db, user)
     )
+    stage = _stage(report)
+    out.review_stage_label = review_chain.label(stage) if stage else None
+    out.review_chain = [review_chain.label(x) for x in review_chain.chain("report")]
     out.can_manager_review = (
         staff and report.status == ReportStatus.ManagerReview
-        and level in (ReviewLevel.Manager, ReviewLevel.CAE) and report.created_by != user.id
+        and review_chain.may_sign(user, stage, report.review_trail, report.created_by)[0]
     )
     out.can_cae_approve = (
         staff and report.status == ReportStatus.CAEApproval and level == ReviewLevel.CAE
         and user.id not in (report.created_by, report.manager_reviewed_by)
+        and user.id not in review_chain.signer_ids(report.review_trail)
     )
     out.blockers = _blockers(db, report) if staff and report.status != ReportStatus.Issued else []
     out.signoffs = [SignoffOut(**s) for s in service.signoffs(db, report)]
     return out
+
+
+def _stage(report: AuditReport) -> ReviewLevel | None:
+    if report.status != ReportStatus.ManagerReview:
+        return None
+    try:
+        return ReviewLevel(report.review_stage) if report.review_stage else ReviewLevel.Manager
+    except ValueError:
+        return ReviewLevel.Manager
 
 
 def _history(db: DBSession, report: AuditReport, user: User, action: str, request: Request) -> None:
@@ -235,11 +249,22 @@ def submit_for_review(report_id: int, request: Request, db: DBSession = Depends(
     if problems:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Not ready for review: " + " ".join(problems))
-    report.status = ReportStatus.ManagerReview
-    notify_many(db, [u for u in user_ids_with_level(db, ReviewLevel.Manager, ReviewLevel.CAE) if u != user.id],
-                f"Report to review: {report.report_ref}", f"{report.title} is ready for Audit Manager review.",
-                link_type="audit_report", link_id=report.id)
-    _history(db, report, user, "SUBMITTED for manager review", request)
+    first = review_chain.next_stage("report", None)
+    report.review_trail = "[]"
+    report.manager_reviewed_by = report.manager_reviewed_at = None
+    if first is None:  # no review chain configured: straight to the GM Audit
+        report.status, report.review_stage = ReportStatus.CAEApproval, None
+        notify_many(db, [u for u in user_ids_with_level(db, ReviewLevel.CAE) if u != user.id],
+                    f"Report awaiting GM Audit approval: {report.report_ref}", report.title,
+                    link_type="audit_report", link_id=report.id)
+        _history(db, report, user, "SUBMITTED for GM Audit approval", request)
+    else:
+        report.status, report.review_stage = ReportStatus.ManagerReview, first.value
+        notify_many(db, [u for u in review_chain.reviewers_for(db, first) if u != user.id],
+                    f"Report to review: {report.report_ref}",
+                    f"{report.title} is ready for {review_chain.label(first)} review.",
+                    link_type="audit_report", link_id=report.id)
+        _history(db, report, user, f"SUBMITTED for {review_chain.label(first)} review", request)
     db.commit()
     db.refresh(report)
     return _out(db, report, user)
@@ -251,27 +276,41 @@ def manager_review(report_id: int, payload: ESignRequest, request: Request, db: 
     report = _report_or_404(db, report_id, user)
     if report.status != ReportStatus.ManagerReview:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The report is not awaiting manager review")
-    if user.review_level not in (ReviewLevel.Manager, ReviewLevel.CAE):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Only an Audit Manager or the CAE can review a report")
+    stage = _stage(report)
+    allowed, why = review_chain.may_sign(user, stage, report.review_trail, report.created_by)
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=why)
     decision = payload.decision.value
+    following = review_chain.next_stage("report", stage)
 
     def _approve(_: DBSession) -> None:
-        report.status = ReportStatus.CAEApproval
+        report.review_trail = review_chain.sign(report.review_trail, user, stage)
         report.manager_reviewed_by = user.id
         report.manager_reviewed_at = utcnow()
+        if following is None:
+            report.status, report.review_stage = ReportStatus.CAEApproval, None
+        else:
+            report.review_stage = following.value
 
     sign(db, record_type="audit_report", record_id=report.id, user=user, password=payload.password,
          decision=decision, comment=payload.comment, request=request, on_approve=_approve,
          preparer_id=report.created_by)
-    if decision == "Approve":
+    if decision == "Approve" and following is None:
         notify_many(db, [u for u in user_ids_with_level(db, ReviewLevel.CAE) if u != user.id],
-                    f"Report awaiting CAE approval: {report.report_ref}", report.title,
+                    f"Report awaiting GM Audit approval: {report.report_ref}", report.title,
                     link_type="audit_report", link_id=report.id)
+        _history(db, report, user, f"REVIEWED ({review_chain.label(stage)}); now with the GM Audit", request)
+    elif decision == "Approve":
+        notify_many(db, [u for u in review_chain.reviewers_for(db, following) if u != user.id],
+                    f"Report to review: {report.report_ref}",
+                    f"{report.title} is ready for {review_chain.label(following)} review.",
+                    link_type="audit_report", link_id=report.id)
+        _history(db, report, user, f"REVIEWED ({review_chain.label(stage)}); next {review_chain.label(following)}",
+                 request)
     else:
-        report.status = ReportStatus.Draft
+        report.status, report.review_stage, report.review_trail = ReportStatus.Draft, None, "[]"
         notify(db, report.created_by, f"Report returned: {report.report_ref}",
-               payload.comment or "The Audit Manager returned the report for changes.",
+               payload.comment or f"The {review_chain.label(stage)} returned the report for changes.",
                link_type="audit_report", link_id=report.id)
     db.commit()
     db.refresh(report)
@@ -286,9 +325,9 @@ def cae_approve(report_id: int, payload: ESignRequest, request: Request, db: DBS
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The report is not awaiting CAE approval")
     if user.review_level != ReviewLevel.CAE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the CAE can approve and issue a report")
-    if user.id == report.manager_reviewed_by:
+    if user.id == report.manager_reviewed_by or user.id in review_chain.signer_ids(report.review_trail):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Segregation of duties: the manager reviewer cannot also give CAE approval")
+                            detail="Segregation of duties: a reviewer in the chain cannot also give GM Audit approval")
     decision = payload.decision.value
 
     def _approve(session: DBSession) -> None:
