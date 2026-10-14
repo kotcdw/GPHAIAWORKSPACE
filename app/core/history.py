@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.audit import client_ip
 from app.core.enums import utcnow
-from app.modules.history.models import RecordHistory
+from app.platform.history.models import RecordHistory
 
 
 def log_record_history(

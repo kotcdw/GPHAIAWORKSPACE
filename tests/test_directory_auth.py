@@ -10,7 +10,7 @@ from ldap3 import MOCK_SYNC, Connection, Server
 from app.core import directory
 from app.core.config import settings
 from app.core.enums import Role
-from app.modules.users.models import User
+from app.platform.users.models import User
 from tests.conftest import make_user
 
 BASE = "ou=users,dc=gpha,dc=test"

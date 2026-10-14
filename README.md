@@ -414,35 +414,66 @@ uv run python -m scripts.restore_backup backups\backup_20261013_101500.json.enc 
 uv run python -m scripts.restore_backup backups\backup_20261013_101500.json.enc --yes
 ```
 
-## Layout
+## Architecture and layout
+
+```
+                         GPHA INTERNAL AUDIT
+                                 |
+                       API / Platform Core            app/core + app/platform
+                                 |
+      +--------------------------+---------------------------+
+ Audit Domain Module     Assurance Domain Module     Issues Domain Module
+ app/domains/audit       app/domains/assurance       app/domains/issues
+      +--------------------------+---------------------------+
+                                 |
+                            Shared Data                one MySQL database (app.core.database, Alembic)
+                                 |
+      +--------------------------+---------------------------+
+   AI Service             Analytics Service            Documents Service
+   app/services/ai        app/services/analytics       app/services/documents
+```
+
+Each layer package declares its modules and routers (`NAME`, `DESCRIPTION`, `MODULES`, `routers()`);
+`app/main.py` registers them layer by layer. **Account > Platform map** (`GET /api/platform`, Platform
+Administrators / technical administrators) shows the live map, including the tables each module owns, read
+from the ORM so it cannot drift from the code.
 
 ```
 app/
-  core/            config, database, security, deps, audit, enums,
-                   refs, history, tasksvc, approvalsvc, access (record
-                   scoping + deletion rules), crypto (encryption at rest)
-  modules/
-    auth/          register/login/logout/me/profile/password
-    users/         user admin + roles
-    planning/      audit universe + Assurance Plan + engagements
-    rcm/           objectives, risks, controls, tests, sampling, issues -> actions
-    drafts/        autosaved per-user form drafts
-    audits/        audits + findings/issues + working papers (+ e-closure)
-    nonconformances/  NC records + dispositions
-    capa/          corrective/preventive actions
-    organizations/ third parties / auditee entities
-    stakeholders/  customers / service users
-    service_feedback/ complaints register
-    tasks/         Task Center
-    approvals/     generic e-sign attestation endpoint
-    history/       audit logs + per-record history views
-    backups/       snapshot + scheduled backup admin
-  main.py          explicit router registry + lifespan (backup scheduler)
-  static/          HTML/CSS/JS front end (index.html, css/, js/, img/)
-alembic/versions/  migrations 0001 initial .. 0007 form drafts
-mysql/init/        init SQL mounted into the Docker container at first boot
-scripts/           init_db.py (migrate + seed admin), seed_demo.py, restore_backup.py
-tests/             pytest suite (runs on MySQL)
-uploads/           uploaded working papers (git-ignored)
-backups/           database snapshots (git-ignored)
+  core/              cross-cutting: config, database, security, deps, permissions, appconfig (admin rules),
+                     audit (audit trail), history, approvalsvc (e-sign + segregation of duties), access,
+                     crypto (encryption at rest), tasksvc, refs
+  platform/          API / Platform Core: auth, users, roles, configuration, organizations, stakeholders,
+                     customfields, approvals, tasks, notifications, history, drafts, views, dataio, backups,
+                     architecture (platform map)
+  domains/
+    audit/           audits (+ findings, working papers, lifecycle), rcm, programs, evidence, memos,
+                     methodology, capacity, reports, service_feedback
+    assurance/       planning (universe + Assurance Plan), plancycle (cycle, statuses, versions, change
+                     requests, IAA submission, distribution), committee, governance, qaip
+    issues/          nonconformances, capa, followup
+  services/
+    ai/              optional AI drafting (off by default; providers: anthropic, azure_openai,
+                     openai_compatible incl. Ollama/LM Studio on GPHA's own server); request log ai_requests
+    analytics/       dashboards, KPIs, insights
+    documents/       Word documents (letterhead + classification footer) and encrypted file storage
+  main.py            layer router registry + lifespan (backup scheduler, escalations)
+  static/            HTML/CSS/JS front end (index.html, css/, js/, img/)
+alembic/versions/    migrations 0001 .. 0021
+mysql/init/          init SQL mounted into the Docker container at first boot
+scripts/             init_db.py, seed_demo.py, restore_backup.py, mfa_policy.py
+tests/               pytest suite (runs on MySQL)
+uploads/             uploaded working papers and evidence (git-ignored)
+backups/             database snapshots (git-ignored)
 ```
+
+### AI Service (optional)
+
+Off by default. A Platform Administrator turns it on under **Configuration > AI** and chooses the provider,
+model and endpoint; the API key is read from `GPHA_AI_API_KEY` in `.env` and is never stored in the database.
+To keep audit data inside GPHA, point it at a model on GPHA's own server (provider `openai_compatible`,
+endpoint e.g. `http://localhost:11434` for Ollama). Users whose job role has *Use AI drafting assistance*
+(`ai.use`) see **Draft with AI** on findings (5C), **Draft summary with AI** on reports and **Suggest risks**
+on RCM objectives. Answers are drafts shown next to the current text; nothing is saved until the user ticks
+what to use and saves the form. E-mail addresses and phone numbers are removed before sending (admin rule),
+and every request is logged in `ai_requests` and the audit trail.

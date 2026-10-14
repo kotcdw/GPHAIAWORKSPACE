@@ -394,6 +394,7 @@ function objectiveCard(o, open, reload) {
     open ? el("div", { class: "actions" },
       btn("+ Risk", () => riskModal(o, null, reload), "secondary"),
       btn("+ Control", () => controlModal(o, null, reload), "secondary"),
+      aiRiskAction(o, reload),
       btn("Edit", () => objectiveForm(o.audit_id, o, reload), "secondary"),
       btn("Delete", async () => {
         try { await API.del(`/api/objectives/${o.id}`); toast("Objective deleted"); reload(); }
@@ -613,6 +614,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     try { const c = await API.post(`/api/findings/${f.id}/raise-action`); toast(`Action ${c.capa_ref} raised`); document.querySelector(".modal-backdrop")?.remove(); onSaved(); }
     catch (err) { toast(err.message, "error"); }
   } }, "Raise remediation") : null;
+  const aiAction = !isNew && canWrite ? aiFindingAction(f.id, () => handle, fields) : null;
   const handle = openForm({
     title: isNew ? "New finding / issue" : `Issue #${f.id}: ${f.title}`,
     key: isNew ? `finding:new:${auditId}` : `finding:edit:${f.id}`,
@@ -620,7 +622,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     fields,
     initial: f || { risk_rating: "Medium", status: "Open" },
     width: 900,
-    actions: raiseAction ? [raiseAction] : [],
+    actions: [aiAction, raiseAction].filter(Boolean),
     validate: (v) => (v.status === "Closed" && !respondOnly && !(v.recommendation || "").trim() && !(v.condition || "").trim()
       ? { condition: "Document the condition (or recommendation) before closing the issue" } : {}),
     submitLabel: isNew ? "Create" : "Save",

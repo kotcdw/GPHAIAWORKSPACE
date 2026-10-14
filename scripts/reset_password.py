@@ -26,8 +26,8 @@ from app.core.database import SessionLocal  # noqa: E402
 from app.core.dbcheck import ensure_schema  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 from app.core.validators import password_problems  # noqa: E402
-from app.modules.auth.models import Session  # noqa: E402
-from app.modules.users.models import User  # noqa: E402
+from app.platform.auth.models import Session  # noqa: E402
+from app.platform.users.models import User  # noqa: E402
 
 
 def list_users() -> None:

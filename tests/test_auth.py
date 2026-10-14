@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.enums import Role
-from app.modules.users.models import User
+from app.platform.users.models import User
 from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
 
 

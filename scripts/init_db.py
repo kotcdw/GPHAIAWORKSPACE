@@ -22,7 +22,7 @@ from app.core.database import SessionLocal  # noqa: E402
 from app.core.dbcheck import database_status  # noqa: E402
 from app.core.enums import Role  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
-from app.modules.users.models import User  # noqa: E402
+from app.platform.users.models import User  # noqa: E402
 
 
 def run_migrations() -> None:

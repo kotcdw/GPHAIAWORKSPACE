@@ -20,14 +20,14 @@ from app.core.enums import (
     utcnow,
 )
 from app.core.security import hash_password
-from app.modules.audits.models import Audit, Finding, WorkingPaper
-from app.modules.capa.models import Capa as CAPA
-from app.modules.nonconformances.models import Nonconformance
-from app.modules.organizations.models import Organization
-from app.modules.service_feedback.models import ServiceFeedback
-from app.modules.stakeholders.models import Stakeholder
-from app.modules.tasks.models import Task
-from app.modules.users.models import User
+from app.domains.audit.audits.models import Audit, Finding, WorkingPaper
+from app.domains.audit.service_feedback.models import ServiceFeedback
+from app.domains.issues.capa.models import Capa as CAPA
+from app.domains.issues.nonconformances.models import Nonconformance
+from app.platform.organizations.models import Organization
+from app.platform.stakeholders.models import Stakeholder
+from app.platform.tasks.models import Task
+from app.platform.users.models import User
 
 
 def _user(db, username: str, role: Role, active: bool = True) -> User:

@@ -233,7 +233,7 @@ def test_plan_lifecycle_statuses(client, client2, db):
 
     # Close the year (the started audit must be closed first) and archive it.
     from app.core.enums import AuditStatus
-    from app.modules.audits.models import Audit
+    from app.domains.audit.audits.models import Audit
 
     db.rollback()
     audit = db.get(Audit, started.json()["audit_id"])

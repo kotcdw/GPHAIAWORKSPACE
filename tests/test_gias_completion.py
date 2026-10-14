@@ -9,9 +9,9 @@ import zipfile
 from datetime import timedelta
 
 from app.core.enums import ReviewLevel, Role, utcnow
-from app.modules.capa.models import Capa
-from app.modules.followup.service import due_level, run_escalations
-from app.modules.notifications.models import Notification
+from app.domains.issues.capa.models import Capa
+from app.domains.issues.followup.service import due_level, run_escalations
+from app.platform.notifications.models import Notification
 from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user, walk_plan_to_review
 
 _YEARS = iter(range(2030, 2023, -1))

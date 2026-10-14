@@ -113,6 +113,10 @@ class Settings(BaseSettings):
     # e.g. "Admin,Auditor"). Empty = optional for everyone.
     mfa_required_roles: str = ""
 
+    # AI Service secret (GPHA_AI_API_KEY). Kept in the environment only - never stored in the database.
+    # Whether AI is used at all, and which provider/model, is set by administrators under Configuration > AI.
+    ai_api_key: str = ""
+
     # Bootstrap administrator (created by scripts/init_db.py if missing)
     admin_username: str = "admin"
     admin_password: str = "Admin@12345"

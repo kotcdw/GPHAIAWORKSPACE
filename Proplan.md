@@ -328,9 +328,9 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 ### Steps
 - [x] **12.1** Notifications: `notifications` table, bell with unread count, every task assignment notifies; optional SMTP e-mail sent only after commit.
-- [x] **12.2** Audit report module (`app/modules/reports`): draft → management comments → manager e-sign → CAE e-sign → issued; blockers (rating, summary, opinion, management responses); SoD; issued snapshot; Word (python-docx) and print/PDF export.
+- [x] **12.2** Audit report module (`app/domains/audit/reports`): draft → management comments → manager e-sign → CAE e-sign → issued; blockers (rating, summary, opinion, management responses); SoD; issued snapshot; Word (python-docx) and print/PDF export.
 - [x] **12.3** Review levels on users (Audit Manager / CAE), set by Admin in user management.
-- [x] **12.4** Follow-up (`app/modules/followup`): implementation evidence, auditor validation with SoD, reopen on Not Effective, CAPA close gated on Effective; hourly escalation owner → manager → CAE; Follow-up page.
+- [x] **12.4** Follow-up (`app/domains/issues/followup`): implementation evidence, auditor validation with SoD, reopen on Not Effective, CAPA close gated on Effective; hourly escalation owner → manager → CAE; Follow-up page.
 - [x] **12.5** Security: TOTP two-step verification (stdlib), role-mandatory MFA, per-IP sign-in throttle, CSP + Permissions-Policy, self-hosted Inter font and Bootstrap Icons.
 - [x] **12.6** Migration `0008_reports_followup`; tests `tests/test_reports_followup.py` (74 tests green); browser walkthrough of the full report and follow-up flow.
 - [ ] **12.7** Still open (need decisions): HTTPS + server host, GPHA SSO/AD, Exchange relay settings, GPHA report template wording.
@@ -376,11 +376,11 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 ## Phase 16 - Backlog build-out (assessment items 5, 8-15)
 
-- [x] **16.1** Planning memo with e-signed approval and fieldwork gate (`app/modules/memos`, rule `require_memo_approval_for_fieldwork`).
-- [x] **16.2** Capacity & time sheets (`app/modules/capacity`): profiles, time entries, capacity summary, budget vs actual.
-- [x] **16.3** Analytics (`app/modules/insights`): heat map, findings trend, repeat findings, themes, KPIs with configurable targets.
-- [x] **16.4** QAIP (`app/modules/qaip`): engagement quality checklist with evidence hints, post-audit survey (invited on close), yearly summary.
-- [x] **16.5** Global search, Excel import (universe, findings) with template/preview, Excel export of any list, saved views (`app/modules/dataio`, `app/modules/views`).
+- [x] **16.1** Planning memo with e-signed approval and fieldwork gate (`app/domains/audit/memos`, rule `require_memo_approval_for_fieldwork`).
+- [x] **16.2** Capacity & time sheets (`app/domains/audit/capacity`): profiles, time entries, capacity summary, budget vs actual.
+- [x] **16.3** Analytics (`app/services/analytics`): heat map, findings trend, repeat findings, themes, KPIs with configurable targets.
+- [x] **16.4** QAIP (`app/domains/assurance/qaip`): engagement quality checklist with evidence hints, post-audit survey (invited on close), yearly summary.
+- [x] **16.5** Global search, Excel import (universe, findings) with template/preview, Excel export of any list, saved views (`app/platform/dataio`, `app/platform/views`).
 - [x] **16.6** WCAG 2.2 AA pass: dialogs (role, label, focus trap/return), skip link, aria-current, labelled filters, toasts announced, reduced motion, contrast.
 - [x] **16.7** Go-live readiness: optional Active Directory sign-in (`app/core/directory.py`), Caddy HTTPS config, `scripts/production_check.py`, Exchange/M365 SMTP examples.
 - [ ] **16.8** Waiting on GPHA decisions: server host and certificate, SSO vs app MFA, SMTP relay details, ERP data feed for analytics.
@@ -390,7 +390,7 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 
 - [x] **17.1** Entity types (`organization_categories`) and port types (`port_categories`) as Configuration lists; category validated (retired values kept on existing records).
 - [x] **17.2** Hierarchy (`parent_id`, loop-proof), derived port per entity, address; list filters by type, port, parent and "My port"; delete blocked while entities sit under it.
-- [x] **17.3** Custom fields (`app/modules/customfields`): Admin-defined text/longtext/number/date/select/yes-no fields, validated and stored on the record; retire instead of delete.
+- [x] **17.3** Custom fields (`app/platform/customfields`): Admin-defined text/longtext/number/date/select/yes-no fields, validated and stored on the record; retire instead of delete.
 - [x] **17.4** User workplace (`users.work_entity_id`): profile "Where I work", "Set as where I work" on an entity, `/api/organizations/entities` picker for all roles.
 - Migration `0012_entities_custom_fields`; tests `test_entities.py` (86 passing).
 

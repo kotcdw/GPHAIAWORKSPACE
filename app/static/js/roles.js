@@ -21,6 +21,7 @@ function viewAllowed(view) {
     governance: ["governance.view", "oversight.reporting", "oversight.portfolio"],
     portfolio: ["oversight.port", "oversight.portfolio", "governance.view"],
     programs: null,
+    platform: ["system.technical", "system.config"],
   };
   if (view === "programs") return state.user.role !== "Auditee";
   if (view === "logs" || view === "backups") return isAdmin() && hasPerm("system.technical");

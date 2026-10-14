@@ -108,23 +108,25 @@ async function renderReportTab(panel, auditId, canWrite) {
 }
 
 function reportForm(r, reload) {
-  openForm({
+  const fields = [
+    { name: "title", label: "Report title", required: true, maxLength: 255, singleLine: true },
+    { name: "overall_rating", label: "Overall rating", type: "select", options: REPORT_RATINGS, emptyLabel: "- choose -" },
+    { name: "executive_summary", label: "Executive summary", type: "textarea", rows: 5, maxLength: 50000,
+      help: "What the reader must know: the overall conclusion and the most significant issues." },
+    { name: "overall_opinion", label: "Overall opinion", type: "textarea", rows: 3, maxLength: 50000 },
+    { name: "background", label: "Background", type: "textarea", rows: 3, maxLength: 50000 },
+    { name: "scope_objectives", label: "Scope and objectives", type: "textarea", rows: 3, maxLength: 50000 },
+    { name: "methodology", label: "Methodology", type: "textarea", rows: 3, maxLength: 50000 },
+    { name: "distribution_list", label: "Distribution list", type: "textarea", rows: 2, maxLength: 5000,
+      placeholder: "e.g. Director-General; Deputy Director-General (Finance); Audit Committee" },
+  ];
+  const handle = openForm({
+    actions: [aiSummaryAction(r.id, () => handle, fields)],
     title: `Edit ${r.report_ref}`,
     key: `report:${r.id}:edit`,
     meta: { title: `Edit report ${r.report_ref}`, record_type: "audit_report", record_id: r.id },
     width: 860,
-    fields: [
-      { name: "title", label: "Report title", required: true, maxLength: 255, singleLine: true },
-      { name: "overall_rating", label: "Overall rating", type: "select", options: REPORT_RATINGS, emptyLabel: "- choose -" },
-      { name: "executive_summary", label: "Executive summary", type: "textarea", rows: 5, maxLength: 50000,
-        help: "What the reader must know: the overall conclusion and the most significant issues." },
-      { name: "overall_opinion", label: "Overall opinion", type: "textarea", rows: 3, maxLength: 50000 },
-      { name: "background", label: "Background", type: "textarea", rows: 3, maxLength: 50000 },
-      { name: "scope_objectives", label: "Scope and objectives", type: "textarea", rows: 3, maxLength: 50000 },
-      { name: "methodology", label: "Methodology", type: "textarea", rows: 3, maxLength: 50000 },
-      { name: "distribution_list", label: "Distribution list", type: "textarea", rows: 2, maxLength: 5000,
-        placeholder: "e.g. Director-General; Deputy Director-General (Finance); Audit Committee" },
-    ],
+    fields,
     initial: r,
     submitLabel: "Save report",
     onSubmit: (v) => API.patch(`/api/reports/${r.id}`, { ...v, overall_rating: v.overall_rating || null }),
@@ -481,7 +483,7 @@ function dataTable(items, columns, { onRow = null, pageSize = 25, exportName = n
 
 // ==================================================================== System Configuration (Admin)
 
-const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text", Organizations: "building", "KPI targets": "speedometer2" };
+const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text", Organizations: "building", "KPI targets": "speedometer2", AI: "stars" };
 
 async function renderConfiguration() {
   clear(viewRoot);
@@ -506,6 +508,7 @@ async function renderConfiguration() {
       if (r.kind === "roles") return { ...f, type: "checklist", options: r.options };
       if (r.kind === "longtext") return { ...f, type: "textarea", rows: 4, maxLength: 5000 };
       if (r.kind === "list") return { ...f, type: "textarea", rows: 6, maxLength: 5000, help: /one per line/i.test(r.help || "") ? r.help : `${r.help || ""} One per line.`.trim() };
+      if (r.options && r.options.length) return { ...f, type: "select", required: true, options: r.options };
       return { ...f, required: true, maxLength: 200, singleLine: true };
     });
     const initial = Object.fromEntries(items.map((r) => [r.key, r.kind === "list" ? (r.value || []).join("\n") : r.value]));

@@ -10,7 +10,7 @@ from openpyxl import Workbook, load_workbook
 
 from app.core import appconfig
 from app.core.enums import ReviewLevel, Role, utcnow
-from app.modules.notifications.models import Notification
+from app.platform.notifications.models import Notification
 from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
 
 

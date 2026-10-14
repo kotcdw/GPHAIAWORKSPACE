@@ -64,12 +64,15 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     # auditee / governance
     "auditee.respond": ("Auditee & governance", "Respond to evidence requests, findings and actions"),
     "governance.view": ("Auditee & governance", "View approved plans, issued reports and dashboards"),
+    # services
+    "ai.use": ("Services", "Use AI drafting assistance (only when an administrator has enabled the AI Service)"),
 }
 
 _ALL = set(PERMISSIONS)
 _PLATFORM = {p for p in _ALL if p.startswith("system.")}
 _METHOD = {p for p in _ALL if p.startswith("method.")}
-_FIELD = {"audit.plan", "audit.fieldwork", "audit.findings", "audit.workpapers", "audit.evidence", "report.prepare"}
+_FIELD = {"audit.plan", "audit.fieldwork", "audit.findings", "audit.workpapers", "audit.evidence", "report.prepare",
+          "ai.use"}
 _REVIEW = {"review.workpapers", "review.notes"}
 
 
@@ -97,12 +100,12 @@ JOB_ROLES: list[JobRole] = [
             frozenset({"plan.prepare", "plan.approve", "plan.amend", "oversight.portfolio", "oversight.port",
                        "oversight.resources", "oversight.qaip", "oversight.reporting", "audit.create",
                        "audit.memo_approve", "audit.close", "report.review", "report.approve", "quality.review",
-                       "followup.manage", "followup.validate", "governance.view"} | _REVIEW)),
+                       "followup.manage", "followup.validate", "governance.view", "ai.use"} | _REVIEW)),
     JobRole("pia", "PIA (Principal Internal Auditor)", Role.Auditor, ReviewLevel.Manager,
             "Port audit oversight, resource allocation, audit review, follow-up and port portfolio management.",
             frozenset({"oversight.port", "oversight.resources", "plan.prepare", "audit.create", "audit.memo_approve",
                        "report.review", "quality.review", "followup.manage", "followup.validate",
-                       "oversight.reporting"} | _REVIEW)),
+                       "oversight.reporting", "ai.use"} | _REVIEW)),
     JobRole("audit_manager", "Audit Manager", Role.Auditor, ReviewLevel.Manager,
             "Engagement planning, team allocation, supervision, review, findings management and report "
             "preparation and review.",
@@ -174,7 +177,7 @@ def matrix() -> dict[str, set[str]]:
     out = {r.code: set(r.defaults) for r in JOB_ROLES}
     db = SessionLocal()
     try:
-        from app.modules.roles.models import RolePermission
+        from app.platform.roles.models import RolePermission
 
         for row in db.execute(select(RolePermission)).scalars():
             if row.job_role in out and row.permission in PERMISSIONS:

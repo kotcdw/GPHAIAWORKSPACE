@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.database import get_db
 from app.core.enums import Role, utcnow
 from app.core.security import constant_time_equals, hash_token
-from app.modules.auth.models import Session as UserSession
-from app.modules.users.models import User
+from app.platform.auth.models import Session as UserSession
+from app.platform.users.models import User
 
 SESSION_COOKIE = "gpha_session"
 CSRF_COOKIE = "gpha_csrf"

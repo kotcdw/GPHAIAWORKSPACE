@@ -6,8 +6,8 @@ from app.core.enums import Role
 from app.core.history import list_record_history, log_record_history
 from app.core.refs import format_reference, next_reference
 from app.core.tasksvc import auto_task_for_record, create_task
-from app.modules.approvals.models import ApprovalCycle
-from app.modules.history.models import RecordHistory
+from app.platform.approvals.models import ApprovalCycle
+from app.platform.history.models import RecordHistory
 from tests.conftest import make_user
 
 

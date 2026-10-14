@@ -8,12 +8,12 @@ from app.core import models as core_models  # noqa: F401  (registers all models)
 # Import application metadata so autogenerate can see the models.
 from app.core.config import settings
 from app.core.database import Base
-from app.modules.approvals import models as approval_models  # noqa: F401
-from app.modules.audits import models as audit_models  # noqa: F401
-from app.modules.auth import models as auth_models  # noqa: F401
-from app.modules.history import models as history_models  # noqa: F401
-from app.modules.tasks import models as task_models  # noqa: F401
-from app.modules.users import models as user_models  # noqa: F401
+from app.domains.audit.audits import models as audit_models  # noqa: F401
+from app.platform.approvals import models as approval_models  # noqa: F401
+from app.platform.auth import models as auth_models  # noqa: F401
+from app.platform.history import models as history_models  # noqa: F401
+from app.platform.tasks import models as task_models  # noqa: F401
+from app.platform.users import models as user_models  # noqa: F401
 
 config = context.config
 

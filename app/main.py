@@ -16,98 +16,24 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import DBAPIError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app import platform, services
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.dbcheck import ensure_schema, heal_if_needed
 from app.core.deps import csrf_protect
 from app.core.errors import FieldValidationError
-from app.modules.approvals.router import router as approvals_router
-from app.modules.audits.findings import router as findings_router
-from app.modules.audits.lifecycle import router as lifecycle_router
-from app.modules.audits.router import router as audits_router
-from app.modules.audits.working_papers import router as working_papers_router
-from app.modules.auth.router import router as auth_router
-from app.modules.backups.router import router as backups_router
-from app.modules.capa.router import router as capa_router
-from app.modules.capacity.router import router as capacity_router
-from app.modules.committee.router import router as committee_router
-from app.modules.configuration.router import router as configuration_router
-from app.modules.customfields.router import router as customfields_router
-from app.modules.dataio.router import router as dataio_router
-from app.modules.drafts.router import router as drafts_router
-from app.modules.evidence.router import router as evidence_router
-from app.modules.followup.router import router as followup_router
-from app.modules.governance.router import router as governance_router
-from app.modules.history.router import records_router
-from app.modules.history.router import router as history_router
-from app.modules.insights.router import router as insights_router
-from app.modules.memos.router import router as memos_router
-from app.modules.methodology.router import router as methodology_router
-from app.modules.nonconformances.router import router as nonconformances_router
-from app.modules.notifications.router import router as notifications_router
-from app.modules.organizations.router import router as organizations_router
-from app.modules.plancycle.changes import router as plan_changes_router
-from app.modules.plancycle.router import router as plancycle_router
-from app.modules.planning.router import router as planning_router
-from app.modules.programs.router import router as programs_router
-from app.modules.qaip.router import router as qaip_router
-from app.modules.rcm.router import router as rcm_router
-from app.modules.reports.router import router as reports_router
-from app.modules.roles.router import router as roles_router
-from app.modules.service_feedback.router import router as service_feedback_router
-from app.modules.stakeholders.router import router as stakeholders_router
-from app.modules.tasks.router import router as tasks_router
-from app.modules.users.router import router as users_router
-from app.modules.views.router import router as views_router
+from app.domains import layers as domain_layers
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
-# Explicit router registry (one entry per module).
-_ROUTERS = (
-    auth_router,
-    users_router,
-    audits_router,
-    findings_router,
-    working_papers_router,
-    history_router,
-    records_router,
-    organizations_router,
-    stakeholders_router,
-    nonconformances_router,
-    capa_router,
-    service_feedback_router,
-    tasks_router,
-    approvals_router,
-    backups_router,
-    planning_router,
-    rcm_router,
-    drafts_router,
-    notifications_router,
-    followup_router,
-    reports_router,
-    lifecycle_router,
-    configuration_router,
-    committee_router,
-    memos_router,
-    capacity_router,
-    qaip_router,
-    insights_router,
-    dataio_router,
-    views_router,
-    customfields_router,
-    methodology_router,
-    roles_router,
-    programs_router,
-    evidence_router,
-    governance_router,
-    plancycle_router,
-    plan_changes_router,
-)
+# Router registry by layer: each layer package declares its own routers (see app/platform, app/domains, app/services).
+LAYERS = (platform, *domain_layers(), services)
+_ROUTERS = tuple(router for layer in LAYERS for router in layer.routers())
 
 
 async def _backup_scheduler() -> None:
     """Periodically snapshot the database while the app runs."""
-    from app.modules.backups.service import create_backup
+    from app.platform.backups.service import create_backup
 
     interval = settings.backup_interval_hours * 3600
     while True:
@@ -157,7 +83,7 @@ async def lifespan(app: FastAPI):
 
 async def _escalation_watcher() -> None:
     """Escalate overdue actions on a timer (owner -> Audit Manager -> CAE)."""
-    from app.modules.followup.service import run_escalations
+    from app.domains.issues.followup.service import run_escalations
 
     def _tick() -> None:
         db = SessionLocal()

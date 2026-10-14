@@ -42,7 +42,7 @@ target-version = "py312"
 
 [tool.ruff.lint.per-file-ignores]
 # HTML print template: long lines are markup, not code.
-"app/modules/reports/service.py" = ["E501"]
+"app/domains/audit/reports/service.py" = ["E501"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

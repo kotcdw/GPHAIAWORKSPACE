@@ -13,10 +13,10 @@ from fastapi.testclient import TestClient
 from app.core import totp
 from app.core.config import settings
 from app.core.enums import ReviewLevel, Role, utcnow
+from app.domains.issues.capa.models import Capa
+from app.domains.issues.followup.service import run_escalations
 from app.main import app
-from app.modules.capa.models import Capa
-from app.modules.followup.service import run_escalations
-from app.modules.notifications.models import Notification
+from app.platform.notifications.models import Notification
 from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
 
 
@@ -270,7 +270,7 @@ def test_mfa_required_role_is_enforced(client, db, monkeypatch):
 
 def test_login_throttle_and_security_headers(client, db, monkeypatch):
     monkeypatch.setattr(settings, "login_rate_limit_per_minute", 3)
-    from app.modules.auth import router as auth_router
+    from app.platform.auth import router as auth_router
 
     auth_router._ATTEMPTS.clear()
     codes = [client.post("/api/auth/login", json={"username": "nobody", "password": "x"}).status_code for _ in range(4)]

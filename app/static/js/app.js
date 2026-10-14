@@ -608,6 +608,7 @@ function navigate(view) {
   if (view === "profile") return renderProfile();
   if (view === "logs") return renderLogs();
   if (view === "backups") return renderBackups();
+  if (view === "platform") return renderPlatform();
 }
 
 // Page header: title, optional subtitle / meta chips, and actions on the right.
@@ -1100,6 +1101,7 @@ async function renderWorkspace() {
       { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, audit types, plan settings, SLAs" },
       { view: "logs", icon: "journal-text", name: "Audit Log", desc: "Who did what, and when", admin: true },
       { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
+      { view: "platform", icon: "diagram-2", name: "Platform map", desc: "Core, domain modules, shared data and services (AI, analytics, documents)" },
     ] },
   ];
 

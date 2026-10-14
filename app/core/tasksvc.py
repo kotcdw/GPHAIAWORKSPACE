@@ -8,8 +8,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.enums import TaskStatus
-from app.modules.tasks.models import Task
-from app.modules.users.models import User
+from app.platform.tasks.models import Task
+from app.platform.users.models import User
 
 
 def _user_id_by_email(db: DBSession, email: str | None) -> int | None:
@@ -47,7 +47,7 @@ def create_task(
     db.add(task)
     db.flush()
     if assignee_id is not None and assignee_id != assignor_id:
-        from app.modules.notifications.service import notify
+        from app.platform.notifications.service import notify
 
         notify(
             db,

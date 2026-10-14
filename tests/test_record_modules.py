@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.enums import Role
-from app.modules.tasks.models import Task
+from app.platform.tasks.models import Task
 from tests.conftest import csrf_headers, login, make_user
 
 PASSWORD = "Passw0rd!"

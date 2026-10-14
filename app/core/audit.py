@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.modules.history.models import AuditLog
+from app.platform.history.models import AuditLog
 
 
 def client_ip(request) -> str | None:  # noqa: ANN001

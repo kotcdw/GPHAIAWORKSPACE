@@ -19,8 +19,8 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.enums import Role
-from app.modules.audits.models import WorkingPaper
-from app.modules.users.models import User
+from app.domains.audit.audits.models import WorkingPaper
+from app.platform.users.models import User
 from tests.conftest import csrf_headers, login, make_user
 
 PASSWORD = "Passw0rd!"

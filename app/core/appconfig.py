@@ -137,10 +137,34 @@ RULES: list[Rule] = [
          options=["Admin", "Auditor", "Auditee"]),
     Rule("login_rate_limit_per_minute", "Sign-in attempts allowed per computer per minute (0 = no limit)",
          "Security", "int", default_attr="login_rate_limit_per_minute", min=0, max=1000),
+    # --- AI service (pluggable, off by default)
+    Rule("ai_enabled", "Allow AI drafting assistance", "AI", "bool",
+         "Off by default. When on, users with the 'Use AI drafting assistance' permission can ask for drafts of "
+         "findings, executive summaries and risks/controls. Drafts are never saved until a person accepts them, and "
+         "every request is logged. Auditors remain responsible for their work (IIA GIAS 4.2 due professional care).",
+         default=False),
+    Rule("ai_provider", "AI provider", "AI", "text",
+         "anthropic, azure_openai, or openai_compatible (any OpenAI-style endpoint, e.g. a model hosted on GPHA's own "
+         "server with Ollama or LM Studio, so no data leaves the network). The API key is read from GPHA_AI_API_KEY "
+         "on the server.", default="openai_compatible",
+         options=["anthropic", "azure_openai", "openai_compatible"]),
+    Rule("ai_model", "AI model name", "AI", "text",
+         "The model or deployment name at the provider, e.g. a Claude model id, an Azure deployment name or a local "
+         "model such as llama3.1.", default="llama3.1"),
+    Rule("ai_base_url", "AI endpoint address", "AI", "text",
+         "e.g. https://api.anthropic.com, https://<resource>.openai.azure.com, or http://localhost:11434 for Ollama.",
+         default="http://localhost:11434"),
+    Rule("ai_redact_personal_data", "Remove e-mail addresses and phone numbers before text is sent to the AI", "AI",
+         "bool", "Supports the Data Protection Act, 2012 (Act 843).", default=True),
+    Rule("ai_max_input_chars", "Maximum characters of record text sent per AI request", "AI", "int",
+         default=12000, min=1000, max=100000),
+    Rule("ai_timeout_seconds", "Seconds to wait for the AI provider", "AI", "int", default=60, min=5, max=300),
     # --- reports
     Rule("org_name", "Organisation name on reports", "Reports", "text",
          default="Ghana Ports and Harbours Authority"),
     Rule("department_name", "Department name on reports", "Reports", "text", default="Internal Audit Department"),
+    Rule("document_classification", "Classification printed in the footer of every Word document", "Reports",
+         "text", "e.g. CONFIDENTIAL, RESTRICTED or INTERNAL.", default="CONFIDENTIAL"),
     Rule("report_methodology", "Default methodology paragraph for new reports", "Reports", "longtext",
          default=("The audit was performed in accordance with the IIA Global Internal Audit Standards. Work included "
                   "walkthroughs, assessment of control design and testing of operating effectiveness on a sample "
@@ -233,6 +257,8 @@ def validate(rule: Rule, value: Any) -> Any:
     text = str(value or "").strip()
     if rule.kind == "text" and (not text or len(text) > 200):
         raise ValueError("enter 1 to 200 characters")
+    if rule.kind == "text" and rule.options and text not in rule.options:
+        raise ValueError(f"must be one of: {', '.join(rule.options)}")
     if rule.kind == "longtext" and len(text) > 5000:
         raise ValueError("enter at most 5000 characters")
     return text

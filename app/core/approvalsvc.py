@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.enums import ApprovalDecision
 from app.core.history import log_record_history
 from app.core.security import verify_password
-from app.modules.approvals.models import ApprovalCycle
-from app.modules.users.models import User
+from app.platform.approvals.models import ApprovalCycle
+from app.platform.users.models import User
 
 
 def current_cycle_no(db: DBSession, record_type: str, record_id: int) -> int:

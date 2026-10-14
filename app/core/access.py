@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.enums import Role
-from app.modules.users.models import User
+from app.platform.users.models import User
 
 _NOT_FOUND = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
 
@@ -31,7 +31,7 @@ def is_privileged(user: User) -> bool:
 
 
 def assigned_audit_ids(db: DBSession, user: User) -> set[int]:
-    from app.modules.audits.models import AuditAuditee
+    from app.domains.audit.audits.models import AuditAuditee
 
     rows = db.execute(select(AuditAuditee.audit_id).where(AuditAuditee.user_id == user.id)).scalars().all()
     return set(rows)
@@ -61,7 +61,7 @@ def can_view(db: DBSession, user: User, record_type: str, record) -> bool:  # no
         if _same_email(record.owner_email, user.email):
             return True
         if record.linked_nc_id is not None:
-            from app.modules.nonconformances.models import Nonconformance
+            from app.domains.issues.nonconformances.models import Nonconformance
 
             return can_view(db, user, "nonconformance", db.get(Nonconformance, record.linked_nc_id))
         return False
@@ -89,16 +89,16 @@ def load_record(db: DBSession, record_type: str, record_id: int):  # noqa: ANN20
 
 
 def _model_for(record_type: str):  # noqa: ANN202
-    from app.modules.audits.models import Audit, Finding, WorkingPaper
-    from app.modules.capa.models import Capa
-    from app.modules.methodology.models import Criterion
-    from app.modules.nonconformances.models import Nonconformance
-    from app.modules.organizations.models import Organization
-    from app.modules.planning.models import AssurancePlan
-    from app.modules.rcm.models import ControlTest
-    from app.modules.reports.models import AuditReport
-    from app.modules.service_feedback.models import ServiceFeedback
-    from app.modules.stakeholders.models import Stakeholder
+    from app.domains.assurance.planning.models import AssurancePlan
+    from app.domains.audit.audits.models import Audit, Finding, WorkingPaper
+    from app.domains.audit.methodology.models import Criterion
+    from app.domains.audit.rcm.models import ControlTest
+    from app.domains.audit.reports.models import AuditReport
+    from app.domains.audit.service_feedback.models import ServiceFeedback
+    from app.domains.issues.capa.models import Capa
+    from app.domains.issues.nonconformances.models import Nonconformance
+    from app.platform.organizations.models import Organization
+    from app.platform.stakeholders.models import Stakeholder
 
     return {
         "audit": Audit,
@@ -132,7 +132,7 @@ def ensure_deletable(
     """
     from sqlalchemy import func
 
-    from app.modules.approvals.models import ApprovalCycle
+    from app.platform.approvals.models import ApprovalCycle
 
     current = getattr(record.status, "value", record.status)
     if current not in allowed_statuses:
