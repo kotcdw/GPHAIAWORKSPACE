@@ -98,6 +98,7 @@ async function renderReportTab(panel, auditId, canWrite) {
     longBlock("Management comments", r.management_comments, "None received yet"),
     longBlock("Distribution", r.distribution_list, "Not specified")));
 
+  panel.append(exitMeetingCard(r, canWrite, () => renderReportTab(panel, auditId, canWrite)));
   panel.append(el("div", { class: "card" }, el("h3", null, "Sign-off"),
     el("div", { class: "table-wrap" }, el("table", null,
       el("thead", null, el("tr", null, el("th", null, "Role"), el("th", null, "Name"), el("th", null, "Date"))),
@@ -174,6 +175,7 @@ function renderCapaFollowup(panel, c, refresh) {
     card.append(el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Auditor validation"),
       el("div", { class: "lf-value" }, badge(c.validation_result), c.validation_comment ? ` ${c.validation_comment}` : "",
         el("div", { class: "muted small" }, `Validated ${fmtDate(c.validated_at)}`))));
+    if (c.validation_procedures) card.append(longBlock("Follow-up testing performed", c.validation_procedures, ""));
   }
   if (c.status === "Review" && c.validation_result === "Effective") {
     card.append(el("p", { class: "muted small" }, "Validated as effective - an administrator can now close it with an e-signature."));
@@ -203,13 +205,19 @@ function validateForm(c, refresh) {
     meta: { title: `Validation of ${c.capa_ref}`, record_type: "capa", record_id: c.id },
     fields: [
       { name: "result", label: "Is the action effective?", type: "select", required: true, options: ["Effective", "Not Effective"] },
-      { name: "comment", label: "Validation notes", type: "textarea", rows: 4, maxLength: 20000,
+      { name: "procedures", label: "Follow-up testing performed", type: "textarea", rows: 4, maxLength: 20000,
+        help: "What you did to confirm the action works: re-performance, sample tested, documents inspected. Required when effective." },
+      { name: "comment", label: "Validation notes", type: "textarea", rows: 3, maxLength: 20000,
         help: "Required when not effective: say what is still missing." },
     ],
-    validate: (v) => (v.result === "Not Effective" && (v.comment || "").trim().length < 5 ? { comment: "Explain why it is not effective" } : {}),
+    validate: (v) => {
+      if (v.result === "Not Effective" && (v.comment || "").trim().length < 5) return { comment: "Explain why it is not effective" };
+      if (v.result === "Effective" && (v.procedures || "").trim().length < 10) return { procedures: "Describe the follow-up testing (at least 10 characters)" };
+      return {};
+    },
     initial: { result: "Effective" },
     submitLabel: "Save validation",
-    onSubmit: (v) => API.post(`/api/capa/${c.id}/validate`, { result: v.result, comment: v.comment || "" }),
+    onSubmit: (v) => API.post(`/api/capa/${c.id}/validate`, { result: v.result, comment: v.comment || "", procedures: v.procedures || "" }),
     onDone: () => { toast("Validation saved"); refresh(); },
   });
 }
@@ -233,6 +241,7 @@ async function renderFollowup(root = viewRoot) {
     stat(overdue.length, "Overdue actions", overdue.length ? "past their due date" : "none", overdue.length ? "danger" : "ok"),
     stat(lvl(2), "With Audit Managers", "escalated after the manager threshold", lvl(2) ? "warn" : ""),
     stat(lvl(3), "With the CAE", "escalated after the CAE threshold", lvl(3) ? "danger" : ""),
+    stat(lvl(4), "Reported to the Audit Committee", "escalated after the committee threshold", lvl(4) ? "danger" : ""),
     stat(review.length, "Awaiting validation", "evidence submitted", review.length ? "warn" : "")));
 
   const table = (rows, cols) => (rows.length ? el("div", { class: "table-wrap" }, el("table", null,
@@ -559,7 +568,11 @@ async function renderCommittee(year = null) {
     stat(`${p.completed_pct}%`, "Plan completed", p.plan_ref ? `${p.engagements} engagements in ${p.plan_ref}` : "no plan this year", p.completed_pct >= 75 ? "ok" : ""),
     stat(s.reports_issued.length, "Reports issued", Object.entries(s.ratings).map(([k, v]) => `${v} ${k}`).join(" · ") || "none yet"),
     stat(openTotal, "Open findings", `${s.open_findings_by_rating.High || 0} high risk`, (s.open_findings_by_rating.High || 0) ? "danger" : ""),
-    stat(a.overdue, "Overdue actions", `${a.with_cae} with the CAE`, a.overdue ? "danger" : "ok")));
+    stat(a.overdue, "Overdue actions", `${a.with_cae} with the CAE · ${a.for_committee || 0} for this Committee`, a.overdue ? "danger" : "ok")));
+  viewRoot.append(el("div", { class: `callout ${p.committee_meeting_date ? "ok" : "warn"}` }, el("i", { class: "bi bi-patch-check" }),
+    el("div", null, p.committee_meeting_date
+      ? `The FY${p.fiscal_year} plan was approved by the Audit Committee on ${fmtDate(p.committee_meeting_date).split(",")[0]} (ref ${p.committee_reference}).`
+      : `Audit Committee approval of the FY${p.fiscal_year} plan is not yet recorded (open the Assurance Plan to record it).`)));
 
   const bars = (obj, tone = () => "") => {
     const max = Math.max(1, ...Object.values(obj));
@@ -597,4 +610,118 @@ async function renderCommittee(year = null) {
     { key: "days_overdue", label: "Days overdue", num: true },
     { key: "escalated_to", label: "Escalated to", render: (r) => badge(r.escalated_to) },
   ], { onRow: (r) => openRecord("capa", r.id), exportName: `overdue-actions-FY${p.fiscal_year}.csv`, emptyText: "No overdue actions." })));
+  viewRoot.append(panel("Changes to the approved plan", dataTable(s.plan_changes || [], [
+    { key: "date", label: "Date" },
+    { key: "type", label: "Change", render: (c) => badge(c.type) },
+    { key: "description", label: "What changed" },
+    { key: "reason", label: "Reason" },
+  ], { exportName: `plan-changes-FY${p.fiscal_year}.csv`, emptyText: "No changes since the plan was approved." })));
+}
+
+// ==================================================================== exit meeting (GIAS 15.1)
+
+function exitMeetingCard(r, canWrite, refresh) {
+  const held = !!r.exit_meeting_date;
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Exit meeting"),
+    canWrite && r.status !== "Issued" ? el("button", { class: "btn small secondary", onclick: () => openForm({
+      key: `exit:${r.id}`, title: "Exit meeting", width: 640,
+      meta: { title: `Exit meeting ${r.report_ref}`, record_type: "audit_report", record_id: r.id },
+      fields: [
+        { name: "meeting_date", label: "Date held", type: "date", required: true, notFuture: true },
+        { name: "attendees", label: "Attendees (names and roles)", type: "textarea", rows: 2, required: true, minLength: 3, maxLength: 5000, full: true },
+        { name: "notes", label: "What was agreed", type: "textarea", rows: 4, maxLength: 20000, full: true },
+      ],
+      initial: { meeting_date: r.exit_meeting_date, attendees: r.exit_meeting_attendees || "", notes: r.exit_meeting_notes || "" },
+      submitLabel: "Save",
+      onSubmit: (v) => API.put(`/api/reports/${r.id}/exit-meeting`, { ...v, meeting_date: `${v.meeting_date}T00:00:00` }),
+      onDone: () => { toast("Exit meeting recorded"); refresh(); },
+    }) }, el("i", { class: "bi bi-people" }), held ? " Edit" : " Record exit meeting") : null));
+  if (!held) card.append(el("p", { class: "muted" }, "Hold the exit meeting with management to discuss the findings before the report is final."));
+  else {
+    card.append(el("dl", { class: "kv" }, el("dt", null, "Held on"), el("dd", null, fmtDate(r.exit_meeting_date).split(",")[0]),
+      el("dt", null, "Attendees"), el("dd", null, r.exit_meeting_attendees || "-")));
+    if (r.exit_meeting_notes) card.append(longBlock("What was agreed", r.exit_meeting_notes, ""));
+  }
+  return card;
+}
+
+// ==================================================================== review notes (supervision, GIAS 12.3)
+
+async function renderReviewNotesTab(panelEl, audit) {
+  const card = el("div", { class: "card" });
+  panelEl.append(card);
+  const refresh = () => { clear(panelEl); renderReviewNotesTab(panelEl, audit); };
+  const canRaise = audit.status !== "Closed" && (audit.created_by !== state.user.id || isAdmin() || ["Manager", "CAE"].includes(state.user.review_level));
+  card.append(el("div", { class: "card-head" }, el("h3", null, "Review notes"),
+    canRaise ? el("button", { class: "btn small", onclick: () => raiseNoteForm(audit, refresh) }, el("i", { class: "bi bi-chat-square-text" }), " Raise review note") : null),
+  el("p", { class: "muted small" }, "The reviewer raises a note on the audit, a working paper, a test or a finding; the preparer answers; the reviewer clears it. All notes must be cleared before the audit can close."));
+  let notes;
+  try { notes = await API.get(`/api/audits/${audit.id}/review-notes`); } catch (err) { card.append(el("div", { class: "muted" }, err.message)); return; }
+  if (!notes.length) { card.append(el("div", { class: "empty" }, "No review notes.")); return; }
+  const open = notes.filter((n) => n.status !== "Cleared").length;
+  card.append(el("p", null, badge(open ? `${open} open` : "All cleared")));
+  notes.forEach((n) => {
+    const item = el("div", { class: `note-item ${n.status.toLowerCase()}` },
+      el("div", { class: "note-head" }, badge(n.status), el("strong", null, ` ${n.target_label}`),
+        el("span", { class: "muted small" }, ` · ${n.raised_by_name || "-"}, ${fmtDate(n.raised_at)}`)),
+      el("div", { class: "note-body" }, n.note),
+      n.response ? el("div", { class: "note-response" }, el("span", { class: "muted small" }, `Answer by ${n.responded_by_name || "-"}, ${fmtDate(n.responded_at)}`),
+        el("div", null, n.response)) : null,
+      n.cleared_at ? el("div", { class: "muted small" }, `Cleared by ${n.cleared_by_name}, ${fmtDate(n.cleared_at)}`) : null,
+      el("div", { class: "actions" },
+        n.can_respond ? el("button", { class: "btn small secondary", onclick: () => openForm({
+          key: `note:respond:${n.id}`, title: "Answer review note", width: 560, draftable: true,
+          meta: { title: `Answer review note #${n.id}`, record_type: "audit", record_id: audit.id },
+          fields: [{ name: "response", label: "Your answer", type: "textarea", rows: 4, required: true, minLength: 3, maxLength: 5000, full: true }],
+          initial: { response: n.response || "" },
+          submitLabel: "Send answer",
+          onSubmit: (v) => API.post(`/api/review-notes/${n.id}/respond`, v),
+          onDone: () => { toast("Answer sent"); refresh(); },
+        }) }, n.response ? "Edit answer" : "Answer") : null,
+        n.can_clear ? el("button", { class: "btn small", onclick: async () => {
+          try { await API.post(`/api/review-notes/${n.id}/clear`); toast("Note cleared"); refresh(); } catch (err) { toast(err.message, "error"); }
+        } }, el("i", { class: "bi bi-check2" }), " Clear") : null));
+    card.append(item);
+  });
+}
+
+async function raiseNoteForm(audit, onDone) {
+  const opts = await safeGet(`/api/audits/${audit.id}/xref-options`, { tests: [], findings: [], working_papers: [] });
+  const targets = [{ value: "audit:", label: "The audit as a whole" },
+    ...opts.working_papers.map((p) => ({ value: `working_paper:${p.id}`, label: `Working paper: ${p.label}` })),
+    ...opts.tests.map((t) => ({ value: `control_test:${t.id}`, label: `Test: ${t.label}` })),
+    ...opts.findings.map((f) => ({ value: `finding:${f.id}`, label: `Finding: ${f.label}` }))];
+  openForm({
+    key: `note:new:${audit.id}`, title: "Raise review note", width: 640,
+    meta: { title: `Review note on ${audit.title}`, record_type: "audit", record_id: audit.id },
+    fields: [
+      { name: "target", label: "About", type: "select", required: true, options: targets, full: true },
+      { name: "note", label: "Note to the preparer", type: "textarea", rows: 4, required: true, minLength: 3, maxLength: 5000, full: true },
+    ],
+    initial: { target: "audit:" },
+    submitLabel: "Raise note",
+    onSubmit: (v) => {
+      const [type, id] = String(v.target).split(":");
+      return API.post(`/api/audits/${audit.id}/review-notes`, { target_type: type, target_id: id ? Number(id) : null, note: v.note });
+    },
+    onDone: () => { toast("Review note raised"); onDone(); },
+  });
+}
+
+// Working paper cross-reference + sign-off dialogs.
+async function workPaperXrefForm(p, auditId, onDone) {
+  const opts = await safeGet(`/api/audits/${auditId}/xref-options`, { tests: [], findings: [] });
+  openForm({
+    key: `wpref:${p.id}`, title: `Cross-reference · ${p.title}`, width: 560, draftable: false,
+    fields: [
+      { name: "wp_ref", label: "Working-paper reference", maxLength: 30, singleLine: true, pattern: "^[A-Za-z0-9 ._/\\-]*$",
+        patternMessage: "Letters, numbers, spaces and . _ / - only", help: "e.g. A.1, B.2.3 - the index used in the file" },
+      { name: "test_id", label: "Supports test", type: "select", emptyLabel: "- none -", options: opts.tests.map((t) => ({ value: t.id, label: t.label })) },
+      { name: "finding_id", label: "Supports finding", type: "select", emptyLabel: "- none -", options: opts.findings.map((f) => ({ value: f.id, label: f.label })) },
+    ],
+    initial: { wp_ref: p.wp_ref || "", test_id: p.test_id, finding_id: p.finding_id },
+    submitLabel: "Save",
+    onSubmit: (v) => API.patch(`/api/working-papers/${p.id}/xref`, { wp_ref: v.wp_ref || null, test_id: v.test_id ?? null, finding_id: v.finding_id ?? null }),
+    onDone: () => { toast("Cross-reference saved"); onDone(); },
+  });
 }

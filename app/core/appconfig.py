@@ -82,6 +82,9 @@ RULES: list[Rule] = [
          default_attr="escalate_manager_days", min=1, max=365),
     Rule("escalate_cae_days", "Days overdue before the CAE is notified", "Action plans", "int",
          default_attr="escalate_cae_days", min=1, max=730),
+    Rule("escalate_committee_days", "Days overdue before an action is reported to the Audit Committee",
+         "Action plans", "int", "The CAE and Admins are notified and the action is listed in the Committee pack.",
+         default_attr="escalate_committee_days", min=1, max=1095),
     # --- performance targets (KPIs on the Analytics page)
     Rule("kpi_plan_completion_pct", "Target: Assurance Plan engagements started or completed (%)", "KPI targets",
          "int", default=90, min=0, max=100),

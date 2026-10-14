@@ -236,8 +236,9 @@ async function openPlan(id) {
         ...s.uncovered_high_risk.flatMap((u, i) => [i ? ", " : "", `${u.location_name} / ${u.name} `, heat(u.risk_score)]))));
   }
   if (plan.description) viewRoot.append(el("div", { class: "card" }, el("div", { class: "lf-label" }, "Basis of the plan"), el("div", { class: "lf-value" }, plan.description)));
+  if (plan.status !== "Draft") viewRoot.append(committeeCard(plan));
 
-  const tabs = [{ key: "eng", label: "Engagements" }, { key: "history", label: "History" },
+  const tabs = [{ key: "eng", label: "Engagements" }, { key: "changes", label: "Plan changes" }, { key: "history", label: "History" },
     { key: "approvals", label: "Approval cycles" }];
   let active = "eng";
   const detail = el("div");
@@ -248,6 +249,7 @@ async function openPlan(id) {
     const panel = el("div");
     detail.append(panel);
     if (active === "eng") renderEngagements(panel, plan);
+    if (active === "changes") renderPlanChanges(panel, plan);
     if (active === "history") renderHistoryTab(panel, "assurance_plan", id);
     if (active === "approvals") renderApprovalsTab(panel, "assurance_plan", id);
   };
@@ -274,17 +276,18 @@ async function renderEngagements(panel, plan) {
           try { const r = await API.post(`/api/plan-engagements/${e.id}/start`); toast("Audit project created"); openAudit(r.audit_id); }
           catch (err) { toast(err.message, "error"); }
         }) : null,
-        approved && e.status === "Planned" && isAdmin() ? btn("Cancel", async () => {
-          try { await API.post(`/api/plan-engagements/${e.id}/cancel`); toast("Cancelled"); openPlan(plan.id); }
-          catch (err) { toast(err.message, "error"); }
-        }, "danger-ghost") : null,
+        approved && e.status !== "Cancelled" && isAdmin() ? btn("Change", () => amendEngagement(plan, e), "secondary") : null,
+        approved && e.status === "Planned" && isAdmin() ? btn("Cancel", () => cancelEngagement(plan, e), "danger-ghost") : null,
         draft ? btn("Edit", () => addEngagement(plan, e), "secondary") : null,
         draft ? btn("Remove", async () => {
           try { await API.del(`/api/plan-engagements/${e.id}`); toast("Removed"); openPlan(plan.id); }
           catch (err) { toast(err.message, "error"); }
         }, "danger-ghost") : null)))))));
   if (draft) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement", () => addEngagement(plan))));
-  else if (approved) card.append(el("p", { class: "muted" }, "The plan is approved and frozen. Reopen it (Admin) to change engagements; it must then be re-approved."));
+  else if (approved) {
+    card.append(el("p", { class: "muted" }, "The plan is approved. Changes are made as amendments with a reason; each one is logged under Plan changes and reported in the Committee pack."));
+    if (isAdmin()) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement (amendment)", () => amendAddEngagement(plan))));
+  }
 }
 
 async function addEngagement(plan, eng = null) {
@@ -561,16 +564,23 @@ async function testModal(control, t, open, reload) {
 
 // ==================================================================== issue (finding) detail
 
-function issueForm(f, auditId, canWrite, onSaved) {
+async function issueForm(f, auditId, canWrite, onSaved) {
   const isNew = !f;
   const respondOnly = !canWrite;
   const ro = respondOnly;
+  // Criteria library (GIAS 13.4): pick a standard criterion; its text fills the Criteria box.
+  const library = canWrite ? (await safeGet("/api/criteria?status=Active", { items: [] })).items : [];
+  const current = f && f.criterion_id ? await safeGet(`/api/criteria/${f.criterion_id}`, null) : null;
+  if (current && !library.some((c) => c.id === current.id)) library.push(current);
   const fields = [
     { name: "title", label: "Issue title", required: true, maxLength: 255, singleLine: true, disabled: ro },
     { name: "risk_rating", label: "Risk rating", type: "select", required: true, options: RISK_RATINGS, disabled: ro },
     { name: "status", label: "Status", type: "select", required: true, options: FINDING_STATUSES, disabled: ro },
     { name: "assigned_owner_email", label: "Owner email", type: "email", disabled: ro },
     { type: "heading", label: "Issue attributes" },
+    ...(canWrite ? [{ name: "criterion_id", label: "Criterion from the library", type: "select", emptyLabel: library.length ? "- none (write below) -" : "- library is empty -",
+      options: library.map((c) => ({ value: c.id, label: `${c.crit_ref} · ${c.title}${c.reference ? ` (${c.reference})` : ""}` })), full: true,
+      help: "Choosing one fills the Criteria box; you can still edit the text" }] : []),
     { name: "criteria", label: "Criteria - what should be (policy, standard, control design)", type: "textarea", maxLength: 20000, disabled: ro },
     { name: "condition", label: "Condition - what was found", type: "textarea", maxLength: 20000, disabled: ro },
     { name: "cause", label: "Cause - why it happened", type: "textarea", maxLength: 20000, disabled: ro },
@@ -584,7 +594,7 @@ function issueForm(f, auditId, canWrite, onSaved) {
     try { const c = await API.post(`/api/findings/${f.id}/raise-action`); toast(`Action ${c.capa_ref} raised`); document.querySelector(".modal-backdrop")?.remove(); onSaved(); }
     catch (err) { toast(err.message, "error"); }
   } }, "Raise remediation") : null;
-  openForm({
+  const handle = openForm({
     title: isNew ? "New finding / issue" : `Issue #${f.id}: ${f.title}`,
     key: isNew ? `finding:new:${auditId}` : `finding:edit:${f.id}`,
     meta: { title: isNew ? "New finding" : `Issue #${f.id} ${f.title}`, record_type: "audit", record_id: auditId },
@@ -610,6 +620,18 @@ function issueForm(f, auditId, canWrite, onSaved) {
     },
     onDone: () => { toast(isNew ? "Finding created" : "Issue saved"); onSaved(); },
   });
+  const pick = handle.nodes && handle.nodes.criterion_id;
+  const box = handle.nodes && handle.nodes.criteria;
+  if (pick && box) {
+    pick.addEventListener("change", () => {
+      const c = library.find((x) => String(x.id) === pick.value);
+      if (!c) return;
+      const text = `${c.body}${c.reference ? ` (${c.reference})` : ""}`;
+      if (!box.value.trim() || box.value.trim() === text) box.value = text;
+      else box.value = `${box.value.trim()}\n\n${text}`;
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
 }
 
 // ------------------------------------------------------------------ draft resume handlers
@@ -670,5 +692,98 @@ function registerPlanningOpeners() {
       return c && testModal(c, c.tests.find((t) => String(t.id) === id), !rcm.locked, reload);
     }
     return null;
+  });
+}
+
+// ==================================================================== Audit Committee approval + plan changes (GIAS 9.4)
+
+function committeeCard(plan) {
+  const canRecord = (isAdmin() || state.user.review_level === "CAE") && plan.status === "Approved";
+  const card = el("div", { class: `callout ${plan.committee_meeting_date ? "ok" : "warn"}` },
+    el("i", { class: `bi bi-${plan.committee_meeting_date ? "patch-check" : "people"}` }),
+    el("div", { style: "flex:1" }, plan.committee_meeting_date
+      ? [el("strong", null, "Approved by the Audit Committee"), ` on ${fmtDate(plan.committee_meeting_date).split(",")[0]} (ref ${plan.committee_reference}).`,
+        plan.committee_notes ? el("div", { class: "muted small" }, plan.committee_notes) : null]
+      : [el("strong", null, "Audit Committee approval not yet recorded. "), "After the CAE's approval, present the plan to the Audit Committee and record its decision here."]),
+    canRecord ? btn(plan.committee_meeting_date ? "Update" : "Record Audit Committee approval", () => committeeForm(plan), plan.committee_meeting_date ? "secondary" : "") : null);
+  return card;
+}
+
+function committeeForm(plan) {
+  openForm({
+    key: `committee:${plan.id}`, title: "Audit Committee approval", width: 600, draftable: false,
+    fields: [
+      { name: "meeting_date", label: "Meeting date", type: "date", required: true, notFuture: true },
+      { name: "reference", label: "Minute / resolution reference", required: true, maxLength: 100, singleLine: true },
+      { name: "notes", label: "Committee comments", type: "textarea", maxLength: 5000, full: true },
+    ],
+    initial: { meeting_date: plan.committee_meeting_date, reference: plan.committee_reference || "", notes: plan.committee_notes || "" },
+    submitLabel: "Save",
+    onSubmit: (v) => API.post(`/api/assurance-plans/${plan.id}/committee-approval`, { ...v, meeting_date: `${v.meeting_date}T00:00:00` }),
+    onDone: () => { toast("Audit Committee approval recorded"); openPlan(plan.id); },
+  });
+}
+
+async function renderPlanChanges(panelEl, plan) {
+  const card = el("div", { class: "card" }, el("h3", null, "Changes to the plan"),
+    el("p", { class: "muted small" }, "Every amendment after approval, with its reason. Reported to the Audit Committee in the Committee pack."));
+  panelEl.append(card);
+  try {
+    const rows = await API.get(`/api/assurance-plans/${plan.id}/changes`);
+    card.append(dataTable(rows, [
+      { key: "changed_at", label: "Date", render: (c) => fmtDate(c.changed_at).split(",")[0], sortValue: (c) => c.changed_at },
+      { key: "change_type", label: "Change", render: (c) => badge(c.change_type) },
+      { key: "description", label: "What changed" },
+      { key: "reason", label: "Reason", render: (c) => c.reason || el("span", { class: "muted" }, "-") },
+      { key: "changed_by", label: "By" },
+    ], { exportName: `${plan.plan_ref}-changes.csv`, emptyText: "No changes since approval." }));
+  } catch (err) { card.append(el("div", { class: "muted" }, err.message)); }
+}
+
+const REASON_FIELD = { name: "reason", label: "Reason for the change", type: "textarea", required: true, minLength: 10, maxLength: 2000, full: true,
+  help: "Recorded in the plan-change log and reported to the Audit Committee" };
+
+async function amendAddEngagement(plan) {
+  const units = await safeGet("/api/entity-units?active_only=true", []);
+  openForm({
+    key: `amend:add:${plan.id}`, title: "Add engagement to the approved plan", width: 680,
+    fields: [
+      { name: "title", label: "Engagement title", required: true, maxLength: 255, singleLine: true },
+      { name: "entity_unit_id", label: "Entity unit", type: "select", emptyLabel: "- none -",
+        options: units.sort((a, b) => b.risk_score - a.risk_score).map((u) => ({ value: u.id, label: `${u.location_name} / ${u.name} (risk ${u.risk_score})` })) },
+      { name: "planned_quarter", label: "Quarter", type: "select", required: true, options: QUARTERS },
+      { name: "budget_hours", label: "Budget hours", type: "number", min: 0, max: 10000 },
+      REASON_FIELD,
+    ],
+    initial: { planned_quarter: "Q1", budget_hours: 0 },
+    submitLabel: "Add to plan",
+    onSubmit: (v) => API.post(`/api/assurance-plans/${plan.id}/amendments`, { ...v, budget_hours: v.budget_hours || 0 }),
+    onDone: () => { toast("Engagement added and logged"); openPlan(plan.id); },
+  });
+}
+
+function amendEngagement(plan, e) {
+  openForm({
+    key: `amend:change:${e.id}`, title: `Change ${e.title}`, width: 600, draftable: false,
+    fields: [
+      { name: "planned_quarter", label: "Quarter", type: "select", required: true, options: QUARTERS },
+      { name: "budget_hours", label: "Budget hours", type: "number", min: 0, max: 10000, required: true },
+      REASON_FIELD,
+    ],
+    initial: { planned_quarter: e.planned_quarter, budget_hours: e.budget_hours },
+    submitLabel: "Save change",
+    onSubmit: (v) => API.post(`/api/plan-engagements/${e.id}/amend`, v),
+    onDone: () => { toast("Change logged"); openPlan(plan.id); },
+  });
+}
+
+function cancelEngagement(plan, e) {
+  openForm({
+    key: `amend:cancel:${e.id}`, title: `Cancel ${e.title}`, width: 560, draftable: false,
+    intro: "The engagement stays on record as Cancelled.",
+    fields: [REASON_FIELD],
+    submitLabel: "Cancel engagement",
+    onSubmit: (v) => API.post(`/api/plan-engagements/${e.id}/cancel`, v),
+    onDone: () => { toast("Engagement cancelled and logged"); openPlan(plan.id); },
   });
 }

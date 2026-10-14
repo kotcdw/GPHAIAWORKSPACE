@@ -155,6 +155,16 @@ with electronic attestations, and keep a strict, immutable audit trail.
 - **Excel import** — Audit Universe (Admin) and findings into an audit, with a
   downloadable template, row-by-row validation and preview; nothing is saved
   if any row has a problem.
+- **GIAS completion** — Audit Committee approval of the plan (meeting date and
+  minute reference) and a documented plan-change log (engagements added,
+  re-timed, re-budgeted or cancelled after approval, each with a reason) in the
+  Committee pack; a **criteria library** picked from the finding form; supervisory
+  **review notes** (raise → answer → clear, open notes block closure);
+  working-paper index references, links to tests/findings and reviewer sign-off;
+  **exit meeting** record on the report; follow-up testing recorded on every
+  Effective validation; a fourth escalation level to the **Audit Committee**; a
+  **skills matrix**; and the yearly **internal assessment report** (Word) from the
+  QAIP page.
 - **Configurable entities (Organizations)** — every port, head office, department,
   unit and external party is an entity with a type (the list is edited on the
   Configuration screen), a parent ("Part of") and an address. Types marked as

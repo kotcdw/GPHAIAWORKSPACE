@@ -159,7 +159,10 @@ def test_capa_close_with_esign(client, client2, db):
     assert unvalidated.status_code == 409 and "validate" in unvalidated.json()["detail"]
     own = client.post(f"/api/capa/{capa_id}/validate", json={"result": "Effective"}, headers=csrf_headers(csrf))
     assert own.status_code == 403, "the implementer cannot validate their own work"
-    ok = client2.post(f"/api/capa/{capa_id}/validate", json={"result": "Effective"}, headers=csrf_headers(admin))
+    untested = client2.post(f"/api/capa/{capa_id}/validate", json={"result": "Effective"}, headers=csrf_headers(admin))
+    assert untested.status_code == 422, "follow-up testing must be described"
+    ok = client2.post(f"/api/capa/{capa_id}/validate", headers=csrf_headers(admin),
+                      json={"result": "Effective", "procedures": "Re-performed March reconciliation; agreed to GL"})
     assert ok.status_code == 200, ok.text
 
     closed = client2.post(

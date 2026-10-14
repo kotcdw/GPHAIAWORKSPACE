@@ -87,6 +87,11 @@ def closure_checks(db: DBSession, audit: Audit) -> list[Check]:
                         required=need, detail=f"Missing on {', '.join(no_response)}" if no_response else ""))
     checks.append(Check(key="actions", label="Every open High/Medium finding has an agreed action", ok=not no_action,
                         required=need, detail=f"No action for {', '.join(no_action)}" if no_action else ""))
+    from app.modules.methodology.router import open_notes
+
+    pending_notes = open_notes(db, audit.id)
+    checks.append(Check(key="review_notes", label="All review notes cleared", ok=not pending_notes, required=True,
+                        detail=f"{pending_notes} open review note(s)" if pending_notes else ""))
     return checks
 
 

@@ -3,7 +3,9 @@
 Levels, raised once each as an action stays overdue:
   1 - overdue: the owner (and the auditor who raised it) are notified;
   2 - ``escalate_manager_days`` overdue: Audit Managers are notified;
-  3 - ``escalate_cae_days`` overdue: the CAE is notified.
+  3 - ``escalate_cae_days`` overdue: the CAE is notified;
+  4 - ``escalate_committee_days`` overdue: reported to the Audit Committee (CAE and Admins notified,
+      listed in the Committee pack).
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ from app.core.enums import CapaStatus, ReviewLevel, utcnow
 from app.modules.capa.models import Capa
 from app.modules.notifications.service import notify_many, user_id_by_email, user_ids_with_level
 
-LEVEL_NAMES = {0: "Not overdue", 1: "Owner", 2: "Audit Manager", 3: "CAE"}
+LEVEL_NAMES = {0: "Not overdue", 1: "Owner", 2: "Audit Manager", 3: "CAE", 4: "Audit Committee"}
 
 
 @dataclass
@@ -33,6 +35,8 @@ class OverdueItem:
 def due_level(days_overdue: int) -> int:
     if days_overdue <= 0:
         return 0
+    if days_overdue >= cfg("escalate_committee_days"):
+        return 4
     if days_overdue >= cfg("escalate_cae_days"):
         return 3
     if days_overdue >= cfg("escalate_manager_days"):
@@ -76,6 +80,15 @@ def run_escalations(db: DBSession, now: datetime | None = None) -> int:
             recipients += user_ids_with_level(db, ReviewLevel.Manager)
         if item.due_level >= 3:
             recipients += user_ids_with_level(db, ReviewLevel.CAE)
+        if item.due_level >= 4:
+            from sqlalchemy import select as _select
+
+            from app.core.enums import Role
+            from app.modules.users.models import User
+
+            recipients += list(db.execute(_select(User.id).where(User.role == Role.Admin,
+                                                                 User.is_active.is_(True))).scalars())
+            title = f"For the Audit Committee - {title}"
         notify_many(db, recipients, title, body, link_type="capa", link_id=capa.id)
         capa.escalation_level = item.due_level
         capa.last_escalated_at = now

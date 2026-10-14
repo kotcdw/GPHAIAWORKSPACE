@@ -38,6 +38,7 @@ from app.modules.history.router import records_router
 from app.modules.history.router import router as history_router
 from app.modules.insights.router import router as insights_router
 from app.modules.memos.router import router as memos_router
+from app.modules.methodology.router import router as methodology_router
 from app.modules.nonconformances.router import router as nonconformances_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.organizations.router import router as organizations_router
@@ -86,6 +87,7 @@ _ROUTERS = (
     dataio_router,
     views_router,
     customfields_router,
+    methodology_router,
 )
 
 

@@ -137,6 +137,10 @@ class PlanOut(ORMModel):
     total_budget_hours: int
     approved_by: int | None
     approved_at: datetime | None
+    committee_meeting_date: datetime | None = None
+    committee_reference: str | None = None
+    committee_notes: str | None = None
+    committee_recorded_at: datetime | None = None
     created_by: int | None
     created_at: datetime
     updated_at: datetime

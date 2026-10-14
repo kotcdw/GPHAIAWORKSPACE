@@ -748,3 +748,18 @@ kbd { background: var(--panel-3); border: 1px solid var(--border-strong); border
 .rating-opt input:checked + span { background: var(--accent); border-color: var(--accent); color: #fff; }
 .rating-opt input:focus-visible + span { outline: 2px solid #8ab4ff; outline-offset: 2px; }
 @media (max-width: 860px) { .qa-row, .qa-a { grid-template-columns: 1fr; } .bar-row { grid-template-columns: 1fr 70px 40px; } }
+
+/* ---------------------------------------------------------------- review notes + skills matrix */
+.note-item { border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 10px; }
+.note-item.open { border-left-color: var(--warn); }
+.note-item.responded { border-left-color: var(--accent); }
+.note-item.cleared { border-left-color: var(--ok); opacity: .85; }
+.note-head { margin-bottom: 6px; }
+.note-body { white-space: pre-wrap; }
+.note-response { margin: 8px 0 4px; padding: 8px 12px; background: var(--panel-2); border-radius: var(--radius-sm); white-space: pre-wrap; }
+.note-item .actions { margin-top: 8px; }
+table.matrix th.mx-col { vertical-align: bottom; white-space: nowrap; font-size: 12px; }
+table.matrix td.mx-cell { text-align: center; }
+.mx-yes { color: var(--ok); }
+.mx-no { color: var(--muted); }
+tr.mx-total td { border-top: 1px solid var(--border-strong); }

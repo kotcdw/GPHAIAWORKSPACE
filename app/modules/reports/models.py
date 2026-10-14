@@ -34,6 +34,9 @@ class AuditReport(Base):
     methodology: Mapped[str] = mapped_column(Text, nullable=False, default="")
     overall_opinion: Mapped[str] = mapped_column(Text, nullable=False, default="")
     distribution_list: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    exit_meeting_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    exit_meeting_attendees: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exit_meeting_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     management_comments: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # JSON copy of the findings, CAPA links and sign-offs taken at issue time, so
     # the issued report never changes even if the records are edited later.

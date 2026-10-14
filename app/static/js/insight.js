@@ -108,7 +108,8 @@ async function renderAnalytics(fy = new Date().getFullYear()) {
 async function renderQaipPage(fy = new Date().getFullYear()) {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Quality (QAIP)", fySelect(fy, (y) => renderQaipPage(y)),
+  viewRoot.append(viewHeader("Quality (QAIP)", el("div", { class: "actions" }, fySelect(fy, (y) => renderQaipPage(y)),
+    el("a", { class: "btn small", href: `/api/qaip/report.docx?fiscal_year=${fy}` }, el("i", { class: "bi bi-file-earmark-word" }), " Internal assessment report")),
     { sub: "Engagement quality reviews and auditee satisfaction (IIA GIAS Principle 8)" }), msg);
   let q;
   try { q = await API.get(`/api/qaip/summary?fiscal_year=${fy}`); } catch (err) { notify(msg, err.message, "error"); return; }
@@ -147,7 +148,7 @@ async function renderCapacity(tab = "team", fy = new Date().getFullYear()) {
   viewRoot.append(viewHeader("Capacity & time", el("div", { class: "actions" }, fySelect(fy, (y) => renderCapacity(tab, y)),
     el("button", { class: "btn", onclick: () => timeEntryForm({}, () => renderCapacity("mine", fy)) }, el("i", { class: "bi bi-plus-lg" }), " Log time")),
   { sub: "Auditor skills, available hours, planned load, time charged and budget versus actual" }), msg);
-  viewRoot.append(tabBar([{ key: "team", label: "Team capacity" }, { key: "budgets", label: "Budget vs actual" }, { key: "mine", label: "My time sheet" }],
+  viewRoot.append(tabBar([{ key: "team", label: "Team capacity" }, { key: "skills", label: "Skills matrix" }, { key: "budgets", label: "Budget vs actual" }, { key: "mine", label: "My time sheet" }],
     tab, (k) => renderCapacity(k, fy)));
   const body = el("div");
   viewRoot.append(body);
@@ -181,6 +182,8 @@ async function renderCapacity(tab = "team", fy = new Date().getFullYear()) {
       body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Team"), filter),
         el("p", { class: "muted small" }, "Load = hours planned for the auditor as engagement lead ÷ available hours. Select a row to edit skills."), holder));
       paint();
+    } else if (tab === "skills") {
+      body.append(skillsMatrix(s.auditors));
     } else {
       body.append(el("div", { class: "card" }, el("h3", null, "Budget versus actual hours"), dataTable(s.audits, [
         { key: "title", label: "Audit" },
@@ -426,6 +429,9 @@ const HELP = {
     "Order of work: Planning memo (approved) → Risk & Control Matrix → tests and review → findings → report → remediation.",
     "Fieldwork can only start once the planning memo is approved (configurable by the Admin).",
     "Log your hours on the Time tab so budget versus actual stays current.",
+    "Reviewers raise review notes on the audit, working papers, tests or findings; the preparer answers and the reviewer clears them. Open notes block closure.",
+    "Give working papers an index reference (A.1, B.2) and link them to the test or finding they support; a reviewer signs each one off.",
+    "Record the exit meeting on the Audit Report tab before the report goes for approval.",
     "After closure another auditor completes the Quality review; auditees receive the satisfaction survey.",
   ] },
   capa: { title: "Remediation & Follow-up", items: [
@@ -441,6 +447,10 @@ const HELP = {
     "Team capacity compares hours planned on the Assurance Plan with each auditor's available hours.",
     "Log time daily in quarter hours. Audit and Follow-up time must name the audit.",
   ] },
+  criteria: { title: "Criteria library", items: [
+    "Laws, regulations, GPHA policies and standards that findings are measured against (the 'what should be').",
+    "Pick a criterion in a finding's form to fill its Criteria box; the library counts where each one is used. Retire criteria that no longer apply.",
+  ] },
   committee: { title: "Committee pack", items: ["Summary for the Audit Committee; download the Word pack for the meeting."] },
   configuration: { title: "Configuration", items: ["Business rules, SLAs, escalation, KPI targets and security settings. Every change is logged."] },
 };
@@ -453,4 +463,26 @@ function openHelp() {
     el("h4", null, "Keyboard"),
     el("ul", { class: "help-list" }, el("li", null, el("kbd", null, "/"), " search · ", el("kbd", null, "Esc"), " close a dialog · ", el("kbd", null, "Tab"), " move between controls · ", el("kbd", null, "Enter"), " open the selected row")));
   modal({ title: `Help · ${h.title}`, body, width: 620 });
+}
+
+// Skills matrix (GIAS 10.2): auditors down, skills and certifications across.
+function skillsMatrix(auditors) {
+  const card = el("div", { class: "card" }, el("h3", null, "Skills matrix"),
+    el("p", { class: "muted small" }, "Who holds which skill or certification. Gaps show where training, co-sourcing or guest auditors are needed. Select a name to update a profile."));
+  const skills = [...new Set(auditors.flatMap((a) => a.skills))].sort((x, y) => x.localeCompare(y));
+  const certs = [...new Set(auditors.flatMap((a) => a.certifications || []))].sort((x, y) => x.localeCompare(y));
+  const cols = [...skills.map((k) => ({ k, cert: false })), ...certs.map((k) => ({ k, cert: true }))];
+  if (!cols.length) { card.append(el("div", { class: "empty" }, "No skills recorded yet. Open Team capacity and select an auditor to add skills.")); return card; }
+  const has = (a, c) => (c.cert ? (a.certifications || []) : a.skills).some((x) => x.toLowerCase() === c.k.toLowerCase());
+  card.append(el("div", { class: "table-wrap" }, el("table", { class: "matrix" },
+    el("thead", null, el("tr", null, el("th", null, "Auditor"),
+      ...cols.map((c) => el("th", { class: "mx-col", title: c.cert ? "Certification" : "Skill" }, el("span", null, c.k, c.cert ? " (cert.)" : ""))))),
+    el("tbody", null,
+      ...auditors.map((a) => el("tr", { tabindex: "0", onclick: () => profileForm(a, () => renderCapacity("skills")),
+        onkeydown: (e) => { if (e.key === "Enter") profileForm(a, () => renderCapacity("skills")); } },
+      el("td", null, a.name, a.grade ? el("div", { class: "muted small" }, a.grade) : null),
+      ...cols.map((c) => el("td", { class: "mx-cell" }, has(a, c) ? el("i", { class: "bi bi-check-circle-fill mx-yes", "aria-label": "Yes" }) : el("span", { class: "mx-no", "aria-label": "No" }, "·"))))),
+      el("tr", { class: "no-click mx-total" }, el("td", null, el("strong", null, "Holders")),
+        ...cols.map((c) => { const n = auditors.filter((a) => has(a, c)).length; return el("td", { class: `mx-cell ${n <= 1 ? "txt-warn" : ""}` }, String(n)); }))))));
+  return card;
 }

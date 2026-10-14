@@ -393,3 +393,14 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 - [x] **17.3** Custom fields (`app/modules/customfields`): Admin-defined text/longtext/number/date/select/yes-no fields, validated and stored on the record; retire instead of delete.
 - [x] **17.4** User workplace (`users.work_entity_id`): profile "Where I work", "Set as where I work" on an entity, `/api/organizations/entities` picker for all roles.
 - Migration `0012_entities_custom_fields`; tests `test_entities.py` (86 passing).
+
+## Phase 18 - IIA GIAS completion (methodology table)
+
+- [x] **18.1** Plan (9.4): Audit Committee approval record; amendments to an approved plan (add / change / cancel) need a reason and are logged (`plan_changes`), shown under Plan changes and in the Committee pack.
+- [x] **18.2** Resources (10): skills matrix tab (auditors x skills / certifications, single-holder gaps flagged).
+- [x] **18.3** Engagement planning (13): criteria library (`criteria`, refs CR-), picker in the finding form, usage count.
+- [x] **18.4** Conducting (14): review notes with closure gate; working-paper `wp_ref`, links to test / finding, reviewer sign-off (SoD).
+- [x] **18.5** Communicating (15.1): exit meeting on the report, in Word / print exports.
+- [x] **18.6** Monitoring (15.2): follow-up testing required for Effective validation; level 4 escalation to the Audit Committee (`escalate_committee_days`).
+- [x] **18.7** QA (8.3): internal assessment report (Word) with conformance by area, KPIs, survey and improvement areas.
+- Migration `0013_gias_completion`; tests `test_gias_completion.py` (91 passing).

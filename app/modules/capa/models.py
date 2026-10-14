@@ -44,6 +44,7 @@ class Capa(Base):
     implemented_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     validation_result: Mapped[ValidationResult | None] = mapped_column(_enum(ValidationResult), nullable=True)
     validation_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validation_procedures: Mapped[str | None] = mapped_column(Text, nullable=True)
     validated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reopen_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

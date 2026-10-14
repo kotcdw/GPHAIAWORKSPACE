@@ -71,6 +71,13 @@ class AssurancePlan(Base):
     total_budget_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Audit Committee approval of the plan (GIAS 9.4), recorded after the CAE's e-signed approval.
+    committee_meeting_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    committee_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    committee_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    committee_recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"),
+                                                              nullable=True)
+    committee_recorded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
@@ -106,3 +113,20 @@ class PlanEngagement(Base):
 
     plan: Mapped[AssurancePlan] = relationship(back_populates="engagements")
     entity_unit: Mapped[EntityUnit | None] = relationship()
+
+
+class PlanChange(Base):
+    """A documented change to an approved plan (engagement added, cancelled or changed; committee approval)."""
+
+    __tablename__ = "plan_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("assurance_plans.id", ondelete="CASCADE"), nullable=False,
+                                         index=True)
+    engagement_id: Mapped[int | None] = mapped_column(ForeignKey("plan_engagements.id", ondelete="SET NULL"),
+                                                      nullable=True)
+    change_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    changed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

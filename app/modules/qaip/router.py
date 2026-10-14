@@ -480,3 +480,108 @@ def get_qaip_summary(
     fiscal_year: int | None = None, db: DBSession = Depends(get_db), user: User = Staff
 ) -> QaipSummary:
     return qaip_summary(db, fiscal_year or utcnow().year)
+
+
+# ------------------------------------------------------------------ internal assessment report (GIAS 8.3)
+
+
+def conformance_rating(score: float | None) -> str:
+    """IIA rating scale used for quality assessments."""
+    if score is None:
+        return "Not assessed"
+    if score >= 85:
+        return "Generally conforms"
+    if score >= 70:
+        return "Partially conforms"
+    return "Does not conform"
+
+
+@router.get("/api/qaip/report.docx")
+def internal_assessment_report(request: Request, fiscal_year: int | None = None, db: DBSession = Depends(get_db),
+                               user: User = Staff):  # noqa: ANN201
+    """Periodic internal assessment report for the CAE and the Audit Committee (Word)."""
+    import io
+
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt
+    from fastapi.responses import Response
+
+    from app.modules.insights.router import analytics
+
+    fy = fiscal_year or utcnow().year
+    q = qaip_summary(db, fy)
+    a = analytics(db, fy)
+    doc = Document()
+    doc.styles["Normal"].font.name = "Calibri"
+    doc.styles["Normal"].font.size = Pt(11)
+    head = doc.add_paragraph()
+    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    head.add_run(f"{cfg('org_name').upper()}\n{cfg('department_name').upper()}").bold = True
+    doc.add_heading(f"Internal Quality Assessment Report - FY{fy}", level=0)
+    doc.add_paragraph(f"Prepared {utcnow():%d %B %Y} under the Quality Assurance and Improvement Programme "
+                      "(IIA Global Internal Audit Standards, Principle 8, Standard 8.3).")
+
+    def table(headers: list[str], rows: list[list]) -> None:
+        t = doc.add_table(rows=1, cols=len(headers))
+        t.style = "Light Grid Accent 1"
+        for cell, text in zip(t.rows[0].cells, headers, strict=True):
+            cell.text = text
+        for row in rows:
+            for cell, text in zip(t.add_row().cells, row, strict=True):
+                cell.text = str(text)
+
+    rating = conformance_rating(q.average_score)
+    doc.add_heading("1. Overall conclusion", level=1)
+    doc.add_paragraph(
+        f"Based on {q.reviews_completed} engagement quality review(s) covering {q.review_coverage_pct}% of the "
+        f"{q.closed_audits} audit(s) closed in the year, the internal audit activity "
+        f"{rating.lower() if rating != 'Not assessed' else 'has not yet been assessed'} with the Standards"
+        + (f" (average conformance {q.average_score}%)." if q.average_score is not None else "."))
+    doc.add_heading("2. Scope and approach", level=1)
+    doc.add_paragraph("Each completed engagement was reviewed against a 12-point checklist mapped to the Standards "
+                      "by a reviewer independent of the engagement team. Results are combined with performance "
+                      "indicators and auditee feedback collected in the GPHA Internal Audit Workspace.")
+    doc.add_heading("3. Conformance by area", level=1)
+    weights = {"Conforms": 1.0, "Partially conforms": 0.5, "Does not conform": 0.0}
+    per_item: dict[str, list[float]] = {}
+    ids = [r["audit_id"] for r in q.reviews]
+    for r in db.execute(select(QualityReview).where(QualityReview.audit_id.in_(ids or [0]))).scalars():
+        for k, ans in json.loads(r.answers).items():
+            if ans.get("answer") in weights:
+                per_item.setdefault(k, []).append(weights[ans["answer"]])
+    table(["Standard", "Checklist area", "Conformance"],
+          [[s, qtext, f"{round(100 * sum(per_item[k]) / len(per_item[k]))}%" if per_item.get(k) else "-"]
+           for k, s, qtext in CHECKLIST])
+    doc.add_heading("4. Performance against targets", level=1)
+    table(["Indicator", "Actual", "Target", "Status"],
+          [[k.label, "-" if k.actual is None else f"{k.actual}{'%' if k.unit == '%' else ' ' + k.unit}",
+            f"{'<=' if k.better == 'lower' else '>='} {k.target}{'%' if k.unit == '%' else ' ' + k.unit}",
+            {"ok": "On target", "warn": "Near target", "bad": "Off target", "none": "No data"}[k.status]]
+           for k in a.kpis])
+    doc.add_heading("5. Stakeholder feedback", level=1)
+    if q.survey_responses:
+        doc.add_paragraph(f"{q.survey_responses} response(s) from {q.survey_invited} invited auditee(s); "
+                          f"average satisfaction {q.survey_average} out of 5.")
+        table(["Question", "Average (1-5)"], [[s["question"], s["average"]] for s in q.survey_by_question])
+        for c in q.recent_comments[:5]:
+            doc.add_paragraph(f'"{c}"', style="List Bullet")
+    else:
+        doc.add_paragraph("No survey responses were received in the year.")
+    doc.add_heading("6. Areas for improvement", level=1)
+    weak = [w for w in q.weakest_items if w["conformance_pct"] < 85]
+    if weak:
+        table(["Standard", "Area", "Conformance", "Improvement action (owner, date)"],
+              [[w["standard"], w["question"], f"{w['conformance_pct']}%", ""] for w in weak])
+    else:
+        doc.add_paragraph("No checklist area fell below 85% conformance.")
+    doc.add_heading("7. Approval", level=1)
+    doc.add_paragraph("Chief Audit Executive: ____________________    Date: ____________\n\n"
+                      "Presented to the Audit Committee on: ____________")
+    buf = io.BytesIO()
+    doc.save(buf)
+    log_action(db, user_id=user.id, action=f"QAIP_REPORT fy={fy}", request=request)
+    db.commit()
+    return Response(content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="internal-assessment-FY{fy}.docx"'})

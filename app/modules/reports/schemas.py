@@ -66,6 +66,9 @@ class ReportOut(BaseModel):
     overall_opinion: str
     distribution_list: str
     management_comments: str
+    exit_meeting_date: datetime | None = None
+    exit_meeting_attendees: str | None = None
+    exit_meeting_notes: str | None = None
     version: int
     created_by: int | None
     manager_reviewed_by: int | None

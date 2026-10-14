@@ -66,9 +66,15 @@ class WorkingPaper(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     encrypted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Cross-referencing (GIAS 14.6) and reviewer sign-off.
+    wp_ref: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    test_id: Mapped[int | None] = mapped_column(ForeignKey("control_tests.id", ondelete="SET NULL"), nullable=True)
+    finding_id: Mapped[int | None] = mapped_column(ForeignKey("findings.id", ondelete="SET NULL"), nullable=True)
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     audit: Mapped[Audit] = relationship(back_populates="working_papers")
-    uploader: Mapped[User | None] = relationship()
+    uploader: Mapped[User | None] = relationship(foreign_keys="WorkingPaper.uploaded_by")
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<WorkingPaper id={self.id} title={self.title!r} v{self.version_number}>"
@@ -94,6 +100,7 @@ class Finding(Base):
     recommendation: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     root_cause_whys: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     management_response: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    criterion_id: Mapped[int | None] = mapped_column(ForeignKey("criteria.id", ondelete="SET NULL"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

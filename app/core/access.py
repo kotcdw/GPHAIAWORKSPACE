@@ -91,6 +91,7 @@ def load_record(db: DBSession, record_type: str, record_id: int):  # noqa: ANN20
 def _model_for(record_type: str):  # noqa: ANN202
     from app.modules.audits.models import Audit, Finding, WorkingPaper
     from app.modules.capa.models import Capa
+    from app.modules.methodology.models import Criterion
     from app.modules.nonconformances.models import Nonconformance
     from app.modules.organizations.models import Organization
     from app.modules.planning.models import AssurancePlan
@@ -111,6 +112,7 @@ def _model_for(record_type: str):  # noqa: ANN202
         "assurance_plan": AssurancePlan,
         "control_test": ControlTest,
         "audit_report": AuditReport,
+        "criterion": Criterion,
     }.get(record_type)
 
 

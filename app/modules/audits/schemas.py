@@ -59,6 +59,7 @@ class FindingCreate(BaseModel):
     recommendation: str | None = None
     root_cause_whys: list[Annotated[str, Field(max_length=1000)]] | None = Field(default=None, max_length=5)
     control_id: int | None = None
+    criterion_id: int | None = None
 
 
 class FindingUpdate(BaseModel):
@@ -74,6 +75,7 @@ class FindingUpdate(BaseModel):
     recommendation: str | None = None
     root_cause_whys: list[Annotated[str, Field(max_length=1000)]] | None = Field(default=None, max_length=5)
     control_id: int | None = None
+    criterion_id: int | None = None
 
 
 class ManagementResponse(BaseModel):
@@ -97,6 +99,7 @@ class FindingOut(ORMModel):
     recommendation: str | None = ""
     root_cause_whys: list[str] = []
     management_response: str | None = ""
+    criterion_id: int | None = None
     created_by: int | None
     created_at: datetime
     updated_at: datetime
@@ -127,6 +130,11 @@ class WorkingPaperOut(ORMModel):
     is_deleted: bool = False
     deleted_at: datetime | None = None
     sha256: str | None = None
+    wp_ref: str | None = None
+    test_id: int | None = None
+    finding_id: int | None = None
+    reviewed_by: int | None = None
+    reviewed_at: datetime | None = None
 
 
 class AuditeeAssign(BaseModel):

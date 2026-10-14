@@ -40,6 +40,8 @@ class ImplementIn(BaseModel):
 class ValidateIn(BaseModel):
     result: ValidationResult
     comment: str = Field(default="", max_length=20000)
+    # Follow-up testing performed (GIAS 15.2): what the auditor did to confirm the action works.
+    procedures: str = Field(default="", max_length=20000)
 
     @field_validator("comment")
     @classmethod
@@ -125,8 +127,14 @@ def validate_implementation(
         from app.core.errors import field_error
 
         raise field_error("comment", "explain why the action is not effective")
+    procedures = payload.procedures.strip()
+    if payload.result == ValidationResult.Effective and len(procedures) < 10:
+        from app.core.errors import field_error
+
+        raise field_error("procedures", "describe the follow-up testing performed (at least 10 characters)")
     capa.validation_result = payload.result
     capa.validation_comment = payload.comment
+    capa.validation_procedures = procedures or None
     capa.validated_by = user.id
     capa.validated_at = utcnow()
     owner = user_id_by_email(db, capa.owner_email)

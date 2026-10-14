@@ -40,6 +40,9 @@ class PlanProgress(BaseModel):
     completed_pct: int = 0
     hours_planned: int = 0
     budget_hours: int = 0
+    approved_at: datetime | None = None
+    committee_meeting_date: datetime | None = None
+    committee_reference: str | None = None
 
 
 class IssuedReport(BaseModel):
@@ -69,6 +72,7 @@ class CommitteeSummary(BaseModel):
     open_findings_by_age: dict[str, int]
     actions: dict[str, int]
     top_overdue: list[OverdueRow]
+    plan_changes: list[dict] = []
     fiscal_years: list[int]
 
 
@@ -107,7 +111,8 @@ def build_summary(db: DBSession, fiscal_year: int | None = None) -> CommitteeSum
             engagements=len(engs), by_stage=dict(stages),
             completed_pct=round(100 * stages["Completed"] / live) if live else 0,
             hours_planned=sum(e.budget_hours for e in engs if e.status != EngagementStatus.Cancelled),
-            budget_hours=plan.total_budget_hours,
+            budget_hours=plan.total_budget_hours, approved_at=plan.approved_at,
+            committee_meeting_date=plan.committee_meeting_date, committee_reference=plan.committee_reference,
         )
 
     audits = db.execute(select(Audit)).scalars().all()
@@ -131,7 +136,17 @@ def build_summary(db: DBSession, fiscal_year: int | None = None) -> CommitteeSum
         "closed": sum(1 for c in capas if c.status == CapaStatus.Closed),
         "reopened": sum(1 for c in capas if (c.reopen_count or 0) > 0),
         "with_cae": sum(1 for o in overdue if o.due_level >= 3),
+        "for_committee": sum(1 for o in overdue if o.due_level >= 4),
     }
+    changes: list[dict] = []
+    if plan is not None:
+        from app.modules.planning.models import PlanChange
+
+        changes = [{"date": c.changed_at.date().isoformat(), "type": c.change_type, "description": c.description,
+                    "reason": c.reason}
+                   for c in db.execute(select(PlanChange).where(PlanChange.plan_id == plan.id,
+                                                                PlanChange.change_type != "Committee")
+                                       .order_by(PlanChange.changed_at)).scalars()]
     return CommitteeSummary(
         generated_at=now,
         plan=progress,
@@ -147,6 +162,7 @@ def build_summary(db: DBSession, fiscal_year: int | None = None) -> CommitteeSum
         top_overdue=[OverdueRow(capa_ref=o.capa.capa_ref, title=o.capa.title, owner=o.capa.owner_email,
                                 days_overdue=o.days_overdue, escalated_to=LEVEL_NAMES[o.due_level], id=o.capa.id)
                      for o in sorted(overdue, key=lambda o: -o.days_overdue)[:10]],
+        plan_changes=changes,
         fiscal_years=years,
     )
 
@@ -188,6 +204,11 @@ def committee_pack(request: Request, fiscal_year: int | None = None, db: DBSessi
     if p.plan_ref:
         doc.add_paragraph(f"{p.plan_ref} {p.title} ({p.status}): {p.engagements} engagements, "
                           f"{p.completed_pct}% completed; {p.hours_planned} of {p.budget_hours} budget hours planned.")
+        if p.committee_meeting_date:
+            doc.add_paragraph(f"Approved by the Audit Committee on {p.committee_meeting_date:%d %B %Y} "
+                              f"(ref {p.committee_reference}).")
+        else:
+            doc.add_paragraph("The plan has not yet been recorded as approved by the Audit Committee.")
         table(["Stage", "Engagements"], [[k, v] for k, v in p.by_stage.items()])
     else:
         doc.add_paragraph("No Assurance Plan recorded for this year.")
@@ -204,12 +225,19 @@ def committee_pack(request: Request, fiscal_year: int | None = None, db: DBSessi
     table(["Age", "Open findings"], [[k, v] for k, v in s.open_findings_by_age.items()])
     doc.add_heading("4. Implementation of agreed actions", level=1)
     a = s.actions
-    doc.add_paragraph(f"{a['open']} open, {a['overdue']} overdue ({a['with_cae']} escalated to the CAE), "
+    doc.add_paragraph(f"{a['open']} open, {a['overdue']} overdue ({a['with_cae']} escalated to the CAE, "
+                      f"{a['for_committee']} reported to this Committee), "
                       f"{a['awaiting_validation']} awaiting auditor validation, {a['closed']} closed, "
                       f"{a['reopened']} reopened after validation.")
     if s.top_overdue:
         table(["Action", "Description", "Owner", "Days overdue", "Escalated to"],
               [[o.capa_ref, o.title, o.owner or "-", o.days_overdue, o.escalated_to] for o in s.top_overdue])
+    doc.add_heading("5. Changes to the approved plan", level=1)
+    if s.plan_changes:
+        table(["Date", "Change", "Description", "Reason"],
+              [[c["date"], c["type"], c["description"], c["reason"]] for c in s.plan_changes])
+    else:
+        doc.add_paragraph("No changes since the plan was approved.")
     buf = io.BytesIO()
     doc.save(buf)
     log_action(db, user_id=user.id, action=f"COMMITTEE_PACK fy={p.fiscal_year}", request=request)

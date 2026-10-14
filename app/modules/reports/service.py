@@ -173,6 +173,14 @@ def to_docx(db: DBSession, report: AuditReport) -> bytes:
     doc.add_paragraph(report.management_comments or "None received.")
     doc.add_heading("8. Distribution", level=1)
     doc.add_paragraph(report.distribution_list or "Not specified.")
+    doc.add_heading("9. Exit meeting", level=1)
+    if report.exit_meeting_date:
+        doc.add_paragraph(f"Held on {report.exit_meeting_date:%d %B %Y}. Attendees: "
+                          f"{report.exit_meeting_attendees or 'not recorded'}.")
+        if report.exit_meeting_notes:
+            doc.add_paragraph(report.exit_meeting_notes)
+    else:
+        doc.add_paragraph("Not yet held.")
 
     doc.add_heading("Sign-off", level=1)
     sign = doc.add_table(rows=1, cols=3)
@@ -257,5 +265,6 @@ th{{background:#eef2f8}} dl{{margin:0}} dt{{font-weight:700;margin-top:6px}} dd{
 {details}
 <h2>7. Management comments</h2>{paras(report.management_comments or 'None received.')}
 <h2>8. Distribution</h2>{paras(report.distribution_list or 'Not specified.')}
+<h2>9. Exit meeting</h2>{paras((f"Held on {report.exit_meeting_date:%d %B %Y}. Attendees: {report.exit_meeting_attendees or 'not recorded'}. " + (report.exit_meeting_notes or '')) if report.exit_meeting_date else 'Not yet held.')}
 <h2>Sign-off</h2><table><tr><th>Role</th><th>Name</th><th>Date</th></tr>{signs}</table>
 </body></html>"""

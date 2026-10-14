@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections import Counter
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
@@ -49,6 +50,11 @@ from app.modules.planning.schemas import (
     UncoveredUnit,
 )
 from app.modules.users.models import User
+
+
+class CancelIn(BaseModel):
+    reason: str = Field(default="", max_length=2000)
+
 
 router = APIRouter(tags=["planning"])
 
@@ -421,11 +427,23 @@ def remove_engagement(eng_id: int, request: Request, db: DBSession = Depends(get
 
 @router.post("/api/plan-engagements/{eng_id}/cancel", response_model=EngagementOut)
 def cancel_engagement(
-    eng_id: int, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
+    eng_id: int, request: Request, payload: CancelIn | None = None, db: DBSession = Depends(get_db),
+    user: User = AdminOnly,
 ) -> EngagementOut:
     eng = _engagement_or_404(db, eng_id)
     if eng.status != EngagementStatus.Planned:
         raise _conflict("Only an engagement that has not started can be cancelled")
+    reason = (payload.reason if payload else "").strip()
+    if eng.plan.status == PlanStatus.Approved:
+        if len(reason) < 10:
+            from app.core.errors import field_error
+
+            raise field_error("reason", "explain why an engagement of the approved plan is cancelled (10+ characters)")
+        from app.modules.planning.models import PlanChange
+
+        db.add(PlanChange(plan_id=eng.plan_id, engagement_id=eng.id, change_type="Cancelled",
+                          description=f"{eng.title} ({eng.planned_quarter}, {eng.budget_hours}h) cancelled",
+                          reason=reason, changed_by=user.id))
     eng.status = EngagementStatus.Cancelled
     log_action(db, user_id=user.id, action=f"ENGAGEMENT_CANCEL id={eng.id}", request=request)
     _history(db, eng.plan_id, user, f"ENGAGEMENT CANCELLED #{eng.id} {eng.title}", request)

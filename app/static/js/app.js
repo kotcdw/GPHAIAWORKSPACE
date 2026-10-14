@@ -306,6 +306,34 @@ const MODULES = {
       { key: "close", label: "Close (e-sign)", kind: "esign", adminOnly: true, path: (id) => `/api/capa/${id}/close` },
     ],
   },
+  criteria: {
+    title: "Criteria library",
+    endpoint: "/api/criteria",
+    wrapped: true,
+    recordType: "criterion",
+    refKey: "crit_ref",
+    nameKey: "title",
+    search: true,
+    filters: [
+      { param: "source_type", label: "Source", options: ["Law / Regulation", "GPHA Policy", "Procedure / SOP", "Standard", "Contract / Agreement", "Board resolution", "Leading practice", "Other"] },
+      { param: "status", label: "Status", options: ["Active", "Retired"] },
+    ],
+    columns: [
+      { key: "crit_ref", label: "Ref", ref: true },
+      { key: "title", label: "Criterion" },
+      { key: "source_type", label: "Source" },
+      { key: "reference", label: "Reference / clause" },
+      { key: "used_in", label: "Used in findings" },
+      { key: "status", label: "Status", badge: true },
+    ],
+    fields: [
+      { key: "title", label: "Title", required: true },
+      { key: "source_type", label: "Source", type: "select", required: true, options: ["Law / Regulation", "GPHA Policy", "Procedure / SOP", "Standard", "Contract / Agreement", "Board resolution", "Leading practice", "Other"] },
+      { key: "reference", label: "Reference / clause", help: "e.g. Public Procurement Act 663, s.21; GPHA Finance Manual 4.2" },
+      { key: "body", label: "Criterion text (what should be)", type: "textarea", required: true },
+    ],
+    actions: [],
+  },
   "service-feedback": {
     title: "Service Feedback",
     endpoint: "/api/service-feedback",
@@ -1030,6 +1058,7 @@ async function renderWorkspace() {
     { title: "Registers", tiles: [
       { view: "organizations", icon: "building", name: "Organizations", desc: "Departments, units and external bodies", staff: true },
       { view: "stakeholders", icon: "people", name: "Stakeholders", desc: "Key contacts for each organization", staff: true },
+      { view: "criteria", icon: "journal-bookmark", name: "Criteria library", desc: "Laws, policies and standards findings are measured against", staff: true },
       { view: "service-feedback", icon: "chat-left-text", name: "Service Feedback", desc: "Auditee feedback on audit services", count: "feedback" },
     ] },
     { title: "Account & administration", tiles: [
@@ -1348,7 +1377,7 @@ async function openAudit(id, startTab = null) {
     { key: "findings", label: "Findings / Issues" },
     { key: "report", label: "Audit Report" },
     { key: "papers", label: "Working Papers" },
-    ...(canWrite ? [{ key: "time", label: "Time" }, { key: "quality", label: "Quality Review" }] : []),
+    ...(canWrite ? [{ key: "notes", label: "Review Notes" }, { key: "time", label: "Time" }, { key: "quality", label: "Quality Review" }] : []),
     { key: "survey", label: "Survey" },
     { key: "tasks", label: "Tasks" },
     { key: "history", label: "History" },
@@ -1366,6 +1395,7 @@ async function openAudit(id, startTab = null) {
     if (active === "memo") renderMemoTab(panel, audit, canWrite);
     if (active === "rcm") renderRcm(panel, id);
     if (active === "time") renderAuditTimeTab(panel, audit);
+    if (active === "notes") renderReviewNotesTab(panel, audit);
     if (active === "quality") renderQualityTab(panel, audit);
     if (active === "survey") renderSurveyTab(panel, audit);
     if (active === "findings") renderFindings(panel, id, canWrite);
@@ -1440,18 +1470,26 @@ async function renderPapers(panel, id, canWrite) {
   panel.append(card);
   const papers = await API.get(`/api/audits/${id}/working-papers`);
   if (!papers.length) card.append(el("div", { class: "empty" }, "No working papers uploaded."));
-  else card.append(el("table", null,
-    el("thead", null, el("tr", null, el("th", null, "Title"), el("th", null, "Version"), el("th", null, "Uploaded"), el("th", null, "SHA-256"), el("th", null, ""))),
+  else card.append(el("div", { class: "table-wrap" }, el("table", null,
+    el("thead", null, el("tr", null, el("th", null, "Ref"), el("th", null, "Title"), el("th", null, "Version"), el("th", null, "Supports"),
+      el("th", null, "Uploaded"), el("th", null, "Review"), el("th", { class: "hide-sm" }, "SHA-256"), el("th", null, ""))),
     el("tbody", null, ...papers.map((p) => el("tr", { class: "no-click" },
-      el("td", null, p.title), el("td", null, `v${p.version_number}`),
+      el("td", { class: "ref" }, p.wp_ref || "-"), el("td", null, p.title), el("td", null, `v${p.version_number}`),
+      el("td", { class: "muted small" }, [p.test_id ? `Test #${p.test_id}` : null, p.finding_id ? `Finding #${p.finding_id}` : null].filter(Boolean).join(" · ") || "-"),
       el("td", { class: "muted" }, fmtDate(p.uploaded_at)),
-      el("td", { class: "muted", title: p.sha256 || "" }, p.sha256 ? `${p.sha256.slice(0, 12)}\u2026` : "-"),
+      el("td", null, p.reviewed_at ? el("span", { title: fmtDate(p.reviewed_at) }, badge("Reviewed"))
+        : (canWrite && p.uploaded_by !== state.user.id ? el("button", { class: "btn small", onclick: async () => {
+          try { await API.post(`/api/working-papers/${p.id}/review`); toast("Working paper signed off"); openAudit(id, "papers"); }
+          catch (err) { toast(err.message, "error"); }
+        } }, "Sign off") : badge("Not reviewed"))),
+      el("td", { class: "muted hide-sm", title: p.sha256 || "" }, p.sha256 ? `${p.sha256.slice(0, 12)}\u2026` : "-"),
       el("td", null, el("div", { class: "actions" },
         el("a", { href: `/api/working-papers/${p.id}/download` }, "Download"),
+        canWrite ? el("button", { class: "btn small secondary", onclick: () => workPaperXrefForm(p, id, () => openAudit(id, "papers")) }, "Cross-ref") : null,
         isAdmin() ? el("button", { class: "btn small danger-ghost", onclick: async () => {
           try { await API.del(`/api/working-papers/${p.id}`); toast("Withdrawn (file retained)"); openAudit(id); }
           catch (err) { toast(err.message, "error"); }
-        } }, "Withdraw") : null)))))));
+        } }, "Withdraw") : null))))))));
   if (canWrite) {
     const t = el("input", { placeholder: "Title" });
     const file = el("input", { type: "file" });

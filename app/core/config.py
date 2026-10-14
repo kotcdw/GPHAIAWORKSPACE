@@ -97,6 +97,7 @@ class Settings(BaseSettings):
     # Audit Managers after N days, then to the CAE. The watcher runs hourly.
     escalate_manager_days: int = 14
     escalate_cae_days: int = 30
+    escalate_committee_days: int = 60
     escalation_check_minutes: int = 60
 
     # Audit closure gates (also editable on the Configuration screen).

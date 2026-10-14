@@ -69,6 +69,7 @@ class CapaOut(ORMModel):
     implemented_at: datetime | None = None
     validation_result: str | None = None
     validation_comment: str | None = None
+    validation_procedures: str | None = None
     validated_by: int | None = None
     validated_at: datetime | None = None
     reopen_count: int = 0
