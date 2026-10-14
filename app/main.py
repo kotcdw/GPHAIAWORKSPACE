@@ -44,6 +44,7 @@ from app.modules.methodology.router import router as methodology_router
 from app.modules.nonconformances.router import router as nonconformances_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.organizations.router import router as organizations_router
+from app.modules.plancycle.router import router as plancycle_router
 from app.modules.planning.router import router as planning_router
 from app.modules.programs.router import router as programs_router
 from app.modules.qaip.router import router as qaip_router
@@ -96,6 +97,7 @@ _ROUTERS = (
     programs_router,
     evidence_router,
     governance_router,
+    plancycle_router,
 )
 
 

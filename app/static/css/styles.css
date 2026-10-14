@@ -781,3 +781,23 @@ table.perm-matrix tfoot td { position: sticky; bottom: 0; background: var(--pane
 .file-list li { padding: 4px 0; }
 .text-danger { color: var(--danger); font-weight: 600; }
 .actions.center { justify-content: center; }
+
+/* ---------------------------------------------------------------- annual planning cycle */
+.cycle-steps { list-style: none; margin: 8px 0 12px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.cycle-step { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; color: var(--muted); }
+.cycle-step .cs-n { flex: 0 0 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--border-strong); font-size: 12px; }
+.cycle-step .cs-l { flex: 1; line-height: 1.3; }
+.cycle-step .cs-d { display: block; width: 100%; font-size: 11px; color: var(--muted); }
+.cycle-step { flex-wrap: wrap; }
+.cycle-step.done { color: var(--text); }
+.cycle-step.done .cs-n { background: var(--ok); border-color: var(--ok); color: #fff; }
+.cycle-step.current { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.cycle-step.current .cs-n { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cycle-now { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--border); }
+.cycle-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.cycle-sub h4 { margin: 0 0 6px; }
+.ok-ico { color: var(--ok); }
+.timeline .tl-item { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.timeline .tl-item:last-child { border-bottom: 0; }
+.pre { white-space: pre-wrap; }
+@media (max-width: 900px) { .cycle-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cycle-sub { grid-template-columns: 1fr; } }

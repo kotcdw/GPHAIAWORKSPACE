@@ -213,6 +213,18 @@ Related modules: **Audit programmes** (`/api/audit-programs`, applied to an audi
 (`/api/audits/{id}/evidence-requests`, `/api/evidence-requests`), **Governance portal** (`/api/governance/overview`)
 and **Port portfolio** (`/api/portfolio/ports`). Audits carry an audit type and a port.
 
+### Annual planning cycle
+
+The Assurance Plan page walks the plan through ten recorded stages:
+Planning preparation (checklist) → Risk / universe review (snapshot of ratings and units due under the audit
+cycle) → Audit Managers' planning meeting (date, attendees, minutes) → Draft plan → Internal review (GM Audit
+e-signature, or return with comments) → Submission to the approving authority → Audit Committee decision
+(Approved / Approved with amendments / Deferred / Returned) → Approved version (numbered, frozen snapshot with a
+Word "controlled copy") → GM Audit controlled distribution (named PIAs and Audit Managers, receipt acknowledged)
+→ PIA / Manager execution (engagements started, by lead). Two switches under Configuration › Plan configuration
+control enforcement: `plan_cycle_enforced` and `plan_distribution_before_execution` (both on by default).
+API: `/api/assurance-plans/{id}/cycle…`, `/api/assurance-plans/{id}/versions/{n}[/export.docx]`.
+
 ## Quick start
 
 ```powershell

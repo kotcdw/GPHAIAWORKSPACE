@@ -197,9 +197,6 @@ async function openPlan(id) {
 
   setActiveNav("plans");
   viewRoot.append(viewHeader(plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`, [
-    hasPerm("plan.approve") && draft ? btn("Approve (e-sign)", () => eSignModal({
-      title: "Approve Assurance Plan", pathOverride: `/api/assurance-plans/${id}/approve`, actionLabel: "Sign & Approve",
-      allowReject: true, onDone: () => openPlan(id) })) : null,
     draft ? btn("Edit", () => editPlanModal(plan), "secondary") : null,
     hasPerm("plan.amend") && approved ? btn("Reopen", async () => {
       try { await API.post(`/api/assurance-plans/${id}/reopen`); toast("Plan reopened"); openPlan(id); }
@@ -236,9 +233,12 @@ async function openPlan(id) {
         ...s.uncovered_high_risk.flatMap((u, i) => [i ? ", " : "", `${u.location_name} / ${u.name} `, heat(u.risk_score)]))));
   }
   if (plan.description) viewRoot.append(el("div", { class: "card" }, el("div", { class: "lf-label" }, "Basis of the plan"), el("div", { class: "lf-value" }, plan.description)));
-  if (plan.status !== "Draft") viewRoot.append(committeeCard(plan));
+  const cycleSlot = el("div");
+  viewRoot.append(cycleSlot);
+  renderPlanCycle(cycleSlot, plan);
+  if (plan.committee_meeting_date) viewRoot.append(committeeCard(plan));
 
-  const tabs = [{ key: "eng", label: "Engagements" }, { key: "changes", label: "Plan changes" }, { key: "history", label: "History" },
+  const tabs = [{ key: "eng", label: "Engagements" }, { key: "cycle", label: "Planning cycle & versions" }, { key: "changes", label: "Plan changes" }, { key: "history", label: "History" },
     { key: "approvals", label: "Approval cycles" }];
   let active = "eng";
   const detail = el("div");
@@ -249,6 +249,7 @@ async function openPlan(id) {
     const panel = el("div");
     detail.append(panel);
     if (active === "eng") renderEngagements(panel, plan);
+    if (active === "cycle") renderPlanCycleLog(panel, plan);
     if (active === "changes") renderPlanChanges(panel, plan);
     if (active === "history") renderHistoryTab(panel, "assurance_plan", id);
     if (active === "approvals") renderApprovalsTab(panel, "assurance_plan", id);
@@ -698,7 +699,7 @@ function registerPlanningOpeners() {
 // ==================================================================== Audit Committee approval + plan changes (GIAS 9.4)
 
 function committeeCard(plan) {
-  const canRecord = hasPerm("plan.amend") && plan.status === "Approved";
+  const canRecord = hasPerm("plan.amend") && plan.status === "Approved" && !!plan.committee_meeting_date;
   const card = el("div", { class: `callout ${plan.committee_meeting_date ? "ok" : "warn"}` },
     el("i", { class: `bi bi-${plan.committee_meeting_date ? "patch-check" : "people"}` }),
     el("div", { style: "flex:1" }, plan.committee_meeting_date

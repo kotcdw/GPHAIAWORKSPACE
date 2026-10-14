@@ -97,11 +97,19 @@ def record_committee_approval(plan_id: int, payload: CommitteeIn, request: Reque
         raise field_error("meeting_date", "cannot be in the future")
     if plan.approved_at and payload.meeting_date.replace(tzinfo=None).date() < plan.approved_at.date():
         raise field_error("meeting_date", "is before the CAE approved the plan")
-    plan.committee_meeting_date = payload.meeting_date.replace(tzinfo=None)
-    plan.committee_reference = payload.reference.strip()
-    plan.committee_notes = payload.notes.strip()
-    plan.committee_recorded_by = user.id
-    plan.committee_recorded_at = utcnow()
+    if plan.cycle_stage in ("preparation", "universe_review", "managers_meeting", "drafting", "internal_review",
+                            "submission", "committee"):
+        # First Committee approval of this CAE-approved draft: freeze a numbered version (planning cycle).
+        from app.modules.plancycle.router import record_committee_decision
+
+        record_committee_decision(db, plan, user, "Approved", payload.meeting_date.replace(tzinfo=None),
+                                  payload.reference.strip(), payload.notes.strip(), request)
+    else:
+        plan.committee_meeting_date = payload.meeting_date.replace(tzinfo=None)
+        plan.committee_reference = payload.reference.strip()
+        plan.committee_notes = payload.notes.strip()
+        plan.committee_recorded_by = user.id
+        plan.committee_recorded_at = utcnow()
     _log_change(db, plan, user, "Committee", f"Approved by the Audit Committee on "
                 f"{plan.committee_meeting_date:%d %b %Y} (ref {plan.committee_reference})", payload.notes.strip(),
                 request)

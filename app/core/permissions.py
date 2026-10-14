@@ -107,6 +107,7 @@ JOB_ROLES: list[JobRole] = [
             "Engagement planning, team allocation, supervision, review, findings management and report "
             "preparation and review.",
             frozenset(_FIELD | _REVIEW | {"audit.create", "audit.memo_approve", "report.review", "quality.review",
+                                          "plan.prepare",
                                           "followup.validate", "followup.manage", "oversight.resources"})),
     JobRole("unit_head", "Unit Head / Supervisor", Role.Auditor, None,
             "Day-to-day review, working-paper review, coaching, quality checks and assignment monitoring.",

@@ -145,3 +145,41 @@ def login(client: TestClient, username: str, password: str = DEFAULT_PASSWORD) -
 
 def csrf_headers(csrf_token: str) -> dict[str, str]:
     return {"X-CSRF-Token": csrf_token}
+
+# ------------------------------------------------------------------ annual planning cycle helpers
+
+PREP_CHECKS = ["strategy", "prior_year", "stakeholders", "resources", "regulatory"]
+
+
+def walk_plan_to_review(client: TestClient, plan_id: int, headers: dict) -> None:
+    """Preparation -> universe review -> managers' meeting -> submitted for internal review."""
+    from app.core.enums import utcnow
+
+    base = f"/api/assurance-plans/{plan_id}/cycle"
+    steps = [
+        ("preparation", {"checks": PREP_CHECKS, "notes": "Strategy 2026-2028"}),
+        ("universe-review", {"notes": "Universe reviewed; ratings refreshed"}),
+        ("managers-meeting", {"meeting_date": utcnow().isoformat(), "attendees": "GM Audit; PIAs; Managers",
+                              "minutes": "Agreed coverage and priorities for the year"}),
+        ("submit-review", {"notes": ""}),
+    ]
+    for path, body in steps:
+        r = client.post(f"{base}/{path}", json=body, headers=headers)
+        assert r.status_code == 200, f"{path}: {r.text}"
+
+
+def release_plan(client: TestClient, plan_id: int, headers: dict) -> None:
+    """Approved plan -> submitted -> Audit Committee approval -> distributed by the GM Audit."""
+    from app.core.enums import utcnow
+
+    base = f"/api/assurance-plans/{plan_id}/cycle"
+    now = utcnow().isoformat()
+    r = client.post(f"{base}/submit-authority", json={"authority": "Audit Committee", "submitted_on": now},
+                    headers=headers)
+    assert r.status_code == 200, r.text
+    r = client.post(f"{base}/committee-decision", json={"decision": "Approved", "meeting_date": now,
+                                                        "reference": "AC/TEST"}, headers=headers)
+    assert r.status_code == 200, r.text
+    me = client.get("/api/auth/me").json()["user"]["id"]
+    r = client.post(f"{base}/distribute", json={"user_ids": [me]}, headers=headers)
+    assert r.status_code == 200, r.text

@@ -438,7 +438,8 @@ const HELP = {
   workspace: { title: "GPHA Workspace", items: ["Every module in one place, with live counts. Quick actions start the most common work."] },
   plans: { title: "Assurance Plan", items: [
     "The annual risk-based plan (IIA GIAS 9.4). Add engagements from the Audit Universe, then submit for CAE approval.",
-    "Once approved, start an engagement to create its audit project.",
+    "Follow the annual planning cycle card: preparation, universe review, managers' meeting, draft, internal review (e-sign), submission, Audit Committee decision, approved version, GM distribution, execution.",
+    "Once the approved version has been distributed, PIAs and Audit Managers start engagements to create their audit projects.",
   ] },
   universe: { title: "Audit Universe", items: [
     "Auditable units with an inherent risk rating (likelihood × impact, 1-5 each). The rating drives the plan and the heat map.",

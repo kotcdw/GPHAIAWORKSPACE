@@ -279,15 +279,20 @@ def update_plan(
 def approve_plan(
     plan_id: int, payload: ESignRequest, request: Request, db: DBSession = Depends(get_db), user: User = PlanApprove
 ) -> PlanDetail:
+    from app.modules.plancycle import router as cycle
+
     plan = _plan_or_404(db, plan_id)
     _require_draft(plan)
     if not any(e.status != EngagementStatus.Cancelled for e in plan.engagements):
         raise _conflict("Add at least one engagement before approving the plan")
+    if plan.created_by != user.id:  # the preparer is refused by the e-signature check (segregation of duties)
+        cycle.ready_for_approval(plan)
 
     def _on_approve(_: DBSession) -> None:
         plan.status = PlanStatus.Approved
         plan.approved_by = user.id
         plan.approved_at = utcnow()
+        cycle.on_internal_decision(db, plan, user, True, payload.comment, request)
 
     sign(
         db,
@@ -301,6 +306,8 @@ def approve_plan(
         on_approve=_on_approve,
         preparer_id=plan.created_by,
     )
+    if payload.decision.value == "Reject":
+        cycle.on_internal_decision(db, plan, user, False, payload.comment, request)
     log_action(db, user_id=user.id, action=f"PLAN_{payload.decision.value.upper()} id={plan.id}", request=request)
     db.commit()
     db.refresh(plan)
@@ -316,6 +323,9 @@ def reopen_plan(plan_id: int, request: Request, db: DBSession = Depends(get_db),
     plan.status = PlanStatus.Draft
     plan.approved_by = None
     plan.approved_at = None
+    from app.modules.plancycle.router import on_reopen
+
+    on_reopen(db, plan, user, request)
     log_action(db, user_id=user.id, action=f"PLAN_REOPEN id={plan.id}", request=request)
     _history(db, plan.id, user, "REOPENED for changes (re-approval required)", request)
     db.commit()
@@ -468,6 +478,9 @@ def start_engagement(
         raise _conflict("Engagements can only be started from an approved Assurance Plan")
     if eng.status != EngagementStatus.Planned:
         raise _conflict(f"Engagement is already {eng.status.value}")
+    from app.modules.plancycle.router import ensure_can_execute
+
+    ensure_can_execute(eng.plan)
     unit = eng.entity_unit
     scope = f"Entity: {unit.location.name} / {unit.name}\n" if unit else ""
     audit = Audit(

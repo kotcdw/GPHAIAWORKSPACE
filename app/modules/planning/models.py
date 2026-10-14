@@ -72,6 +72,10 @@ class AssurancePlan(Base):
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Audit Committee approval of the plan (GIAS 9.4), recorded after the CAE's e-signed approval.
+    # Annual planning cycle (app.modules.plancycle): the stage awaiting completion and the approved version.
+    cycle_stage: Mapped[str] = mapped_column(String(30), nullable=False, default="preparation",
+                                             server_default="preparation")
+    current_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     committee_meeting_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     committee_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
     committee_notes: Mapped[str | None] = mapped_column(Text, nullable=True)

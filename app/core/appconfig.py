@@ -111,6 +111,11 @@ RULES: list[Rule] = [
          default=2, min=1, max=10),
     Rule("audit_cycle_low_years", "Audit Low-risk units at least every (years)", "Plan configuration", "int",
          default=3, min=1, max=15),
+    Rule("plan_cycle_enforced", "Follow the annual planning cycle: the plan can be approved only after preparation, "
+         "the risk / universe review, the Audit Managers' planning meeting and submission for internal review are "
+         "recorded", "Plan configuration", "bool", default=True),
+    Rule("plan_distribution_before_execution", "Engagements can start only after the GM Audit has distributed the "
+         "approved plan", "Plan configuration", "bool", default=True),
     Rule("default_engagement_hours", "Default budget hours for a new engagement", "Plan configuration", "int",
          default=120, min=0, max=5000),
     # --- organizations / entities

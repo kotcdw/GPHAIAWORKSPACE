@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.enums import Role
-from tests.conftest import csrf_headers, login, make_user
+from tests.conftest import csrf_headers, login, make_user, release_plan, walk_plan_to_review
 
 PASSWORD = "Passw0rd!"
 
@@ -65,8 +65,10 @@ def _approved_plan_with_audit(client, client2, people):
               "budget_hours": 120},
         headers=aud,
     ).json()
+    walk_plan_to_review(client2, plan["id"], adm)
     approved = client2.post(f"/api/assurance-plans/{plan['id']}/approve", json={"password": PASSWORD}, headers=adm)
     assert approved.status_code == 200, approved.text
+    release_plan(client2, plan["id"], adm)
     started = client.post(f"/api/plan-engagements/{eng['id']}/start", headers=aud)
     assert started.status_code == 200, started.text
     return plan, started.json(), high
@@ -107,6 +109,11 @@ def test_assurance_plan_lifecycle(client, client2, people):
     assert summary["engagements"] == 1 and summary["by_quarter"]["Q3"] == 1
     assert any(u["id"] == high["id"] for u in summary["uncovered_high_risk"]), "high-risk GJT is not planned"
 
+    # Approval waits for the planning cycle.
+    early = client2.post(f"/api/assurance-plans/{plan['id']}/approve", json={"password": PASSWORD}, headers=adm)
+    assert early.status_code == 409 and "planning cycle" in early.json()["detail"]
+    walk_plan_to_review(client2, plan["id"], adm)
+
     # Starting from a draft plan is refused; auditors cannot approve.
     assert client.post(f"/api/plan-engagements/{eng['id']}/start", headers=aud).status_code == 409
     assert client.post(
@@ -115,6 +122,9 @@ def test_assurance_plan_lifecycle(client, client2, people):
 
     approved = client2.post(f"/api/assurance-plans/{plan['id']}/approve", json={"password": PASSWORD}, headers=adm)
     assert approved.status_code == 200 and approved.json()["status"] == "Approved"
+    # Not yet distributed: execution waits for the GM Audit's distribution.
+    assert client.post(f"/api/plan-engagements/{eng['id']}/start", headers=aud).status_code == 409
+    release_plan(client2, plan["id"], adm)
 
     # Approved plan is frozen.
     frozen = client.post(

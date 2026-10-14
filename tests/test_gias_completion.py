@@ -12,7 +12,7 @@ from app.core.enums import ReviewLevel, Role, utcnow
 from app.modules.capa.models import Capa
 from app.modules.followup.service import due_level, run_escalations
 from app.modules.notifications.models import Notification
-from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
+from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user, walk_plan_to_review
 
 _YEARS = iter(range(2030, 2023, -1))
 
@@ -46,6 +46,7 @@ def test_committee_approval_and_documented_plan_changes(client, client2, db):
     early = client2.post(f"/api/assurance-plans/{plan['id']}/committee-approval",
                          json={"meeting_date": utcnow().isoformat(), "reference": "AC/2026/04"}, headers=ah)
     assert early.status_code == 409
+    walk_plan_to_review(client2, plan["id"], ah)
     assert client2.post(f"/api/assurance-plans/{plan['id']}/approve", json={"password": DEFAULT_PASSWORD},
                         headers=ah).status_code == 200
 

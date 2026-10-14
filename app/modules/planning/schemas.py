@@ -141,6 +141,8 @@ class PlanOut(ORMModel):
     committee_reference: str | None = None
     committee_notes: str | None = None
     committee_recorded_at: datetime | None = None
+    cycle_stage: str = "preparation"
+    current_version: int = 0
     created_by: int | None
     created_at: datetime
     updated_at: datetime
