@@ -131,7 +131,38 @@ with electronic attestations, and keep a strict, immutable audit trail.
   findings by risk and age, action status and the most overdue actions, with
   a Word pack for the committee.
 - **Lists** — sortable columns (business order for risk/status), paging,
-  keyboard-accessible rows and CSV export on every register.
+  keyboard-accessible rows, **saved views** (named filter sets per user) and
+  **Excel (.xlsx) and CSV export** on every register.
+- **Planning memo** (GIAS 13) — background, objectives, scope, key risks,
+  approach, team, timeline and budget per audit; submitted to an Audit Manager
+  or the CAE and e-signed (approve / return). Fieldwork cannot start until it is
+  approved (configurable). Word export.
+- **Capacity & time** — auditor grade, skills, certifications and available
+  hours; daily time sheets (quarter hours, audit time must name the audit,
+  24 h/day cap); planned load per auditor from the Assurance Plan; budget versus
+  actual hours per audit.
+- **Analytics** — 5×5 inherent-risk heat map of the audit universe, findings
+  raised per month by rating, repeat-finding detection across audits, common
+  themes, and KPIs against targets set on the Configuration screen (plan
+  delivery, remediation closed on time, overdue actions, days to report,
+  auditee satisfaction, audit-time utilisation).
+- **Quality (QAIP)** — 12-point engagement quality checklist mapped to the IIA
+  GIAS with system evidence hints, done by someone other than the preparer;
+  post-audit satisfaction survey sent to auditees at closure; yearly QAIP summary
+  with the weakest checklist areas.
+- **Global search** (top bar, press `/`) across audits, findings, remediation,
+  reports, nonconformances, feedback and registers, respecting each user's access.
+- **Excel import** — Audit Universe (Admin) and findings into an audit, with a
+  downloadable template, row-by-row validation and preview; nothing is saved
+  if any row has a problem.
+- **In-app help** — context help for each page (the ? button).
+- **Accessibility (WCAG 2.2 AA)** — skip link, labelled dialogs with focus
+  trap and focus return, `aria-current` navigation, sortable headers with
+  `aria-sort`, labelled filters, keyboard rating controls, screen-reader
+  announcements for toasts, reduced-motion support, contrast checked.
+- **Active Directory sign-in** (optional) — staff use their GPHA network
+  password (LDAP bind; never stored); first sign-in creates a pending account
+  for an Admin to approve; the bootstrap admin keeps a local break-glass password.
 - **Clean, responsive UI** — grouped navigation, standard page headers with
   in-place status changes, KPI dashboards, and a drawer layout on phones and
   small tablets.
@@ -252,6 +283,18 @@ Read endpoints apply record-level scoping: Auditees get `404` for records
 outside their assignment.
 
 Interactive docs are available at `/docs` while the server is running.
+
+## Going live
+
+1. `uv run python scripts/production_check.py --secrets` - prints fresh secrets and a readiness report.
+2. In `.env`: `GPHA_ENVIRONMENT=production`, the printed `GPHA_SECRET_KEY` and `GPHA_ENCRYPTION_KEY`,
+   a new `GPHA_ADMIN_PASSWORD`, `GPHA_COOKIE_SECURE=true`. The app refuses to start in production while
+   any of these is unsafe.
+3. HTTPS: run the app on `127.0.0.1:8001` with `--proxy-headers` and put Caddy in front using
+   `deploy/Caddyfile` (GPHA certificate, or `tls internal`).
+4. E-mail: set `GPHA_SMTP_*` for the GPHA Exchange relay or Microsoft 365 (examples in `.env.example`).
+5. Optional: `GPHA_LDAP_*` for Active Directory sign-in.
+6. Re-run the check until it reports "Ready for production".
 
 ## Tests
 

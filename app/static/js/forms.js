@@ -186,6 +186,10 @@ function _validateField(f, value) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       if (d < today) return `${f.label} must be today or later`;
     }
+    if (f.notFuture) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      if (d > today) return `${f.label} cannot be in the future`;
+    }
   }
   if (f.pattern && !new RegExp(f.pattern).test(value)) return f.patternMessage || `${f.label} has an invalid format`;
   if (f.validate) return f.validate(value) || null;

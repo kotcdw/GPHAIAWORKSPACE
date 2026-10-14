@@ -134,6 +134,10 @@ def update_audit(
         if payload.status != audit.status:
             changes.append(f"status={payload.status.value}")
             started = audit.status == AuditStatus.Planned and payload.status == AuditStatus.InProgress
+            if started:
+                from app.modules.memos.router import ensure_fieldwork_can_start
+
+                ensure_fieldwork_can_start(db, audit)
             audit.status = payload.status
             if started:
                 from app.modules.audits.lifecycle import notify_fieldwork_started
@@ -286,6 +290,10 @@ def close_audit(
         on_approve=_on_approve,
     )
     log_action(db, user_id=user.id, action=f"AUDIT_CLOSE id={audit.id} title={audit.title}", request=request)
+    if audit.status == AuditStatus.Closed:
+        from app.modules.qaip.router import invite_survey
+
+        invite_survey(db, audit)
     db.commit()
     db.refresh(audit)
     return audit

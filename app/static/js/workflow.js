@@ -459,8 +459,10 @@ function dataTable(items, columns, { onRow = null, pageSize = 25, exportName = n
       el("div", { class: "actions" },
         pages > 1 ? el("button", { class: "btn small secondary", disabled: page === 0 ? "1" : null, onclick: () => { page -= 1; paint(); } }, el("i", { class: "bi bi-chevron-left" }), " Previous") : null,
         pages > 1 ? el("button", { class: "btn small secondary", disabled: page >= pages - 1 ? "1" : null, onclick: () => { page += 1; paint(); } }, "Next ", el("i", { class: "bi bi-chevron-right" })) : null,
+        exportName ? el("button", { class: "btn small secondary", onclick: () => downloadXlsx(exportName.replace(/\.csv$/, ""), columns, rows) },
+          el("i", { class: "bi bi-file-earmark-excel" }), " Excel") : null,
         exportName ? el("button", { class: "btn small secondary", onclick: () => downloadCsv(exportName, columns, rows) },
-          el("i", { class: "bi bi-filetype-csv" }), " Export CSV") : null)));
+          el("i", { class: "bi bi-filetype-csv" }), " CSV") : null)));
   }
   paint();
   return wrap;

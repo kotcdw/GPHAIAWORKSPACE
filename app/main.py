@@ -27,22 +27,28 @@ from app.modules.audits.working_papers import router as working_papers_router
 from app.modules.auth.router import router as auth_router
 from app.modules.backups.router import router as backups_router
 from app.modules.capa.router import router as capa_router
+from app.modules.capacity.router import router as capacity_router
 from app.modules.committee.router import router as committee_router
 from app.modules.configuration.router import router as configuration_router
+from app.modules.dataio.router import router as dataio_router
 from app.modules.drafts.router import router as drafts_router
 from app.modules.followup.router import router as followup_router
 from app.modules.history.router import records_router
 from app.modules.history.router import router as history_router
+from app.modules.insights.router import router as insights_router
+from app.modules.memos.router import router as memos_router
 from app.modules.nonconformances.router import router as nonconformances_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.organizations.router import router as organizations_router
 from app.modules.planning.router import router as planning_router
+from app.modules.qaip.router import router as qaip_router
 from app.modules.rcm.router import router as rcm_router
 from app.modules.reports.router import router as reports_router
 from app.modules.service_feedback.router import router as service_feedback_router
 from app.modules.stakeholders.router import router as stakeholders_router
 from app.modules.tasks.router import router as tasks_router
 from app.modules.users.router import router as users_router
+from app.modules.views.router import router as views_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -72,6 +78,12 @@ _ROUTERS = (
     lifecycle_router,
     configuration_router,
     committee_router,
+    memos_router,
+    capacity_router,
+    qaip_router,
+    insights_router,
+    dataio_router,
+    views_router,
 )
 
 

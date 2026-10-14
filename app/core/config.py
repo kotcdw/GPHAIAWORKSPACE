@@ -71,6 +71,18 @@ class Settings(BaseSettings):
         ".png,.jpg,.jpeg,.gif,.bmp,.tif,.tiff,.msg,.eml,.zip,.mp3,.m4a,.wav,.mp4"
     )
 
+    # Active Directory / LDAP sign-in (optional). When ldap_url is set, staff sign in
+    # with their GPHA network password; the local bootstrap admin keeps a local
+    # password as a break-glass account. Example: ldaps://dc01.gpha.local:636
+    ldap_url: str = ""
+    # How the username becomes a bind identity, e.g. "{username}@gpha.gov.gh" or "GPHA\\{username}".
+    ldap_bind_template: str = "{username}@gpha.gov.gh"
+    ldap_base_dn: str = ""  # e.g. "DC=gpha,DC=local" - used to read name and e-mail
+    ldap_user_filter: str = "(sAMAccountName={username})"
+    # First directory sign-in creates a pending account for an Admin to approve.
+    ldap_auto_create: bool = True
+    ldap_timeout_seconds: int = 5
+
     # E-mail notifications (optional). Leave smtp_host empty to keep the in-app
     # bell only. app_base_url is used for links in e-mails.
     smtp_host: str = ""
@@ -90,6 +102,8 @@ class Settings(BaseSettings):
     # Audit closure gates (also editable on the Configuration screen).
     require_report_to_close: bool = True
     require_findings_actioned_to_close: bool = True
+    # Fieldwork may only start once the planning memo is approved (GIAS 13.6).
+    require_memo_approval_for_fieldwork: bool = True
 
     # Per-IP throttle on sign-in attempts (in addition to account lockout).
     login_rate_limit_per_minute: int = 10

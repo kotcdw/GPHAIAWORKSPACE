@@ -373,3 +373,15 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 ## Phase 15 - GPHA Workspace hub
 
 - [x] **15.1** Sidebar OVERVIEW: "GPHA Workspace" button under Dashboard. Opens a launch page with every module grouped as Overview / Planning / Audit work / Registers / Account & administration, each tile with a short description and a live count (open items; overdue remediation shown in red), plus quick actions (Start an audit, New remediation, New nonconformance). Tiles follow the user's role (auditees see only their modules; admin tiles for admins only).
+
+## Phase 16 - Backlog build-out (assessment items 5, 8-15)
+
+- [x] **16.1** Planning memo with e-signed approval and fieldwork gate (`app/modules/memos`, rule `require_memo_approval_for_fieldwork`).
+- [x] **16.2** Capacity & time sheets (`app/modules/capacity`): profiles, time entries, capacity summary, budget vs actual.
+- [x] **16.3** Analytics (`app/modules/insights`): heat map, findings trend, repeat findings, themes, KPIs with configurable targets.
+- [x] **16.4** QAIP (`app/modules/qaip`): engagement quality checklist with evidence hints, post-audit survey (invited on close), yearly summary.
+- [x] **16.5** Global search, Excel import (universe, findings) with template/preview, Excel export of any list, saved views (`app/modules/dataio`, `app/modules/views`).
+- [x] **16.6** WCAG 2.2 AA pass: dialogs (role, label, focus trap/return), skip link, aria-current, labelled filters, toasts announced, reduced motion, contrast.
+- [x] **16.7** Go-live readiness: optional Active Directory sign-in (`app/core/directory.py`), Caddy HTTPS config, `scripts/production_check.py`, Exchange/M365 SMTP examples.
+- [ ] **16.8** Waiting on GPHA decisions: server host and certificate, SSO vs app MFA, SMTP relay details, ERP data feed for analytics.
+- Migration `0011_backlog_modules`; tests `test_backlog_modules.py`, `test_directory_auth.py` (84 passing).

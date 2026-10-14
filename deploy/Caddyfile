@@ -1,0 +1,32 @@
+# HTTPS front door for the GPHA Internal Audit Workspace (Caddy 2).
+# Caddy terminates TLS and forwards to the app on the same server.
+#
+# 1. Install Caddy (single executable, Windows or Linux): https://caddyserver.com
+# 2. Replace audit.gpha.gov.gh with the server's DNS name.
+#    - Internal name with a GPHA certificate: uncomment the `tls` line and point it at the files.
+#    - Internal name without a certificate: use `tls internal` (Caddy's own CA; install its root on PCs).
+# 3. Run:  caddy run --config deploy/Caddyfile
+# 4. In .env set GPHA_COOKIE_SECURE=true and GPHA_ENVIRONMENT=production.
+
+audit.gpha.gov.gh {
+	# tls C:/certs/audit.gpha.gov.gh.crt C:/certs/audit.gpha.gov.gh.key
+	# tls internal
+
+	encode gzip
+	request_body {
+		max_size 30MB
+	}
+	reverse_proxy 127.0.0.1:8001 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	log {
+		output file logs/caddy-access.log {
+			roll_size 20MiB
+			roll_keep 10
+		}
+	}
+}

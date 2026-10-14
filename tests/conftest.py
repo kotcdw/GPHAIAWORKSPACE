@@ -45,6 +45,7 @@ os.environ["GPHA_ESCALATION_CHECK_MINUTES"] = "0"
 # Older tests close audits without a report; the closure gates have their own tests.
 os.environ["GPHA_REQUIRE_REPORT_TO_CLOSE"] = "false"
 os.environ["GPHA_REQUIRE_FINDINGS_ACTIONED_TO_CLOSE"] = "false"
+os.environ["GPHA_REQUIRE_MEMO_APPROVAL_FOR_FIELDWORK"] = "false"
 
 import pytest  # noqa: E402
 from alembic.config import Config  # noqa: E402

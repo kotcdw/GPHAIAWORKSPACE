@@ -37,7 +37,7 @@ function isAdmin() {
 function toast(text, kind = "ok") {
   const host = qs("#toastHost");
   if (!host) return;
-  const node = el("div", { class: `toast ${kind}` }, text);
+  const node = el("div", { class: `toast ${kind}`, role: kind === "error" ? "alert" : "status" }, text);
   host.append(node);
   setTimeout(() => node.remove(), 4000);
 }
@@ -47,25 +47,45 @@ function modal({ title, body, footer, width, onClose }) {
   const root = qs("#modalRoot");
   const backdrop = el("div", { class: "modal-backdrop" });
   let closed = false;
+  // Accessible dialog (WCAG 2.2): labelled, focus moves in, Tab is trapped, Esc closes, focus returns.
+  const opener = document.activeElement;
+  const titleId = `mdl-${Math.random().toString(36).slice(2, 8)}`;
   const close = (submitted = false) => {
     if (closed) return;
     closed = true;
     backdrop.remove();
-    document.removeEventListener("keydown", onKey);
+    document.removeEventListener("keydown", onKey, true);
+    if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
     if (onClose) onClose(submitted === true);
   };
-  const onKey = (e) => { if (e.key === "Escape") close(); };
-  document.addEventListener("keydown", onKey);
+  const focusables = () => [...backdrop.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter((n) => n.offsetParent !== null);
+  const onKey = (e) => {
+    if (!document.contains(backdrop)) return;
+    if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+    if (e.key !== "Tab") return;
+    const items = focusables();
+    if (!items.length) return;
+    const first = items[0]; const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+    else if (!backdrop.contains(document.activeElement)) { first.focus(); e.preventDefault(); }
+  };
+  document.addEventListener("keydown", onKey, true);
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
-  backdrop.append(
-    el("div", { class: "modal", style: width ? `width:${width}px` : null },
-      el("div", { class: "modal-head" }, el("h3", null, title),
-        el("button", { class: "modal-close", onclick: () => close(), title: "Close" }, "\u00d7")),
-      el("div", { class: "modal-body" }, body),
-      footer ? el("div", { class: "modal-foot" }, footer) : null,
-    ),
-  );
+  const dialog = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId, style: width ? `width:${width}px` : null },
+    el("div", { class: "modal-head" }, el("h3", { id: titleId }, title),
+      el("button", { class: "modal-close", type: "button", onclick: () => close(), title: "Close", "aria-label": "Close dialog" }, "\u00d7")),
+    el("div", { class: "modal-body" }, body),
+    footer ? el("div", { class: "modal-foot" }, footer) : null);
+  backdrop.append(dialog);
   root.replaceChildren(backdrop);
+  setTimeout(() => {
+    const target = dialog.querySelector(".modal-body input:not([disabled]), .modal-body select:not([disabled]), .modal-body textarea:not([disabled])")
+      || dialog.querySelector(".modal-close");
+    if (target) target.focus({ preventScroll: true });
+  }, 0);
   return { close, root: backdrop };
 }
 
@@ -479,6 +499,9 @@ function showApp() {
   checkHealth();
   refreshDraftCount();
   initBell();
+  initGlobalSearch();
+  const helpBtn = qs("#helpBtn");
+  if (helpBtn && !helpBtn.dataset.ready) { helpBtn.dataset.ready = "1"; helpBtn.addEventListener("click", openHelp); }
   if (state.mfaSetupRequired) { navigate("profile"); toast("Set up two-step verification to continue", "error"); return; }
   // Deep link from an e-mail: #open/<type>/<id>
   const link = /^#open\/([a-z_]+)\/(\d+)$/.exec(window.location.hash);
@@ -490,12 +513,13 @@ function showApp() {
 
 // ------------------------------------------------------------------ nav
 document.querySelectorAll("#sidebarNav button").forEach((btn) => {
-  btn.addEventListener("click", () => navigate(btn.dataset.view));
+  btn.addEventListener("click", () => { navigate(btn.dataset.view); viewRoot.focus({ preventScroll: true }); });
 });
 
 function setActiveNav(view) {
   document.querySelectorAll("#sidebarNav button").forEach((b) => {
     b.classList.toggle("active", b.dataset.view === view);
+    if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   });
   document.body.classList.remove("nav-open");
   window.scrollTo(0, 0);
@@ -509,6 +533,9 @@ function navigate(view) {
   if (MODULES[view]) return renderList(view);
   if (view === "dashboard") return renderDashboard();
   if (view === "workspace") return renderWorkspace();
+  if (view === "analytics") return renderAnalytics();
+  if (view === "qaip") return renderQaipPage();
+  if (view === "capacity") return renderCapacity();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "committee") return renderCommittee();
@@ -622,6 +649,7 @@ async function renderList(key, opts = {}) {
   (m.filters || []).forEach((f) => {
     const sel = el("select", null, el("option", { value: "" }, "All"),
       ...f.options.map((o) => el("option", { value: o }, o)));
+    sel.setAttribute("aria-label", f.label);
     filterEls[f.param] = sel;
     toolbar.append(el("div", { class: "field" }, el("label", null, f.label), sel));
   });
@@ -629,6 +657,14 @@ async function renderList(key, opts = {}) {
   toolbar.append(apply);
   apply.addEventListener("click", load);
   search.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
+  search.setAttribute("aria-label", `Search ${m.title}`);
+  toolbar.append(savedViewsControl(key,
+    () => Object.fromEntries([["q", search.value.trim()], ...Object.entries(filterEls).map(([p, sel]) => [p, sel.value])].filter(([, v]) => v)),
+    (params) => {
+      search.value = params.q || "";
+      Object.entries(filterEls).forEach(([p, sel]) => { sel.value = params[p] || ""; });
+      load();
+    }));
   root.append(toolbar);
 
   const card = el("div", { class: "card" });
@@ -930,10 +966,13 @@ async function renderWorkspace() {
       { view: "tasks", icon: "check2-square", name: "Task Center", desc: "Tasks assigned to you and your team", count: "tasks" },
       { view: "drafts", icon: "pencil-square", name: "My Drafts", desc: "Forms you started and can finish later", count: "drafts" },
       { view: "committee", icon: "bar-chart-line", name: "Committee pack", desc: "Audit Committee summary and Word pack", staff: true },
+      { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Heat map, trends, repeat findings and KPIs", staff: true },
+      { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews and auditee satisfaction", staff: true },
     ] },
     { title: "Planning", staff: true, tiles: [
       { view: "plans", icon: "calendar3", name: "Assurance Plan", desc: "Annual risk-based audit plan by fiscal year", count: "plans" },
       { view: "universe", icon: "diagram-3", name: "Audit Universe", desc: "Auditable units and their risk ratings" },
+      { view: "capacity", icon: "people-fill", name: "Capacity & time", desc: "Skills, available hours, time sheets, budgets" },
     ] },
     { title: "Audit work", tiles: [
       { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: RCM, testing, findings, reports", count: "audits" },
@@ -1257,15 +1296,17 @@ async function openAudit(id, startTab = null) {
   }
 
   const tabs = [
-    ...(canWrite ? [{ key: "rcm", label: "Risk & Control Matrix" }] : []),
+    ...(canWrite ? [{ key: "memo", label: "Planning Memo" }, { key: "rcm", label: "Risk & Control Matrix" }] : []),
     { key: "findings", label: "Findings / Issues" },
     { key: "report", label: "Audit Report" },
     { key: "papers", label: "Working Papers" },
+    ...(canWrite ? [{ key: "time", label: "Time" }, { key: "quality", label: "Quality Review" }] : []),
+    { key: "survey", label: "Survey" },
     { key: "tasks", label: "Tasks" },
     { key: "history", label: "History" },
     { key: "approvals", label: "Approval Cycles" },
   ];
-  let active = startTab || (canWrite ? "rcm" : "findings");
+  let active = startTab || (canWrite ? (audit.status === "Planned" ? "memo" : "rcm") : "findings");
   const detail = el("div");
   viewRoot.append(detail);
 
@@ -1274,7 +1315,11 @@ async function openAudit(id, startTab = null) {
     detail.append(tabBar(tabs, active, (k) => { active = k; paint(); }));
     const panel = el("div");
     detail.append(panel);
+    if (active === "memo") renderMemoTab(panel, audit, canWrite);
     if (active === "rcm") renderRcm(panel, id);
+    if (active === "time") renderAuditTimeTab(panel, audit);
+    if (active === "quality") renderQualityTab(panel, audit);
+    if (active === "survey") renderSurveyTab(panel, audit);
     if (active === "findings") renderFindings(panel, id, canWrite);
     if (active === "report") renderReportTab(panel, id, canWrite);
     if (active === "papers") renderPapers(panel, id, canWrite);
@@ -1320,7 +1365,11 @@ async function renderAuditees(container, auditId) {
 }
 
 async function renderFindings(panel, id, canWrite) {
-  const card = el("div", { class: "card" }, el("h3", null, "Findings"));
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Findings"),
+    canWrite ? el("button", { class: "btn small secondary", onclick: () => importDialog({
+      title: "Import findings from Excel", templateKind: "findings", path: `/api/audits/${id}/import/findings`,
+      intro: "Add many findings at once. Required columns: Title and Risk rating (High, Medium or Low). The file is checked first; nothing is added if any row has a problem.",
+      onDone: () => openAudit(id, "findings") }) }, el("i", { class: "bi bi-file-earmark-arrow-up" }), " Import from Excel") : null));
   panel.append(card);
   const findings = await API.get(`/api/audits/${id}/findings`);
   if (!findings.length) card.append(el("div", { class: "empty" }, "No findings recorded."));

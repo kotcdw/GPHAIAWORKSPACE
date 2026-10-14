@@ -43,8 +43,11 @@ function heat(score) {
 async function renderUniverse() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Audit Universe"), msg);
   const admin = isAdmin();
+  viewRoot.append(viewHeader("Audit Universe", admin ? el("button", { class: "btn secondary", onclick: () => importDialog({
+    title: "Import the Audit Universe from Excel", templateKind: "universe", path: "/api/import/universe",
+    intro: "Create or update locations and auditable units with their inherent risk (likelihood and impact, 1-5). Existing units are matched on location code + unit code and updated.",
+    onDone: () => renderUniverse() }) }, el("i", { class: "bi bi-file-earmark-arrow-up" }), " Import from Excel") : null), msg);
   try {
     const [locations, units] = await Promise.all([API.get("/api/locations"), API.get("/api/entity-units")]);
 

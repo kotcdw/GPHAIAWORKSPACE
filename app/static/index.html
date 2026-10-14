@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/css/styles_print.css" media="print" />
 </head>
 <body>
+  <a href="#viewRoot" class="skip-link">Skip to main content</a>
   <!-- Authentication ---------------------------------------------------------->
   <section id="authView">
     <div id="slide_bg" class="sign-in-div">
@@ -193,10 +194,13 @@
         <button data-view="tasks"><i class="bi bi-check2-square"></i><span>Task Center</span></button>
         <button data-view="drafts"><i class="bi bi-pencil-square"></i><span>My Drafts</span><span id="draftCount" class="count hidden"></span></button>
         <button data-view="committee" data-staff="1"><i class="bi bi-bar-chart-line"></i><span>Committee pack</span></button>
+        <button data-view="analytics" data-staff="1"><i class="bi bi-graph-up-arrow"></i><span>Analytics</span></button>
+        <button data-view="qaip" data-staff="1"><i class="bi bi-patch-check"></i><span>Quality (QAIP)</span></button>
 
         <div class="nav-section" data-staff="1">Planning</div>
         <button data-view="plans"><i class="bi bi-calendar3"></i><span>Assurance Plan</span></button>
         <button data-view="universe"><i class="bi bi-diagram-3"></i><span>Audit Universe</span></button>
+        <button data-view="capacity" data-staff="1"><i class="bi bi-people-fill"></i><span>Capacity &amp; time</span></button>
 
         <div class="nav-section">Audit work</div>
         <button data-view="audits"><i class="bi bi-clipboard-check"></i><span>Audits</span></button>
@@ -223,7 +227,14 @@
       <header class="topbar">
         <button class="nav-toggle" id="navToggle" aria-label="Open menu"><i class="bi bi-list"></i></button>
         <span class="topbar-title">GPHA Internal Audit Workspace</span>
+        <div class="topbar-search" role="search">
+          <i class="bi bi-search" aria-hidden="true"></i>
+          <input id="globalSearch" type="search" placeholder="Search audits, findings, remediation, reports…  ( / )" autocomplete="off"
+            aria-label="Search the workspace" role="combobox" aria-expanded="false" aria-controls="searchResults" aria-autocomplete="list" />
+          <div id="searchResults" class="search-results hidden" role="listbox" aria-label="Search results"></div>
+        </div>
         <div class="topbar-right">
+          <button class="bell-btn" id="helpBtn" aria-label="Help for this page" title="Help"><i class="bi bi-question-circle"></i></button>
           <button class="bell-btn" id="bellBtn" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
             <i class="bi bi-bell"></i><span id="bellCount" class="bell-count hidden"></span>
           </button>
@@ -231,7 +242,7 @@
         </div>
       </header>
       <div id="healthBar" class="health-bar hidden" role="alert"></div>
-      <main id="viewRoot"></main>
+      <main id="viewRoot" tabindex="-1"></main>
     </div>
   </div>
 
@@ -243,6 +254,8 @@
   <script src="/static/js/forms.js"></script>
   <script src="/static/js/planning.js"></script>
   <script src="/static/js/workflow.js"></script>
+  <script src="/static/js/engagement.js"></script>
+  <script src="/static/js/insight.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

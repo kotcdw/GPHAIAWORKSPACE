@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
-from app.core import totp
+from app.core import directory, totp
 from app.core.appconfig import cfg
 from app.core.audit import log_action
 from app.core.config import settings
@@ -137,7 +137,30 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DBSes
         log_action(db, user_id=user.id, action="LOGIN_DENIED account_locked", request=request)
         db.commit()
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=_LOCKED_MESSAGE)
-    if user is None or not verify_password(payload.password, user.password_hash):
+    local_ok = user is not None and verify_password(payload.password, user.password_hash)
+    via_directory = False
+    is_breakglass = user is not None and user.username.lower() == settings.admin_username.lower()
+    if not local_ok and directory.enabled() and not is_breakglass:
+        found = directory.authenticate(payload.username, payload.password)
+        if found is not None:
+            via_directory = True
+            if user is None:
+                if not settings.ldap_auto_create:
+                    log_action(db, user_id=None, action=f"LOGIN_DENIED not_registered username={payload.username[:64]}",
+                               request=request)
+                    db.commit()
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                        detail="Your network account is not registered in the workspace. "
+                                               "Ask the Internal Audit administrator to add you.")
+                user = User(username=payload.username.strip()[:64], email=found.email[:255],
+                            full_name=found.full_name[:255], role=Role.Auditee, is_active=False,
+                            password_hash=hash_password(new_token()))
+                db.add(user)
+                db.flush()
+                log_action(db, user_id=user.id, action="DIRECTORY_ACCOUNT_CREATED pending_approval", request=request)
+            elif found.full_name and not user.full_name:
+                user.full_name = found.full_name[:255]
+    if not local_ok and not via_directory:
         log_action(db, user_id=None, action=f"LOGIN_FAILED username={payload.username[:64]}", request=request)
         if user is not None:
             user.failed_login_count = (user.failed_login_count or 0) + 1
@@ -183,7 +206,7 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DBSes
         user_agent=(request.headers.get("user-agent") or "")[:500],
     )
     db.add(session)
-    log_action(db, user_id=user.id, action="LOGIN", request=request)
+    log_action(db, user_id=user.id, action="LOGIN directory" if via_directory else "LOGIN", request=request)
     db.commit()
 
     _set_auth_cookies(response, raw_token, csrf_token, ttl_seconds)

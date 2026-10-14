@@ -63,6 +63,11 @@ RULES: list[Rule] = [
          default_attr="require_findings_actioned_to_close"),
     Rule("require_management_response_for_review", "Require a management response on every finding before the "
          "report goes to Audit Manager review", "Audit workflow", "bool", default=True),
+    Rule("require_memo_approval_for_fieldwork", "Require an approved planning memo before fieldwork starts",
+         "Audit workflow", "bool", "IIA GIAS 13.6: the engagement work programme is approved before it is "
+         "implemented.", default_attr="require_memo_approval_for_fieldwork"),
+    Rule("survey_on_close", "Send the post-audit satisfaction survey to auditees when an audit closes",
+         "Audit workflow", "bool", default=True),
     Rule("notify_auditees_on_fieldwork", "Notify auditees when fieldwork starts (audit moves to In Progress)",
          "Audit workflow", "bool", default=True),
     # --- action plans
@@ -77,6 +82,17 @@ RULES: list[Rule] = [
          default_attr="escalate_manager_days", min=1, max=365),
     Rule("escalate_cae_days", "Days overdue before the CAE is notified", "Action plans", "int",
          default_attr="escalate_cae_days", min=1, max=730),
+    # --- performance targets (KPIs on the Analytics page)
+    Rule("kpi_plan_completion_pct", "Target: Assurance Plan engagements started or completed (%)", "KPI targets",
+         "int", default=90, min=0, max=100),
+    Rule("kpi_actions_on_time_pct", "Target: remediation actions closed by their due date (%)", "KPI targets", "int",
+         default=80, min=0, max=100),
+    Rule("kpi_survey_score", "Target: average post-audit survey score (out of 5, x10 - e.g. 40 = 4.0)",
+         "KPI targets", "int", default=40, min=10, max=50),
+    Rule("kpi_report_days", "Target: days from fieldwork start to report issued", "KPI targets", "int",
+         default=60, min=1, max=365),
+    Rule("kpi_utilisation_pct", "Target: auditor time charged to audit work (%)", "KPI targets", "int",
+         default=70, min=0, max=100),
     # --- security
     Rule("mfa_required_roles", "Roles that must use two-step verification", "Security", "roles",
          "Users in these roles are asked to set it up at their next sign-in.", default_attr="mfa_required_roles",
