@@ -188,16 +188,21 @@ const MODULES = {
     refKey: "org_ref",
     nameKey: "name",
     search: true,
+    // Entity types, ports, parents and custom fields are loaded at run time (prepareOrganizations).
+    prepare: (m, fresh) => prepareOrganizations(m, fresh),
+    customFields: true,
     filters: [{ param: "status", label: "Status", options: ["Pending", "Approved"] }],
     columns: [
       { key: "org_ref", label: "Ref", ref: true },
       { key: "name", label: "Name" },
-      { key: "category", label: "Category" },
+      { key: "category", label: "Type" },
+      { key: "port_name", label: "Port / site" },
+      { key: "parent_name", label: "Part of" },
       { key: "status", label: "Status", badge: true },
     ],
     fields: [
       { key: "name", label: "Name", required: true },
-      { key: "category", label: "Category" },
+      { key: "category", label: "Type" },
       { key: "contact_name", label: "Contact name" },
       { key: "contact_email", label: "Contact email", type: "email" },
       { key: "contact_phone", label: "Contact phone" },
@@ -578,7 +583,9 @@ function moduleFormFields(m) {
     required: !!f.required,
     options: f.options,
     notPast: f.notPast,
-    maxLength: f.type === "textarea" ? 20000 : 255,
+    help: f.help,
+    step: f.step,
+    maxLength: f.maxLength || (f.type === "textarea" ? 20000 : 255),
     singleLine: !f.type || f.type === "text",
     emptyLabel: f.type === "select" && !f.required ? "Select..." : undefined,
     ...(f.key === "contact_phone" ? { pattern: "^[0-9+()\\-\\s]{6,25}$", patternMessage: "Phone must be 6-25 digits, spaces, +, - or ()" } : {}),
@@ -591,17 +598,36 @@ function formPayload(values, fields = []) {
   return Object.fromEntries(Object.entries(values).map(([k, v]) => [k, v === "" && !textareas.has(k) ? null : v]));
 }
 
-function createModal(key) {
+async function prepareModule(key, fresh = false) {
   const m = MODULES[key];
+  if (m && m.prepare) {
+    try { await m.prepare(m, fresh); } catch (err) { toast(err.message, "error"); }
+  }
+  return m;
+}
+
+// Custom field values travel as cf_<key> form fields and are sent as one custom_fields object.
+function packCustomFields(m, values) {
+  if (!m.customFields) return values;
+  const out = {};
+  const custom = {};
+  Object.entries(values).forEach(([k, v]) => { if (k.startsWith("cf_")) custom[k.slice(3)] = v === "" ? null : v; else out[k] = v; });
+  if (Object.keys(custom).length) out.custom_fields = custom;
+  return out;
+}
+
+async function createModal(key, initial = {}) {
+  const m = await prepareModule(key, true);
   const noun = m.title.replace(/s$/, "");
   openForm({
     title: `New ${noun}`,
     key: `${key}:new`,
     meta: { title: `New ${noun}` },
     fields: moduleFormFields(m),
+    initial,
     submitLabel: "Create",
     onSubmit: (values) => {
-      const body = formPayload(values, m.fields);
+      const body = packCustomFields(m, formPayload(values, m.fields));
       if (body.due_date) body.due_date = `${body.due_date}T00:00:00`;
       Object.keys(body).forEach((k) => { if (body[k] === null && m.fields.find((f) => f.key === k && f.type === "select")) delete body[k]; });
       return API.post(m.endpoint, body);
@@ -610,18 +636,29 @@ function createModal(key) {
   });
 }
 
-function editRecordModal(key, record) {
-  const m = MODULES[key];
-  const initial = Object.fromEntries(m.fields.map((f) => [f.key, record[f.key]]));
+async function editRecordModal(key, record) {
+  const m = await prepareModule(key, true);
+  const initial = Object.fromEntries(m.fields.map((f) => [f.key, f.key.startsWith("cf_")
+    ? (record.custom_fields || {})[f.key.slice(3)] : record[f.key]]));
+  // Keep a record's current choice selectable even if it was retired from the list; never offer itself as parent.
+  const formFields = moduleFormFields(m).map((f) => {
+    if (f.type !== "select" || !f.options) return f;
+    let options = f.name === "parent_id" ? f.options.filter((o) => (o.value ?? o) !== record.id) : f.options;
+    const cur = initial[f.name];
+    if (cur !== null && cur !== undefined && cur !== "" && !options.some((o) => String(o.value ?? o) === String(cur))) {
+      options = [...options, typeof options[0] === "object" ? { value: cur, label: String(cur) } : cur];
+    }
+    return { ...f, options };
+  });
   openForm({
     title: `Edit ${record[m.refKey] || m.title}`,
     key: `${key}:edit:${record.id}`,
     meta: { title: `Edit ${record[m.refKey] || ""} ${record[m.nameKey] || ""}`.trim(), record_type: m.recordType, record_id: record.id },
-    fields: moduleFormFields(m),
+    fields: formFields,
     initial,
     submitLabel: "Save changes",
     onSubmit: (values) => {
-      const body = formPayload(values, m.fields);
+      const body = packCustomFields(m, formPayload(values, m.fields));
       if (body.due_date) body.due_date = `${body.due_date}T00:00:00`;
       return API.patch(`${m.endpoint}/${record.id}`, body);
     },
@@ -630,7 +667,7 @@ function editRecordModal(key, record) {
 }
 
 async function renderList(key, opts = {}) {
-  const m = MODULES[key];
+  const m = await prepareModule(key);
   const root = opts.root || viewRoot;
   const msg = el("div");
   if (opts.root) root.append(msg);
@@ -648,7 +685,7 @@ async function renderList(key, opts = {}) {
     el("div", { class: "field grow" }, el("label", null, "Search"), search));
   (m.filters || []).forEach((f) => {
     const sel = el("select", null, el("option", { value: "" }, "All"),
-      ...f.options.map((o) => el("option", { value: o }, o)));
+      ...f.options.map((o) => (typeof o === "object" ? el("option", { value: o.value }, o.label) : el("option", { value: o }, o))));
     sel.setAttribute("aria-label", f.label);
     filterEls[f.param] = sel;
     toolbar.append(el("div", { class: "field" }, el("label", null, f.label), sel));
@@ -673,7 +710,11 @@ async function renderList(key, opts = {}) {
   async function load() {
     const params = new URLSearchParams();
     if (m.search && search.value.trim()) params.set("q", search.value.trim());
-    Object.entries(filterEls).forEach(([p, sel]) => { if (sel.value) params.set(p, sel.value); });
+    Object.entries(filterEls).forEach(([p, sel]) => {
+      if (!sel.value) return;
+      const f = (m.filters || []).find((x) => x.param === p);
+      if (f && f.apply) f.apply(params, sel.value); else params.set(p, sel.value);
+    });
     clear(card);
     try {
       const data = await API.get(`${m.endpoint}${params.toString() ? `?${params}` : ""}`);
@@ -746,7 +787,7 @@ function iconBtn(icon, title, onclick) {
 }
 
 async function openRecord(key, id) {
-  const m = MODULES[key];
+  const m = await prepareModule(key);
   setActiveNav(key);
   clear(viewRoot);
   const msg = el("div");
@@ -795,7 +836,13 @@ async function openRecord(key, id) {
   paint();
 }
 
+function fieldValue(f, record) {
+  return f.key.startsWith("cf_") ? (record.custom_fields || {})[f.key.slice(3)] : record[f.key];
+}
+
 function displayValue(f, value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
   if (value === null || value === undefined || value === "") return el("span", { class: "muted" }, "-");
   if (f.type === "date") return fmtDate(value).split(",")[0];
   if (f.type === "select") return badge(value);
@@ -819,14 +866,15 @@ function renderInfoTab(panel, key, record, canWrite) {
   const short = m.fields.filter((f) => f.type !== "textarea");
   const long = m.fields.filter((f) => f.type === "textarea");
   const dl = el("dl", { class: "kv two-col" },
-    ...short.flatMap((f) => [el("dt", null, f.label), el("dd", null, displayValue(f, record[f.key]))]),
+    ...short.flatMap((f) => [el("dt", null, f.label), el("dd", null, f.display ? f.display(record) : displayValue(f, fieldValue(f, record)))]),
     el("dt", null, "Created"), el("dd", null, fmtDate(record.created_at)),
     el("dt", null, "Updated"), el("dd", null, fmtDate(record.updated_at)));
   const card = el("div", { class: "card" },
     el("div", { class: "card-head" }, el("h3", null, "Details"), control), dl,
     ...long.map((f) => el("div", { class: "long-field" }, el("div", { class: "lf-label" }, f.label),
-      el("div", { class: `lf-value ${record[f.key] ? "" : "muted"}`.trim() }, record[f.key] || "Not recorded"))));
+      el("div", { class: `lf-value ${fieldValue(f, record) ? "" : "muted"}`.trim() }, fieldValue(f, record) || "Not recorded"))));
   panel.append(card);
+  if (key === "organizations") renderEntityExtras(panel, record, canWrite);
   if (key === "capa") renderCapaFollowup(panel, record, () => openRecord("capa", record.id));
 }
 
@@ -1469,6 +1517,7 @@ async function renderProfile() {
 
   const sec = el("div", { class: "two-cols" });
   viewRoot.append(sec);
+  renderWorkplaceCard(sec);
   renderMfaCard(sec);
 
   if (isAdmin()) {

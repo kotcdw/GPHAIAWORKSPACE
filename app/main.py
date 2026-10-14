@@ -30,6 +30,7 @@ from app.modules.capa.router import router as capa_router
 from app.modules.capacity.router import router as capacity_router
 from app.modules.committee.router import router as committee_router
 from app.modules.configuration.router import router as configuration_router
+from app.modules.customfields.router import router as customfields_router
 from app.modules.dataio.router import router as dataio_router
 from app.modules.drafts.router import router as drafts_router
 from app.modules.followup.router import router as followup_router
@@ -84,6 +85,7 @@ _ROUTERS = (
     insights_router,
     dataio_router,
     views_router,
+    customfields_router,
 )
 
 

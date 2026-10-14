@@ -1,4 +1,4 @@
-"""Third-party / auditee organizations (suppliers)."""
+"""Organizations / entities: GPHA ports, offices, departments and units, and external parties."""
 
 from __future__ import annotations
 
@@ -28,6 +28,11 @@ class Organization(Base):
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Hierarchy (Port -> Department -> Unit) and address.
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Values of admin-defined custom fields, JSON {field_key: value}.
+    custom_fields: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

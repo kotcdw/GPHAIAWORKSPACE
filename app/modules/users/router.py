@@ -119,6 +119,13 @@ def update_user(
                                 detail="Only Admin or Auditor accounts can hold a review level")
         user.review_level = ReviewLevel(payload.review_level) if payload.review_level else None
         changes.append(f"review_level={payload.review_level or 'none'}")
+    if "work_entity_id" in payload.model_fields_set:
+        from app.modules.organizations.models import Organization
+
+        if payload.work_entity_id is not None and db.get(Organization, payload.work_entity_id) is None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown entity")
+        user.work_entity_id = payload.work_entity_id
+        changes.append(f"work_entity={payload.work_entity_id}")
     if payload.reset_mfa:
         user.mfa_enabled = False
         user.mfa_secret = None

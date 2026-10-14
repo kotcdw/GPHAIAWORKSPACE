@@ -37,7 +37,7 @@ class Rule:
     key: str
     label: str
     group: str
-    kind: str  # int | bool | text | longtext | roles
+    kind: str  # int | bool | text | longtext | roles | list
     help: str = ""
     default_attr: str | None = None  # settings attribute supplying the default
     default: Any = None
@@ -93,6 +93,14 @@ RULES: list[Rule] = [
          default=60, min=1, max=365),
     Rule("kpi_utilisation_pct", "Target: auditor time charged to audit work (%)", "KPI targets", "int",
          default=70, min=0, max=100),
+    # --- organizations / entities
+    Rule("organization_categories", "Entity types users can choose for an organization", "Organizations", "list",
+         "One per line. Ports, offices, departments and units describe GPHA itself; the rest are external parties.",
+         default=["Port", "Head Office", "Department", "Unit", "Section", "Vendor", "Regulator",
+                  "Government agency", "Shipping line / Customer", "Other"]),
+    Rule("port_categories", "Entity types that count as a port or site", "Organizations", "list",
+         "One per line. Users pick one of these as where they work; every entity is filed under the port it sits in.",
+         default=["Port", "Head Office"]),
     # --- security
     Rule("mfa_required_roles", "Roles that must use two-step verification", "Security", "roles",
          "Users in these roles are asked to set it up at their next sign-in.", default_attr="mfa_required_roles",
@@ -178,6 +186,20 @@ def validate(rule: Rule, value: Any) -> Any:
         if bad:
             raise ValueError(f"unknown role(s): {', '.join(bad)}")
         return list(dict.fromkeys(items))
+    if rule.kind == "list":
+        items = value if isinstance(value, list) else str(value or "").splitlines()
+        clean: list[str] = []
+        for item in items:
+            item = str(item).strip()
+            if len(item) > 100:
+                raise ValueError("each entry must be 100 characters or fewer")
+            if item and item.lower() not in [c.lower() for c in clean]:
+                clean.append(item)
+        if not clean:
+            raise ValueError("enter at least one entry")
+        if len(clean) > 50:
+            raise ValueError("enter at most 50 entries")
+        return clean
     text = str(value or "").strip()
     if rule.kind == "text" and (not text or len(text) > 200):
         raise ValueError("enter 1 to 200 characters")

@@ -155,6 +155,13 @@ with electronic attestations, and keep a strict, immutable audit trail.
 - **Excel import** — Audit Universe (Admin) and findings into an audit, with a
   downloadable template, row-by-row validation and preview; nothing is saved
   if any row has a problem.
+- **Configurable entities (Organizations)** — every port, head office, department,
+  unit and external party is an entity with a type (the list is edited on the
+  Configuration screen), a parent ("Part of") and an address. Types marked as
+  ports / sites file every entity under its port; lists filter by type, port or
+  "My port". Admins add custom fields (text, number, date, drop-down, yes/no,
+  required or optional). Each user sets **Where I work** in their profile or with
+  "Set as where I work" on any entity.
 - **In-app help** — context help for each page (the ? button).
 - **Accessibility (WCAG 2.2 AA)** — skip link, labelled dialogs with focus
   trap and focus return, `aria-current` navigation, sortable headers with

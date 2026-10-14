@@ -25,6 +25,7 @@ class UserOut(ORMModel):
     locked_until: datetime | None = None
     review_level: ReviewLevel | None = None
     mfa_enabled: bool = False
+    work_entity_id: int | None = None
     created_at: datetime
 
 
@@ -60,6 +61,8 @@ class UserUpdate(BaseModel):
     review_level: Literal["", "Manager", "CAE"] | None = None
     # True clears the user's MFA enrolment (lost phone).
     reset_mfa: bool | None = None
+    # Where the user is based (an entity, normally a port); send null to clear.
+    work_entity_id: int | None = None
 
     @field_validator("password")
     @classmethod

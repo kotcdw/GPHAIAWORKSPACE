@@ -72,6 +72,9 @@ def update_config(payload: ConfigUpdate, request: Request, db: DBSession = Depen
         except ValueError as exc:
             errors.append({"field": key, "message": str(exc)})
     merged = {**{k: cfg(k) for k in RULES_BY_KEY}, **clean}
+    missing = [c for c in merged["port_categories"] if c not in merged["organization_categories"]]
+    if missing:
+        errors.append({"field": "port_categories", "message": f"not in the entity types: {', '.join(missing)}"})
     if merged["escalate_cae_days"] <= merged["escalate_manager_days"]:
         errors.append({"field": "escalate_cae_days", "message": "must be later than the Audit Manager escalation"})
     if errors:

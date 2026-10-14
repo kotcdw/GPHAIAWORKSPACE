@@ -56,6 +56,8 @@ class MfaSetupOut(BaseModel):
 class ProfileUpdate(BaseModel):
     email: OptEmail = None
     full_name: str | None = Field(default=None, max_length=255)
+    # Where the user is based (an entity, normally a port); send null to clear.
+    work_entity_id: int | None = None
 
 
 class PasswordChange(BaseModel):

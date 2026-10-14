@@ -248,6 +248,14 @@ def update_profile(
         user.email = str(payload.email)
     if payload.full_name is not None:
         user.full_name = payload.full_name
+    if "work_entity_id" in payload.model_fields_set:
+        from app.modules.organizations.models import Organization
+
+        if payload.work_entity_id is not None and db.get(Organization, payload.work_entity_id) is None:
+            from app.core.errors import field_error
+
+            raise field_error("work_entity_id", "is not a known entity")
+        user.work_entity_id = payload.work_entity_id
     log_action(db, user_id=user.id, action="PROFILE_UPDATE", request=request)
     db.commit()
     db.refresh(user)

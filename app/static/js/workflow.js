@@ -470,7 +470,7 @@ function dataTable(items, columns, { onRow = null, pageSize = 25, exportName = n
 
 // ==================================================================== System Configuration (Admin)
 
-const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text" };
+const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text", Organizations: "building", "KPI targets": "speedometer2" };
 
 async function renderConfiguration() {
   clear(viewRoot);
@@ -494,9 +494,10 @@ async function renderConfiguration() {
       if (r.kind === "int") return { ...f, type: "number", required: true, min: r.min ?? undefined, max: r.max ?? undefined };
       if (r.kind === "roles") return { ...f, type: "checklist", options: r.options };
       if (r.kind === "longtext") return { ...f, type: "textarea", rows: 4, maxLength: 5000 };
+      if (r.kind === "list") return { ...f, type: "textarea", rows: 6, maxLength: 5000, help: /one per line/i.test(r.help || "") ? r.help : `${r.help || ""} One per line.`.trim() };
       return { ...f, required: true, maxLength: 200, singleLine: true };
     });
-    const initial = Object.fromEntries(items.map((r) => [r.key, r.value]));
+    const initial = Object.fromEntries(items.map((r) => [r.key, r.kind === "list" ? (r.value || []).join("\n") : r.value]));
     const holder = el("div");
     card.append(holder);
     inlineForm(holder, {
@@ -516,6 +517,7 @@ async function renderConfiguration() {
         } }, `reset ${r.label.split(" ").slice(0, 4).join(" ")}…`))));
     }
   });
+  renderCustomFieldsCard(grid);
 }
 
 // ==================================================================== audit closure readiness

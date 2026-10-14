@@ -385,3 +385,11 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 - [x] **16.7** Go-live readiness: optional Active Directory sign-in (`app/core/directory.py`), Caddy HTTPS config, `scripts/production_check.py`, Exchange/M365 SMTP examples.
 - [ ] **16.8** Waiting on GPHA decisions: server host and certificate, SSO vs app MFA, SMTP relay details, ERP data feed for analytics.
 - Migration `0011_backlog_modules`; tests `test_backlog_modules.py`, `test_directory_auth.py` (84 passing).
+
+## Phase 17 - Configurable entities (Organizations)
+
+- [x] **17.1** Entity types (`organization_categories`) and port types (`port_categories`) as Configuration lists; category validated (retired values kept on existing records).
+- [x] **17.2** Hierarchy (`parent_id`, loop-proof), derived port per entity, address; list filters by type, port, parent and "My port"; delete blocked while entities sit under it.
+- [x] **17.3** Custom fields (`app/modules/customfields`): Admin-defined text/longtext/number/date/select/yes-no fields, validated and stored on the record; retire instead of delete.
+- [x] **17.4** User workplace (`users.work_entity_id`): profile "Where I work", "Set as where I work" on an entity, `/api/organizations/entities` picker for all roles.
+- Migration `0012_entities_custom_fields`; tests `test_entities.py` (86 passing).
