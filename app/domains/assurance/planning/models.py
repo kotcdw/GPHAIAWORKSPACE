@@ -6,9 +6,9 @@ every audit (project) of that year starts from one of its planned engagements.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -110,6 +110,9 @@ class PlanEngagement(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     rationale: Mapped[str] = mapped_column(Text, nullable=False, default="")
     planned_quarter: Mapped[str] = mapped_column(String(2), nullable=False, default="Q1")
+    # Scheduler: planned fieldwork window inside the quarter.
+    planned_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    planned_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     budget_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lead_auditor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # Responsible site (Head Office or a port) - drives distribution and port execution.

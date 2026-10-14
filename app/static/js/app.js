@@ -612,6 +612,8 @@ function navigate(view) {
   if (view === "backups") return renderBackups();
   if (view === "platform") return renderPlatform();
   if (view === "practice") return renderPractice();
+  if (view === "library") return renderLibrary();
+  if (view === "scheduler") return renderScheduler();
   if (view === "automations") return renderAutomations();
 }
 
@@ -1087,6 +1089,7 @@ async function renderWorkspace() {
       { view: "plans", icon: "calendar3", name: "Assurance Plan", desc: "Annual risk-based audit plan by fiscal year", count: "plans" },
       { view: "universe", icon: "diagram-3", name: "Audit Universe", desc: "Auditable units and their risk ratings" },
       { view: "capacity", icon: "people-fill", name: "Capacity & time", desc: "Skills, available hours, time sheets, budgets" },
+      { view: "scheduler", icon: "calendar-week", name: "Scheduler", desc: "Engagement timeline, team bookings, double-booking warnings" },
       { view: "practice", icon: "person-check", name: "Professional practice", desc: "Declarations, CPD, charter and external assessment" },
     ] },
     { title: "Audit work", tiles: [
@@ -1098,6 +1101,7 @@ async function renderWorkspace() {
     { title: "Registers", tiles: [
       { view: "organizations", icon: "building", name: "Organizations", desc: "Departments, units and external bodies", staff: true },
       { view: "stakeholders", icon: "people", name: "Stakeholders", desc: "Key contacts for each organization", staff: true },
+      { view: "library", icon: "diagram-3-fill", name: "Frameworks & controls", desc: "COSO, ISO, PFM and GPHA frameworks with standard controls", staff: true },
       { view: "criteria", icon: "journal-bookmark", name: "Criteria library", desc: "Laws, policies and standards findings are measured against", staff: true },
       { view: "programs", icon: "list-check", name: "Audit programmes", desc: "Reusable work programmes applied to an audit's RCM", staff: true },
       { view: "service-feedback", icon: "chat-left-text", name: "Service Feedback", desc: "Auditee feedback on audit services", count: "feedback" },

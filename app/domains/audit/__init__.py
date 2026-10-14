@@ -18,6 +18,7 @@ MODULES = {
     "reports": "Audit reports and management responses",
     "service_feedback": "Post-audit auditee feedback",
     "proficiency": "Independence and ethics declarations, CPD and certifications",
+    "frameworks": "Frameworks and the standard controls library used to build control matrices",
 }
 
 
@@ -28,6 +29,7 @@ def routers() -> list:
     from app.domains.audit.audits.working_papers import router as working_papers
     from app.domains.audit.capacity.router import router as capacity
     from app.domains.audit.evidence.router import router as evidence
+    from app.domains.audit.frameworks.router import router as frameworks
     from app.domains.audit.memos.router import router as memos
     from app.domains.audit.methodology.router import router as methodology
     from app.domains.audit.proficiency.router import router as proficiency
@@ -39,4 +41,4 @@ def routers() -> list:
 
     # report_distribution before reports: /api/reports/register must win over /api/reports/{id}.
     return [audits, findings, working_papers, service_feedback, rcm, report_distribution, reports, lifecycle, memos,
-            capacity, methodology, programs, evidence, proficiency]
+            capacity, methodology, programs, evidence, proficiency, frameworks]

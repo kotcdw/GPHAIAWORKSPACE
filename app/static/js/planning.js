@@ -394,6 +394,7 @@ function objectiveCard(o, open, reload) {
     open ? el("div", { class: "actions" },
       btn("+ Risk", () => riskModal(o, null, reload), "secondary"),
       btn("+ Control", () => controlModal(o, null, reload), "secondary"),
+      btn("From library", () => fromLibraryDialog(o, reload), "secondary"),
       aiRiskAction(o, reload),
       btn("Edit", () => objectiveForm(o.audit_id, o, reload), "secondary"),
       btn("Delete", async () => {

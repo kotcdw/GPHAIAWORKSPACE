@@ -95,6 +95,9 @@ class Control(Base):
     )
     owner_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_key: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Copied from the standard controls library (Frameworks & controls), when it was.
+    library_control_id: Mapped[int | None] = mapped_column(ForeignKey("library_controls.id", ondelete="SET NULL"),
+                                                           nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 

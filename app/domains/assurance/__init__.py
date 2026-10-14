@@ -13,6 +13,7 @@ MODULES = {
     "committee": "Audit Committee packs, meetings register, minutes and decisions on recommendations",
     "governance": "Governance portal and charter",
     "qaip": "Quality assurance and improvement programme",
+    "scheduler": "Timeline of engagements and auditor bookings with double-booking warnings",
     "conformance": "Internal audit charter, external quality assessments, conformance statement, retention review",
 }
 
@@ -26,5 +27,6 @@ def routers() -> list:
     from app.domains.assurance.plancycle.router import router as plancycle
     from app.domains.assurance.planning.router import router as planning
     from app.domains.assurance.qaip.router import router as qaip
+    from app.domains.assurance.scheduler.router import router as scheduler
 
-    return [planning, committee, committee_meetings, qaip, governance, plancycle, plan_changes, conformance]
+    return [planning, committee, committee_meetings, qaip, governance, plancycle, plan_changes, conformance, scheduler]

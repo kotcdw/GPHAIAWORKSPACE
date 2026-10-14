@@ -459,7 +459,7 @@ app/
     documents/       Word documents (letterhead + classification footer) and encrypted file storage
   main.py            layer router registry + lifespan (backup scheduler, escalations)
   static/            HTML/CSS/JS front end (index.html, css/, js/, img/)
-alembic/versions/    migrations 0001 .. 0022
+alembic/versions/    migrations 0001 .. 0023
 mysql/init/          init SQL mounted into the Docker container at first boot
 scripts/             init_db.py, seed_demo.py, restore_backup.py, mfa_policy.py
 tests/               pytest suite (runs on MySQL)
@@ -491,6 +491,19 @@ Recommendations Implementation and Follow-up Instructions* and the IIA Global In
   (required before fieldwork, conflicts reviewed by the GM Audit), CPD hours against target and certifications,
   internal audit charter versions approved by the Audit Committee with review dates, and external quality
   assessments every five years.
+
+### Frameworks & controls library and the Scheduler
+
+- **Frameworks & controls** (Registers): the Audit Administrator sets up the frameworks GPHA audits against (COSO,
+  ISO 31000, COBIT, PFM Regulations, GPHA procedures - the kinds are a Configuration list) and their standard
+  controls, typed in or imported from CSV (`/api/library/controls/template.csv`). In an engagement's risk and control
+  matrix, **From library** copies chosen controls into an objective, maps them to its risks and creates a test from
+  each suggested procedure; the library shows where each control is used. Retired controls stay linked.
+- **Scheduler** (Planning): a timeline by quarter or year of engagement windows and auditor bookings (engagement
+  roles, leave, training, other work). Fieldwork dates must stay inside the planned quarter (moving quarter is a plan
+  change request); setting them books the lead auditor. Overlaps are allowed but highlighted, returned as a warning
+  and sent to resource managers by the built-in *double-booked* automation. Each auditor's engagement days are shown
+  against the working days available (public holidays from Configuration).
 
 ### Automations and customisation
 

@@ -136,6 +136,7 @@ class ControlOut(ORMModel):
     frequency: ControlFrequency
     owner_email: str | None
     is_key: bool
+    library_control_id: int | None = None
     risk_ids: list[int] = []
     tests: list[TestOut] = []
     effectiveness: str = "Not Tested"

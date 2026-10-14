@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -122,6 +122,8 @@ class EngagementOut(ORMModel):
     title: str
     rationale: str
     planned_quarter: str
+    planned_start: date | None = None
+    planned_end: date | None = None
     budget_hours: int
     lead_auditor_id: int | None
     site_entity_id: int | None = None

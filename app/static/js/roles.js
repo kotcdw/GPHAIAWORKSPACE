@@ -24,7 +24,7 @@ function viewAllowed(view) {
     platform: ["system.technical", "system.config"],
     automations: ["system.automation"],
   };
-  if (view === "programs" || view === "practice") return state.user.role !== "Auditee";
+  if (["programs", "practice", "library", "scheduler"].includes(view)) return state.user.role !== "Auditee";
   if (view === "logs" || view === "backups") return isAdmin() && hasPerm("system.technical");
   return rules[view] ? hasPerm(...rules[view]) : true;
 }

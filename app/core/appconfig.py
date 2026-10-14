@@ -142,6 +142,11 @@ RULES: list[Rule] = [
          "on for themselves in their profile.", default_attr="mfa_enforced"),
     Rule("login_rate_limit_per_minute", "Sign-in attempts allowed per computer per minute (0 = no limit)",
          "Security", "int", default_attr="login_rate_limit_per_minute", min=0, max=1000),
+    Rule("framework_types", "Kinds of framework in the Frameworks & controls library", "Audit methodology", "list",
+         default=["Control framework (e.g. COSO)", "Risk management standard (e.g. ISO 31000)",
+                  "IT governance framework (e.g. COBIT)", "Law or regulation", "GPHA policy or procedure"]),
+    Rule("schedule_daily_hours", "Working hours per day (scheduler workload)", "Audit methodology", "int",
+         "Used to compare booked engagement hours with the days available.", default=8, min=1, max=24),
     # --- follow-up of recommendations (MoF Audit Recommendations Implementation and Follow-up Instructions)
     Rule("draft_report_response_working_days", "Working days management has to respond to a draft audit report",
          "Follow-up & reporting", "int", "Internal Audit Regulations, 2011 (L.I. 1994) reg. 43(2): ten working days. "
