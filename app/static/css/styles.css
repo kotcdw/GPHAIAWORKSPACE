@@ -618,3 +618,23 @@ tbody tr[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-off
 .hbar-fill.warn { background: #f5a524; }
 .hbar-fill.ok { background: #3fb97d; }
 .hbar-val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* ---------------------------------------------------------------- GPHA Workspace hub */
+.ws-quick { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
+.ws-groups { display: flex; flex-direction: column; gap: 22px; }
+.ws-group-title { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.ws-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.ws-tile { display: flex; align-items: flex-start; gap: 14px; text-align: left; width: 100%; min-width: 0;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; color: inherit;
+  font: inherit; cursor: pointer; position: relative; transition: border-color .15s, transform .15s, box-shadow .15s; }
+.ws-tile:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 6px 18px #0004; }
+.ws-tile:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ws-icon { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--accent-soft); color: #9db9ff; font-size: 19px; }
+.ws-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ws-name { font-weight: 600; font-size: 14.5px; }
+.ws-desc { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.ws-count { align-self: flex-start; margin-top: 6px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-soft); color: #9db9ff; white-space: nowrap; }
+.ws-count.danger { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+@media (max-width: 560px) { .ws-grid { grid-template-columns: 1fr; } .ws-quick .btn { flex: 1 1 auto; justify-content: center; } }

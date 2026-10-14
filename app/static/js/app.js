@@ -508,6 +508,7 @@ function navigate(view) {
   if (view === "capa") return renderRemediation(state.remTab);
   if (MODULES[view]) return renderList(view);
   if (view === "dashboard") return renderDashboard();
+  if (view === "workspace") return renderWorkspace();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "committee") return renderCommittee();
@@ -903,6 +904,95 @@ function greeting() {
 
 function panel(title, body, action = null) {
   return el("div", { class: "card panel" }, el("div", { class: "card-head" }, el("h3", null, title), action), body);
+}
+
+// ==================================================================== GPHA Workspace hub
+// One launch page for every module, grouped the way the audit work flows,
+// with live counts and quick actions. Tiles follow the user's role.
+
+async function renderWorkspace() {
+  clear(viewRoot);
+  const staff = state.user.role !== "Auditee";
+  const admin = isAdmin();
+  const quick = [];
+  if (staff) quick.push(el("button", { class: "btn secondary", onclick: () => navigate("audits") }, el("i", { class: "bi bi-clipboard-plus" }), " Start an audit"));
+  if (canWriteModule("capa")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("capa") }, el("i", { class: "bi bi-tools" }), " New remediation"));
+  if (canWriteModule("nonconformances")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("nonconformances") }, el("i", { class: "bi bi-exclamation-triangle" }), " New nonconformance"));
+  viewRoot.append(viewHeader("GPHA Workspace", null, { sub: "Every Internal Audit module in one place" }));
+  if (quick.length) viewRoot.append(el("div", { class: "ws-quick" }, ...quick));
+
+  const groupsEl = el("div", { class: "ws-groups" });
+  viewRoot.append(groupsEl);
+
+  const groups = [
+    { title: "Overview", tiles: [
+      { view: "dashboard", icon: "grid-1x2", name: "Dashboard", desc: "Your headline numbers and recent work" },
+      { view: "tasks", icon: "check2-square", name: "Task Center", desc: "Tasks assigned to you and your team", count: "tasks" },
+      { view: "drafts", icon: "pencil-square", name: "My Drafts", desc: "Forms you started and can finish later", count: "drafts" },
+      { view: "committee", icon: "bar-chart-line", name: "Committee pack", desc: "Audit Committee summary and Word pack", staff: true },
+    ] },
+    { title: "Planning", staff: true, tiles: [
+      { view: "plans", icon: "calendar3", name: "Assurance Plan", desc: "Annual risk-based audit plan by fiscal year", count: "plans" },
+      { view: "universe", icon: "diagram-3", name: "Audit Universe", desc: "Auditable units and their risk ratings" },
+    ] },
+    { title: "Audit work", tiles: [
+      { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: RCM, testing, findings, reports", count: "audits" },
+      { view: "capa", icon: "tools", name: "Remediation & Follow-up", desc: "Agreed actions tracked to validated closure", count: "capa" },
+      { view: "nonconformances", icon: "exclamation-triangle", name: "Nonconformance", desc: "Nonconformities and their disposition", count: "ncs" },
+    ] },
+    { title: "Registers", tiles: [
+      { view: "organizations", icon: "building", name: "Organizations", desc: "Departments, units and external bodies", staff: true },
+      { view: "stakeholders", icon: "people", name: "Stakeholders", desc: "Key contacts for each organization", staff: true },
+      { view: "service-feedback", icon: "chat-left-text", name: "Service Feedback", desc: "Auditee feedback on audit services", count: "feedback" },
+    ] },
+    { title: "Account & administration", tiles: [
+      { view: "profile", icon: "person-gear", name: "Profile & Users", desc: "Your profile, password and two-step sign-in" },
+      { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, SLAs and escalation", admin: true },
+      { view: "logs", icon: "journal-text", name: "Audit Log", desc: "Who did what, and when", admin: true },
+      { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
+    ] },
+  ];
+
+  const countEls = {};
+  groups.filter((g) => !g.staff || staff).forEach((g) => {
+    const tiles = g.tiles.filter((t) => (!t.staff || staff) && (!t.admin || admin));
+    if (!tiles.length) return;
+    groupsEl.append(el("section", { class: "ws-group" },
+      el("h3", { class: "ws-group-title" }, g.title),
+      el("div", { class: "ws-grid" }, ...tiles.map((t) => {
+        const badgeEl = el("span", { class: "ws-count hidden" });
+        if (t.count) countEls[t.count] = badgeEl;
+        return el("button", { class: "ws-tile", type: "button", onclick: () => navigate(t.view) },
+          el("span", { class: "ws-icon" }, el("i", { class: `bi bi-${t.icon}` })),
+          el("span", { class: "ws-text" }, el("span", { class: "ws-name" }, t.name), el("span", { class: "ws-desc" }, t.desc), badgeEl));
+      }))));
+  });
+
+  // Live counts (best effort: a tile without a count still works).
+  const open = (rows) => (rows.items || rows).filter((x) => x.status !== "Closed").length;
+  const jobs = {
+    tasks: () => safeGet("/api/tasks?assigned_to_me=true", { items: [] }).then((r) => [open(r), "open"]),
+    drafts: () => safeGet("/api/drafts", []).then((r) => [r.length, "unfinished"]),
+    plans: () => (staff ? safeGet("/api/assurance-plans", []).then((r) => [open(r), "active"]) : null),
+    audits: () => safeGet("/api/audits", []).then((r) => [open(r), "open"]),
+    capa: () => safeGet("/api/capa", { items: [] }).then((r) => {
+      const rows = r.items || r;
+      const overdue = rows.filter((c) => c.status !== "Closed" && c.due_date && new Date(c.due_date) < new Date()).length;
+      return overdue ? [overdue, "overdue", "danger"] : [open(rows), "open"];
+    }),
+    ncs: () => safeGet("/api/nonconformances", { items: [] }).then((r) => [open(r), "open"]),
+    feedback: () => safeGet("/api/service-feedback", { items: [] }).then((r) => [open(r), "open"]),
+  };
+  Object.entries(countEls).forEach(([k, node]) => {
+    const job = jobs[k] && jobs[k]();
+    if (!job) return;
+    job.then(([n, label, tone]) => {
+      if (!n) return;
+      node.textContent = `${n} ${label}`;
+      node.classList.remove("hidden");
+      if (tone) node.classList.add(tone);
+    }).catch(() => {});
+  });
 }
 
 async function renderDashboard() {

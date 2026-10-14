@@ -369,3 +369,7 @@ Per-module file convention: `models.py`, `schemas.py`, `router.py`, optional `se
 - [x] **14.1** User-facing name changed from "CAPA" to "Remediation" (sidebar, module title, dashboard, link pickers, "Raise remediation", notifications, auto-task titles, API messages, audit-log action codes `REMEDIATION_*`).
 - [x] **14.2** New references use `REM-0001` (migration `0010_remediation_refs` seeds the `REM` sequence); existing `CAPA-####` references are unchanged. Internal identifiers (`/api/capa`, table `capa`, record type `capa`) are unchanged so links, history and backups keep working.
 - [x] **14.3** Remediation and Follow-up merged into one sidebar page, "Remediation & Follow-up": a **Register** tab (all remediation actions, search/filters/CSV) and, for audit staff, a **Follow-up** tab (overdue actions, escalation levels, awaiting validation, admin "Run escalation check"). Auditees see the register only. Old `followup` links open the Follow-up tab.
+
+## Phase 15 - GPHA Workspace hub
+
+- [x] **15.1** Sidebar OVERVIEW: "GPHA Workspace" button under Dashboard. Opens a launch page with every module grouped as Overview / Planning / Audit work / Registers / Account & administration, each tile with a short description and a live count (open items; overdue remediation shown in red), plus quick actions (Start an audit, New remediation, New nonconformance). Tiles follow the user's role (auditees see only their modules; admin tiles for admins only).
