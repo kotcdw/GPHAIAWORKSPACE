@@ -892,3 +892,93 @@ body.mfa-gate #sidebarNav, body.mfa-gate .topbar-search, body.mfa-gate #bellBtn 
 .lg.eng { background: #2d4a73; border: 1px dashed #6f9ad6; } .lg.work { background: var(--accent); } .lg.away { background: #5b6577; }
 .lg.clash { background: repeating-linear-gradient(45deg, var(--danger), var(--danger) 3px, #b8373b 3px, #b8373b 6px); }
 .clash-chip { color: var(--danger); font-weight: 600; }
+
+/* ---- Risk & compliance apps, Task Manager ---- */
+.spacer { flex: 1; }
+button.btn.tiny { padding: 2px 8px; font-size: 11.5px; }
+.btn.danger-text { color: #ff9599; }
+#sidebarNav .count.alert { background: var(--danger); }
+.stat.bad::before { background: var(--danger); }
+.badge-critical, .badge-non-compliant, .badge-rag-red, .badge-declined { background: #e5484d1c; color: #ff9599; border-color: #e5484d4d; }
+.badge-compliant, .badge-published, .badge-attested, .badge-rag-green, .badge-approved-with-conditions { background: #30a46c1c; color: #6fd3a2; border-color: #30a46c44; }
+.badge-partially-compliant, .badge-rag-amber { background: #f5a5241a; color: #f7c35c; border-color: #f5a52444; }
+.badge-not-assessed, .badge-not-applicable, .badge-rag-no-data, .badge-superseded, .badge-retired, .badge-achieved { background: #ffffff0d; color: var(--muted); border-color: var(--border); }
+.lnk-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.lnk-row:last-child { border-bottom: 0; }
+.chip .ref { margin-right: 2px; }
+.pick-list { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; max-height: 420px; overflow-y: auto; }
+.pick-item { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center; text-align: left; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; color: var(--text); font: inherit; cursor: pointer; }
+.pick-item:hover, .pick-item:focus-visible { border-color: var(--accent); }
+.score-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.score-box { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; min-width: 110px; display: flex; flex-direction: column; gap: 4px; }
+.kri-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.kri-item:last-child { border-bottom: 0; }
+.kri-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kri-spark { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.kri-dot { font-size: 11px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); }
+.kri-dot.rag-red { background: #e5484d33; border-color: #e5484d77; }
+.kri-dot.rag-amber { background: #f5a52433; border-color: #f5a52477; }
+.kri-dot.rag-green { background: #30a46c33; border-color: #30a46c77; }
+.grc-bar-row { display: grid; grid-template-columns: 200px 1fr 40px; gap: 10px; align-items: center; margin: 6px 0; }
+.grc-stack { display: flex; height: 14px; border-radius: 99px; overflow: hidden; background: var(--panel-3); gap: 1px; }
+.grc-seg { display: block; height: 100%; }
+.ver-item { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.ver-item:last-child { border-bottom: 0; }
+.ver-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.policy-text { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; max-height: 50vh; overflow-y: auto; line-height: 1.6; margin-bottom: 12px; }
+.mini-progress { display: flex; align-items: center; gap: 8px; min-width: 160px; }
+.mini-progress .progress { flex: 1; margin: 0; }
+.portal-section .card-head h3 i { color: var(--accent); }
+.portal-list { display: flex; flex-direction: column; }
+.portal-item { display: flex; align-items: center; gap: 12px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+.portal-item:last-child { border-bottom: 0; }
+.portal-item.overdue { box-shadow: inset 3px 0 0 var(--danger); padding-left: 10px; }
+.pi-main { flex: 1; min-width: 0; }
+@media (max-width: 760px) {
+  .lnk-row { grid-template-columns: 1fr; }
+  .grc-bar-row { grid-template-columns: 120px 1fr 30px; }
+  .portal-item { flex-wrap: wrap; }
+  .portal-item .btn { width: 100%; }
+}
+.two-cols + .card, .two-cols + .two-cols, .fw-grid + .card { margin-top: 18px; }
+
+/* ---- Roles & permissions, Apps & customization ---- */
+.role-cards.rbac { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.role-cards.rbac .role-card { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.role-card-head { display: flex; gap: 10px; align-items: center; }
+.role-card-head h3 { margin: 0; font-size: 15px; }
+.role-icon, .app-icon { width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-soft); color: #9dbcff; font-size: 17px; flex: none; }
+.role-super_admin .role-icon { background: #30a46c22; color: #6fd3a2; }
+.role-admin .role-icon { background: #8e4ec622; color: #c9a6f2; }
+.role-audit_client .role-icon { background: #f5a5241a; color: #f7c35c; }
+.role-card p { margin: 0; flex: 1; }
+.perm-matrix thead th { vertical-align: bottom; font-size: 12px; }
+.perm-matrix thead th i { font-size: 16px; display: block; margin-bottom: 4px; }
+.perm-matrix .chip-mini { margin-left: 6px; }
+.member-list { display: flex; flex-direction: column; }
+.member-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.member-row:last-child { border-bottom: 0; }
+.member-row.inactive { opacity: .6; }
+.inline-row { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.app-list { display: flex; flex-direction: column; }
+.app-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) 220px 46px 70px; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.app-row:last-child { border-bottom: 0; }
+.app-row.off .pi-main, .app-row.off .app-icon { opacity: .45; }
+.switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider { position: absolute; inset: 0; background: var(--panel-3); border: 1px solid var(--border-strong); border-radius: 999px; transition: .15s; cursor: pointer; }
+.switch .slider::before { content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .15s; }
+.switch input:checked + .slider { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + .slider::before { transform: translateX(18px); }
+.switch input:disabled + .slider { opacity: .55; cursor: not-allowed; }
+.switch input:focus-visible + .slider { outline: 2px solid #8ab4ff; outline-offset: 2px; }
+.grid.cols-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) {
+  .app-row { grid-template-columns: 36px 1fr 46px; }
+  .app-row input[type=text], .app-row .chip-mini { grid-column: 2 / -1; }
+  .grid.cols-3 { grid-template-columns: 1fr; }
+}
+.badge-role-super_admin { background: #30a46c1c; color: #6fd3a2; border-color: #30a46c44; }
+.badge-role-admin { background: #8e4ec61f; color: #c9a6f2; border-color: #8e4ec655; }
+.badge-role-manager, .badge-role-auditor { background: #2f6fed22; color: #9dbcff; border-color: #2f6fed44; }
+.badge-role-audit_client { background: #f5a5241a; color: #f7c35c; border-color: #f5a52444; }

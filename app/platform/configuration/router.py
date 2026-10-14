@@ -27,6 +27,7 @@ GROUP_PERMS = {
     "AI": "system.config",
     "Follow-up & reporting": "system.workflow",
     "Professional practice": "governance.charter",
+    "Risk & compliance": "grc.manage",
 }
 
 # Admin-maintained lists every signed-in user's forms need (drop-down choices); nothing secret.

@@ -8,6 +8,6 @@ from __future__ import annotations
 
 
 def layers() -> list:
-    from app.domains import assurance, audit, issues
+    from app.domains import assurance, audit, grc, issues
 
-    return [audit, assurance, issues]
+    return [audit, assurance, issues, grc]

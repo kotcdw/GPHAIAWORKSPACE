@@ -272,6 +272,19 @@ async def security_headers(request, call_next):  # noqa: ANN001, ANN201
     return response
 
 
+@app.middleware("http")
+async def switched_off_apps(request, call_next):  # noqa: ANN001, ANN201
+    """Apps the Super Administrator has switched off answer 404 for everyone (Apps & customization)."""
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith(("/api/apps", "/api/auth")):
+        from app.platform.apps.registry import disabled_prefixes
+
+        for prefix, label in disabled_prefixes():
+            if path == prefix or path.startswith(prefix + "/") or path.startswith(prefix + "?"):
+                return JSONResponse(status_code=404, content={"detail": f"The {label} app is switched off"})
+    return await call_next(request)
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 for router in _ROUTERS:

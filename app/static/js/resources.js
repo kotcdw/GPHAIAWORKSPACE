@@ -213,7 +213,7 @@ async function renderScheduler(range = state.schedRange) {
     canManage ? el("button", { class: "btn small", onclick: () => bookingForm(null, t) }, el("i", { class: "bi bi-plus-lg" }), " Booking") : null],
   { sub: `${t.working_days} working days · engagements, auditors, leave and training on one timeline` }), msg);
 
-  const people = t.people.filter((p) => p.bookings.length || p.job_role !== "platform_admin");
+  const people = t.people.filter((p) => p.bookings.length || !["super_admin", "admin"].includes(p.job_role));
   if (t.conflicts.length) {
     viewRoot.append(el("div", { class: "callout danger" }, el("i", { class: "bi bi-exclamation-octagon" }),
       el("div", null, el("strong", null, `${t.conflicts.length} double-booking${t.conflicts.length === 1 ? "" : "s"}: `),

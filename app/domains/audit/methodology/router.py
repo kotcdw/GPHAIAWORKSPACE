@@ -493,7 +493,7 @@ def _is_reviewer(user: User) -> bool:
     return (
         user.role == Role.Admin
         or user.review_level in (ReviewLevel.Manager, ReviewLevel.CAE)
-        or "unit_head" == job_role_of(user)
+        or job_role_of(user) == "manager"
     )
 
 

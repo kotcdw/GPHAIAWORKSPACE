@@ -47,12 +47,14 @@ def test_every_layer_registers_its_routers_and_platform_map(client, db):
     from app.domains import layers
 
     assert [layer.NAME for layer in main.LAYERS] == [
-        "API / Platform Core", "Audit Domain Module", "Assurance Domain Module", "Issues Domain Module", "Services"]
+        "API / Platform Core", "Audit Domain Module", "Assurance Domain Module", "Issues Domain Module",
+        "Risk & Compliance Domain Module", "Services"]
     registered = {id(r) for r in main._ROUTERS}
     for layer in (platform, *layers(), services):
         assert all(id(r) in registered for r in layer.routers())
     # Every API route belongs to exactly one layer package.
-    owners = {"app.platform", "app.domains.audit", "app.domains.assurance", "app.domains.issues", "app.services"}
+    owners = {"app.platform", "app.domains.audit", "app.domains.assurance", "app.domains.issues", "app.domains.grc",
+              "app.services"}
     for router in main._ROUTERS:
         for route in router.routes:
             assert any(route.endpoint.__module__.startswith(o) for o in owners), route.path
@@ -64,7 +66,7 @@ def test_every_layer_registers_its_routers_and_platform_map(client, db):
     m = client.get("/api/platform").json()
     assert m["platform"]["name"] == "API / Platform Core"
     assert [d["name"] for d in m["domains"]] == ["Audit Domain Module", "Assurance Domain Module",
-                                                 "Issues Domain Module"]
+                                                 "Issues Domain Module", "Risk & Compliance Domain Module"]
     tables = {mod["code"]: mod["tables"] for d in m["domains"] for mod in d["modules"]}
     assert "findings" in tables["audits"] and "plan_versions" in tables["plancycle"] and "capa" in tables["capa"]
     assert m["shared_data"]["tables"] > 30

@@ -340,6 +340,12 @@ async function openLink(type, id) {
     if (type === "capa") return openRecord("capa", id);
     if (type === "assurance_plan") return openPlan(id);
     if (type === "task") return navigate("tasks");
+    if (type === "erm_risk") return openRisk(id);
+    if (type === "regulation") return openRegulation(id);
+    if (type === "policy") return openPolicy(id);
+    if (type === "asset") return openAsset(id);
+    if (type === "attestation") return navigate("portal");
+    if (typeof openLinkExtra === "function") { const done = openLinkExtra(type, id); if (done !== undefined) return done; }
     return navigate("dashboard");
   } catch (err) { toast(err.message, "error"); return null; }
 }

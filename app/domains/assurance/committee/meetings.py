@@ -201,11 +201,10 @@ def _apply_to_capa(db: DBSession, m: CommitteeMeeting, d: CommitteeDecision, use
         capa.escalation_level = 0
         note += f" to {d.new_due_date:%d %b %Y}"
     elif d.decision == "Escalate to management":
-        from app.core.permissions import job_role_of
+        from app.core.permissions import is_cae
         from app.platform.users.models import User as U
 
-        heads = [u.id for u in db.execute(select(U).where(U.is_active.is_(True))).scalars()
-                 if job_role_of(u) == "gm_audit"]
+        heads = [u.id for u in db.execute(select(U).where(U.is_active.is_(True))).scalars() if is_cae(u)]
         notify_many(db, [user_id_by_email(db, capa.owner_email), *heads],
                     f"Audit Committee escalation: {capa.capa_ref}", f"{capa.title}\n{d.notes}",
                     link_type="capa", link_id=capa.id)

@@ -245,6 +245,32 @@ RULES: list[Rule] = [
          default=("The audit was performed in accordance with the IIA Global Internal Audit Standards. Work included "
                   "walkthroughs, assessment of control design and testing of operating effectiveness on a sample "
                   "basis.")),
+    # --- risk & compliance apps (Risk Manager, Compliance Maps, Policy Manager, Asset Inventory)
+    Rule("erm_risk_categories", "Enterprise risk categories", "Risk & compliance", "list",
+         default=["Strategic", "Operational", "Financial", "Compliance / Regulatory", "Safety, Health & Environment",
+                  "Security", "Information Technology", "Reputational", "Project"]),
+    Rule("erm_appetite_levels", "Risk appetite levels", "Risk & compliance", "list",
+         "From the most cautious to the most open.", default=["Averse", "Minimal", "Cautious", "Open", "Hungry"]),
+    Rule("erm_treatments", "Risk treatment options", "Risk & compliance", "list",
+         default=["Mitigate", "Accept", "Transfer", "Avoid"]),
+    Rule("erm_review_months", "Review each enterprise risk at least every (months)", "Risk & compliance", "int",
+         "Risks not assessed within this period are flagged as overdue for review.", default=3, min=1, max=24),
+    Rule("regulation_types", "Kinds of obligation in Compliance Maps", "Risk & compliance", "list",
+         default=["Law / Act", "Regulation / L.I.", "Directive / Instruction", "Standard", "Contract / Licence",
+                  "GPHA policy"]),
+    Rule("policy_categories", "Policy categories", "Risk & compliance", "list",
+         default=["Governance", "Finance", "Procurement", "Human Resources", "Information Technology",
+                  "Marine & Operations", "Safety & Security", "Estates", "Legal & Compliance"]),
+    Rule("policy_review_months", "Default policy review cycle (months)", "Risk & compliance", "int",
+         default=24, min=1, max=120),
+    Rule("asset_types", "Asset and third-party types", "Risk & compliance", "list",
+         "Entries that contain 'Third party' show the contract and due-diligence fields.",
+         default=["IT system / Application", "IT infrastructure", "Data set", "Facility / Building",
+                  "Vessel / Equipment", "Third party / Vendor", "Third party / Contractor", "Business process"]),
+    Rule("data_classifications", "Information classifications", "Risk & compliance", "list",
+         default=["Public", "Internal", "Confidential", "Restricted"]),
+    Rule("third_party_review_months", "Re-assess critical and high third parties every (months)",
+         "Risk & compliance", "int", default=12, min=1, max=60),
 ]
 RULES_BY_KEY = {r.key: r for r in RULES}
 

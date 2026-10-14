@@ -115,11 +115,11 @@ BUILTINS: list[dict[str, Any]] = [
                     "{title}\nPlease record the implementation, with evidence, before the due date.")]},
     {"key": "report_response_overdue", "name": "Draft report response overdue (L.I. 1994 reg. 43(2))",
      "trigger": "report.response_overdue", "offset_days": 0,
-     "actions": [_n(["auditees", "creator", "role:gm_audit"], "Management response overdue: {ref}",
+     "actions": [_n(["auditees", "creator", "level:CAE"], "Management response overdue: {ref}",
                     "The management response to the draft report \"{title}\" was due on {due_date}.")]},
     {"key": "report_distribution", "name": "Issued report not yet sent to every required recipient",
      "trigger": "report.distribution_incomplete", "offset_days": 5,
-     "actions": [_n(["creator", "role:gm_audit"], "Report {ref} not yet distributed to: {missing}",
+     "actions": [_n(["creator", "level:CAE"], "Report {ref} not yet distributed to: {missing}",
                     "Record the copies sent under the report's Distribution section.")]},
     {"key": "declaration_conflict", "name": "Send declared conflicts of interest to the GM Audit",
      "trigger": "declaration.conflict", "offset_days": 0,
@@ -153,12 +153,12 @@ BUILTINS: list[dict[str, Any]] = [
                     "the Internal Audit Agency.")]},
     {"key": "annual_statement", "name": "Annual implementation statement due in 30 days",
      "trigger": "annual_statement.due", "offset_days": 30,
-     "actions": [_n(["perm:followup.report", "role:gm_audit"], "Annual statement for {title} due {due_date}",
+     "actions": [_n(["perm:followup.report", "level:CAE"], "Annual statement for {title} due {due_date}",
                     "Act 921 s.88(1)(b). Prepare it under Remediation > Reports.")]},
     {"key": "high_risk_finding", "name": "Tell the GM Audit about every High-risk finding",
      "trigger": "finding.created", "offset_days": 0, "conditions": [{"field": "risk_rating", "op": "eq",
                                                                       "value": "High"}],
-     "actions": [_n(["role:gm_audit"], "High-risk finding raised: {title}", "Audit: {audit_title}")]},
+     "actions": [_n(["level:CAE"], "High-risk finding raised: {title}", "Audit: {audit_title}")]},
 ]
 
 
@@ -221,7 +221,7 @@ def conditions_met(rule: AutomationRule, ctx: dict) -> bool:
 
 
 def resolve_recipients(db: DBSession, tokens: list[str], ctx: dict) -> list[int]:
-    from app.core.permissions import has_perm, job_role_of
+    from app.core.permissions import LEGACY_ROLES, has_perm, job_role_of
     from app.platform.users.models import User
 
     people: dict[str, list[int | None]] = ctx.get("_people", {})
@@ -237,8 +237,13 @@ def resolve_recipients(db: DBSession, tokens: list[str], ctx: dict) -> list[int]
             continue
         if staff is None:
             staff = list(db.execute(select(User).where(User.is_active.is_(True))).scalars())
-        if kind == "role":
+        if kind == "role" and value == "gm_audit":  # legacy token: the Chief Audit Executive
+            out += [u.id for u in staff if u.review_level is not None and u.review_level.value == "CAE"]
+        elif kind == "role":
+            value = LEGACY_ROLES.get(value, value)
             out += [u.id for u in staff if job_role_of(u) == value]
+        elif kind == "level":
+            out += [u.id for u in staff if u.review_level is not None and u.review_level.value == value]
         elif kind == "perm":
             out += [u.id for u in staff if u.role != Role.Auditee and has_perm(u, value)]
         elif kind == "tier":

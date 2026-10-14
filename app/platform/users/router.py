@@ -10,10 +10,11 @@ from app.core import permissions as perms
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_role
-from app.core.enums import ReviewLevel, Role
+from app.core.enums import Role
 from app.core.schemas import MessageOut
 from app.core.security import hash_password
 from app.platform.auth.service import revoke_sessions
+from app.platform.roles import service as role_service
 from app.platform.users.models import User
 from app.platform.users.schemas import UserCreate, UserOut, UserUpdate
 
@@ -22,13 +23,8 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 AdminUser = Depends(require_role(Role.Admin))
 
 
-def _apply_job_role(user: User, code: str) -> None:
-    role = perms.JOB_ROLES_BY_CODE.get(code)
-    if role is None:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown job role")
-    user.job_role = role.code
-    user.role = role.tier
-    user.review_level = role.review_level
+def _current_role(user: User) -> str:
+    return perms.job_role_of(user)
 
 
 @router.get("", response_model=list[UserOut])
@@ -61,8 +57,9 @@ def create_user(
         role=payload.role,
         is_active=payload.is_active,
     )
-    if payload.job_role:
-        _apply_job_role(user, payload.job_role)
+    code = role_service.normalise(payload.job_role) or role_service.TIER_DEFAULT_ROLE[payload.role]
+    role_service.check_can_manage(admin, None, code)
+    role_service.apply_role(user, code)
     db.add(user)
     db.flush()
     log_action(
@@ -112,25 +109,37 @@ def update_user(
     if payload.company is not None:
         user.company = payload.company
         changes.append("company")
-    if payload.role is not None:
-        if user.id == admin.id and payload.role != Role.Admin:
+    # Role, access tier and approval level change together (one of the five standard roles).
+    new_code = role_service.normalise(payload.job_role)
+    current_tier = perms.JOB_ROLES_BY_CODE[_current_role(user)].tier
+    if new_code is None and payload.role is not None and current_tier != payload.role:
+        new_code = role_service.TIER_DEFAULT_ROLE[payload.role]
+    level = payload.review_level
+    if new_code is not None or level is not None:
+        target_code = new_code or _current_role(user)
+        role_service.check_can_manage(admin, user, target_code)
+        if user.id == admin.id and target_code not in role_service.ADMIN_ROLES:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot remove your own admin role")
-        user.role = payload.role
-        changes.append(f"role={payload.role.value}")
+        role_service.guard_last_super_admin(db, user, target_code)
+        if level and target_code != "manager":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Only a Manager can hold an approval level (Manager or CAE)")
+        tier_before = user.role
+        role_service.apply_role(user, target_code, level or None)
+        changes.append(f"job_role={user.job_role} level={user.review_level.value if user.review_level else '-'}")
+        if user.role != tier_before:
+            changes.append(f"role={user.role.value}")
     if payload.is_active is not None:
         if user.id == admin.id and payload.is_active is False:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="You cannot deactivate your own account",
             )
+        if payload.is_active is False:
+            role_service.check_can_manage(admin, user, None)
+            role_service.guard_last_super_admin(db, user, deactivating=True)
         user.is_active = payload.is_active
         changes.append(f"is_active={payload.is_active}")
-    if payload.review_level is not None:
-        if payload.review_level and user.role not in (Role.Admin, Role.Auditor):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="Only Admin or Auditor accounts can hold a review level")
-        user.review_level = ReviewLevel(payload.review_level) if payload.review_level else None
-        changes.append(f"review_level={payload.review_level or 'none'}")
     if "work_entity_id" in payload.model_fields_set:
         from app.platform.organizations.models import Organization
 
@@ -138,17 +147,6 @@ def update_user(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown entity")
         user.work_entity_id = payload.work_entity_id
         changes.append(f"work_entity={payload.work_entity_id}")
-    if payload.job_role:
-        if user.id == admin.id and perms.JOB_ROLES_BY_CODE.get(payload.job_role, None) is not None \
-                and perms.JOB_ROLES_BY_CODE[payload.job_role].tier != Role.Admin:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot remove your own admin role")
-        tier_before = user.role
-        _apply_job_role(user, payload.job_role)
-        changes.append(f"job_role={user.job_role}")
-        if user.role != tier_before:
-            changes.append(f"role={user.role.value}")
-    elif payload.role is not None or payload.review_level is not None:
-        user.job_role = None  # falls back to the default job role for the new tier / level
     if payload.reset_mfa:
         user.mfa_enabled = False
         user.mfa_secret = None

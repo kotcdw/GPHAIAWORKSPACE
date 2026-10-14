@@ -529,7 +529,7 @@ function renderMfaGate() {
     el("ol", { class: "steps-list" },
       el("li", null, "An authenticator app on your phone (Microsoft Authenticator, Google Authenticator or similar)."),
       el("li", null, "Press ", el("strong", null, "Set up two-step verification"), ", add the key to the app, then type the 6-digit code it shows.")),
-    el("p", { class: "muted small" }, "No authenticator app available? Ask a Platform Administrator, who can switch off enforcement or change the roles under Configuration > Security (or on the server with ",
+    el("p", { class: "muted small" }, "No authenticator app available? Ask a Super Administrator, who can switch off enforcement or change the roles under Configuration > Security (or on the server with ",
       el("code", null, "uv run python -m scripts.mfa_policy --off"), ")."));
   const holder = el("div", { class: "two-cols" });
   viewRoot.append(holder);
@@ -540,7 +540,8 @@ function renderMfaGate() {
 function showApp() {
   authView.classList.add("hidden");
   appView.classList.remove("hidden");
-  whoami.replaceChildren(el("span", { class: "who-name" }, state.user.full_name || state.user.username), badge(state.user.role));
+  whoami.replaceChildren(el("span", { class: "who-name" }, state.user.full_name || state.user.username),
+    el("span", { class: `badge badge-role-${state.user.job_role || "x"}`, title: `${state.user.role} access` }, state.user.job_role_name || state.user.role));
   document.querySelectorAll("#sidebarNav button[data-admin]").forEach((b) => {
     b.classList.toggle("hidden", !isAdmin());
   });
@@ -551,6 +552,7 @@ function showApp() {
   });
   document.querySelectorAll("#sidebarNav [data-staff]").forEach((n) => n.classList.toggle("hidden", state.user.role === "Auditee"));
   applyNavPermissions();
+  applyAppCustomization().then(applyNavPermissions);
   // Two-step verification is mandatory for this role and not set up yet: only the set-up screen is
   // available (every other request would be refused), so show it alone instead of a page of errors.
   document.body.classList.toggle("mfa-gate", !!state.mfaSetupRequired);
@@ -558,6 +560,7 @@ function showApp() {
   if (window.location.hash === "#mfa-setup") history.replaceState(null, "", window.location.pathname);
   checkHealth();
   refreshDraftCount();
+  refreshPortalCount();
   initBell();
   initGlobalSearch();
   const helpBtn = qs("#helpBtn");
@@ -565,7 +568,7 @@ function showApp() {
   // Deep link from an e-mail: #open/<type>/<id>
   const link = /^#open\/([a-z_]+)\/(\d+)$/.exec(window.location.hash);
   if (link) { history.replaceState(null, "", window.location.pathname); openLink(link[1], Number(link[2])); return; }
-  const home = isCommittee() ? "governance" : "dashboard";
+  const home = isCommittee() ? "governance" : state.user.role === "Auditee" ? "portal" : "dashboard";
   navigate(state.view && viewAllowed(state.view) && !(isCommittee() && state.view === "dashboard") ? state.view : home);
 }
 
@@ -584,6 +587,7 @@ function setActiveNav(view) {
 }
 
 function navigate(view) {
+  if (view !== "portal") state.fromPortal = false;
   if (state.user && !viewAllowed(view)) view = isCommittee() ? "governance" : "dashboard";
   state.view = view;
   setActiveNav(view);
@@ -615,6 +619,12 @@ function navigate(view) {
   if (view === "library") return renderLibrary();
   if (view === "scheduler") return renderScheduler();
   if (view === "automations") return renderAutomations();
+  if (view === "portal") return renderPortal();
+  if (view === "apps") return renderAppsPage();
+  if (view === "risk") return renderRiskManager();
+  if (view === "compliance") return renderComplianceMaps();
+  if (view === "policies") return renderPolicies();
+  if (view === "assets") return renderAssets();
 }
 
 // Page header: title, optional subtitle / meta chips, and actions on the right.
@@ -1623,7 +1633,8 @@ async function renderProfile() {
     onSubmit: (v) => API.patch("/api/auth/me", v),
     onDone: (res) => {
       state.user = res.user; state.perms = res.permissions || state.perms; API.csrf = res.csrf_token; state.csrf = res.csrf_token;
-      whoami.replaceChildren(el("span", { class: "who-name" }, state.user.full_name || state.user.username), badge(state.user.role));
+      whoami.replaceChildren(el("span", { class: "who-name" }, state.user.full_name || state.user.username),
+    el("span", { class: `badge badge-role-${state.user.job_role || "x"}`, title: `${state.user.role} access` }, state.user.job_role_name || state.user.role));
       toast("Profile updated");
     },
   });
@@ -1674,9 +1685,9 @@ function newUserForm() {
       { name: "username", label: "Username", required: true, minLength: 3, maxLength: 64, pattern: "^[A-Za-z0-9._-]+$",
         patternMessage: "Username may contain letters, digits, '.', '_' and '-' only" },
       { name: "email", label: "Email", type: "email", required: true },
-      { name: "job_role", label: "Job role", type: "select", required: true,
-        options: (JOB_ROLE_OPTIONS || []).map((r) => ({ value: r.code, label: r.name })),
-        help: "Sets the access tier and review level; fine-tune permissions under Roles & permissions." },
+      { name: "job_role", label: "Role", type: "select", required: true,
+        options: (JOB_ROLE_OPTIONS || []).filter((r) => r.assignable).map((r) => ({ value: r.code, label: r.name })),
+        help: "Super Administrator, Administrator, Manager, Auditor or Audit Client. What each role may do is set under Roles & permissions." },
       { name: "password", label: "Initial password", type: "password", required: true, minLength: 8, maxLength: 128,
         help: "The user should change it after first sign-in." },
     ],
@@ -1696,26 +1707,11 @@ async function renderUserManagement(container, msg) {
         el("h3", null, `${users.length} accounts`, pending ? el("span", { class: "muted" }, ` · ${pending} awaiting approval`) : null),
         el("button", { class: "btn small", onclick: newUserForm }, el("i", { class: "bi bi-person-plus" }), " Add user")));
     card.append(el("div", { class: "table-wrap" }, el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Job role"), el("th", null, "Access tier"), el("th", null, "Review level"),
+      el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Role and approval level"),
         el("th", null, "Status"), el("th", { class: "num" }, ""))),
       el("tbody", null, ...(await Promise.all(users.sort((a, b) => Number(a.is_active) - Number(b.is_active)).map(async (u) => {
         const self = u.id === state.user.id;
         const jobSelect = await jobRoleSelect(u, () => renderProfile());
-        const roleSelect = el("select", { class: "compact", disabled: self ? "1" : null, "aria-label": `Role of ${u.username}` },
-          ...ROLES.map((r) => el("option", { value: r, selected: r === u.role ? "1" : null }, r)));
-        roleSelect.addEventListener("change", async () => {
-          try { await API.patch(`/api/users/${u.id}`, { role: roleSelect.value }); toast(`${u.username} is now ${roleSelect.value}`); renderProfile(); }
-          catch (err) { toast(err.message, "error"); roleSelect.value = u.role; }
-        });
-        const staffRole = ["Admin", "Auditor"].includes(u.role);
-        const levelSelect = el("select", { class: "compact", disabled: staffRole ? null : "1", "aria-label": `Review level of ${u.username}`,
-          title: staffRole ? "Audit Managers review reports; the CAE approves and issues them" : "Only Admin or Auditor accounts" },
-        ...[["", "-"], ["Manager", "Audit Manager"], ["CAE", "CAE"]].map(([v, t]) =>
-          el("option", { value: v, selected: (u.review_level || "") === v ? "1" : null }, t)));
-        levelSelect.addEventListener("change", async () => {
-          try { await API.patch(`/api/users/${u.id}`, { review_level: levelSelect.value }); toast("Review level saved"); }
-          catch (err) { toast(err.message, "error"); levelSelect.value = u.review_level || ""; }
-        });
         const locked = u.locked_until && new Date(`${u.locked_until}Z`) > new Date();
         const actions = el("div", { class: "actions end" },
           u.mfa_enabled && !self ? el("button", { class: "btn small secondary", title: "Use when the user lost their phone",
@@ -1735,8 +1731,6 @@ async function renderUserManagement(container, msg) {
           el("td", null, el("div", { class: "cell-title" }, u.full_name || u.username),
             el("div", { class: "muted small" }, `${u.username} · ${u.email}`)),
           el("td", null, jobSelect),
-          el("td", null, roleSelect),
-          el("td", null, levelSelect),
           el("td", null, u.is_active ? badge("Active") : badge("Pending"), locked ? " " : null, locked ? badge("Locked") : null,
             u.mfa_enabled ? " " : null, u.mfa_enabled ? el("span", { class: "chip-mini", title: "Two-step verification on" }, el("i", { class: "bi bi-shield-check" }), " 2-step") : null),
           el("td", { class: "num" }, actions));

@@ -10,10 +10,13 @@ function hasPerm(...perms) {
 function isCommittee() { return state.user && state.user.role === "Committee"; }
 
 // Views a Committee (read-only governance) account may open.
-const COMMITTEE_VIEWS = ["workspace", "governance", "portfolio", "committee", "analytics", "qaip", "profile"];
-const CONFIG_PERMS = ["system.config", "system.workflow", "system.reference", "method.reporting", "method.audit_types", "method.plan_config"];
+const COMMITTEE_VIEWS = ["portal", "workspace", "governance", "portfolio", "committee", "analytics", "qaip", "profile"];
+const CONFIG_PERMS = ["system.config", "system.workflow", "system.reference", "method.reporting", "method.audit_types", "method.plan_config", "grc.manage", "governance.charter"];
+
+const GRC_VIEW_PERMS = ["grc.view", "grc.manage", "grc.risk", "grc.compliance", "grc.policy", "grc.policy_approve", "grc.assets"];
 
 function viewAllowed(view) {
+  if (typeof appEnabledForView === "function" && !appEnabledForView(view)) return false;
   if (isCommittee()) return COMMITTEE_VIEWS.includes(view);
   const rules = {
     roles: ["system.roles", "system.users"],
@@ -23,6 +26,8 @@ function viewAllowed(view) {
     programs: null,
     platform: ["system.technical", "system.config"],
     automations: ["system.automation"],
+    apps: ["system.superadmin"],
+    risk: GRC_VIEW_PERMS, compliance: GRC_VIEW_PERMS, policies: GRC_VIEW_PERMS, assets: GRC_VIEW_PERMS,
   };
   if (["programs", "practice", "library", "scheduler"].includes(view)) return state.user.role !== "Auditee";
   if (view === "logs" || view === "backups") return isAdmin() && hasPerm("system.technical");
@@ -44,50 +49,54 @@ function applyNavPermissions() {
 
 // ==================================================================== Roles & permissions
 
-async function renderRolesPage() {
+async function renderRolesPage(tab = state.rolesTab || "matrix") {
+  state.rolesTab = tab;
   clear(viewRoot);
   const msg = el("div");
-  const canEdit = hasPerm("system.roles");
-  viewRoot.append(viewHeader("Roles & permissions", null,
-    { sub: canEdit ? "What each job role can do. Tick or untick a permission, then save that role's column."
-      : "What each job role can do (read-only)." }), msg);
   let cat;
-  try { cat = await API.get("/api/roles"); } catch (err) { notify(msg, err.message, "error"); return; }
+  try { cat = await API.get("/api/roles"); } catch (err) { viewRoot.append(viewHeader("Roles & permissions"), msg); notify(msg, err.message, "error"); return; }
+  const canEdit = cat.can_edit;
+  viewRoot.append(viewHeader("Roles & permissions", null, {
+    sub: canEdit ? "Five standard roles. As Super Administrator you decide what each role may do; your own role always has full control."
+      : "Five standard roles and what each may do. Only a Super Administrator can change the matrix." }), msg);
 
-  // Role cards
-  viewRoot.append(el("div", { class: "role-cards" }, ...cat.roles.map((r) => el("div", { class: "card role-card" },
-    el("div", { class: "card-head" }, el("h3", null, r.name), el("span", { class: "chip-mini" }, `${r.users} user${r.users === 1 ? "" : "s"}`)),
-    el("div", { class: "muted small" }, `${r.tier} tier${r.review_level ? ` · ${r.review_level} review level` : ""}${r.customised ? " · customised" : ""}`),
-    el("p", { class: "small" }, r.description)))));
+  viewRoot.append(el("div", { class: "role-cards rbac" }, ...cat.roles.map((r) => el("div", { class: `card role-card role-${r.code}` },
+    el("div", { class: "role-card-head" }, el("span", { class: "role-icon" }, el("i", { class: `bi bi-${r.icon}` })),
+      el("div", null, el("h3", null, r.name), el("div", { class: "muted small" }, `${r.users} active user${r.users === 1 ? "" : "s"} · ${r.permissions.length} permissions`))),
+    el("p", { class: "small" }, r.description),
+    el("div", { class: "chips" }, r.locked ? el("span", { class: "chip-mini ok" }, el("i", { class: "bi bi-lock-fill" }), " Full control") : null,
+      r.customised ? el("span", { class: "chip-mini warn" }, "Customised") : null,
+      el("span", { class: "chip-mini" }, `${r.tier} access`))))));
 
-  // Matrix
-  const state2 = Object.fromEntries(cat.roles.map((r) => [r.code, new Set(r.permissions)]));
-  const dirty = new Set();
-  const groups = [...new Set(cat.permissions.map((p) => p.group))];
+  viewRoot.append(tabBar([{ key: "matrix", label: "Permission matrix" }, { key: "people", label: "People by role" }], tab, (k) => renderRolesPage(k)));
+  if (tab === "people") return rolesPeople(cat);
+
+  const work = Object.fromEntries(cat.roles.map((r) => [r.code, new Set(r.permissions)]));
   const saveRow = el("tr", { class: "no-click" }, el("td", null, canEdit ? el("span", { class: "muted small" }, "Save or reset a role") : ""),
-    ...cat.roles.map((r) => el("td", { class: "center" }, canEdit ? el("div", { class: "actions center" },
+    ...cat.roles.map((r) => el("td", { class: "center" }, canEdit && !r.locked ? el("div", { class: "actions center" },
       el("button", { class: "btn small", "data-save": r.code, disabled: "1", title: `Save ${r.name}`, onclick: async () => {
-        try {
-          await API.put(`/api/roles/${r.code}/permissions`, { permissions: [...state2[r.code]] });
-          toast(`${r.name} saved`); renderRolesPage();
-        } catch (err) { toast(err.message, "error"); }
-      } }, "Save"),
-      r.customised ? el("button", { class: "btn small secondary", title: "Back to the GPHA defaults", onclick: async () => {
-        if (!window.confirm(`Reset ${r.name} to the default permissions?`)) return;
-        try { await API.post(`/api/roles/${r.code}/reset`); toast(`${r.name} reset`); renderRolesPage(); }
+        try { await API.put(`/api/roles/${r.code}/permissions`, { permissions: [...work[r.code]] }); toast(`${r.name} saved`); renderRolesPage("matrix"); }
         catch (err) { toast(err.message, "error"); }
-      } }, "Reset") : null) : null)));
+      } }, "Save"),
+      r.customised ? el("button", { class: "btn small secondary", title: "Back to the standard permissions", onclick: async () => {
+        if (!window.confirm(`Reset ${r.name} to the standard permissions?`)) return;
+        try { await API.post(`/api/roles/${r.code}/reset`); toast(`${r.name} reset`); renderRolesPage("matrix"); } catch (err) { toast(err.message, "error"); }
+      } }, "Reset") : null) : (r.locked ? el("span", { class: "muted small" }, el("i", { class: "bi bi-lock-fill" }), " Fixed") : null))));
+  const q = el("input", { type: "search", class: "compact", placeholder: "Filter permissions", "aria-label": "Filter permissions" });
   const body = el("tbody");
+  const groups = [...new Set(cat.permissions.map((p) => p.group))];
   groups.forEach((g) => {
-    body.append(el("tr", { class: "no-click group-row" }, el("th", { colspan: String(cat.roles.length + 1) }, g)));
+    body.append(el("tr", { class: "no-click group-row", "data-group": g }, el("th", { colspan: String(cat.roles.length + 1) }, g)));
     cat.permissions.filter((p) => p.group === g).forEach((p) => {
-      body.append(el("tr", { class: "no-click" }, el("td", null, p.label, el("div", { class: "muted small mono" }, p.code)),
+      body.append(el("tr", { class: "no-click perm-row", "data-text": `${p.label} ${p.code}`.toLowerCase(), "data-group": g },
+        el("td", null, p.label, el("div", { class: "muted small mono" }, p.code,
+          p.super_only ? el("span", { class: "chip-mini" }, " Super Administrator only") : null,
+          p.cae_only ? el("span", { class: "chip-mini", title: "Managers exercise it only with the CAE approval level (GM Audit)" }, " GM Audit (CAE) only") : null)),
         ...cat.roles.map((r) => {
-          const box = el("input", { type: "checkbox", "aria-label": `${r.name}: ${p.label}`, checked: state2[r.code].has(p.code) ? "1" : null,
-            disabled: canEdit && !(r.code === "committee" && p.code !== "governance.view") ? null : "1" });
+          const fixed = r.locked || p.super_only || !canEdit;
+          const box = el("input", { type: "checkbox", "aria-label": `${r.name}: ${p.label}`, checked: work[r.code].has(p.code) ? "1" : null, disabled: fixed ? "1" : null });
           box.addEventListener("change", () => {
-            if (box.checked) state2[r.code].add(p.code); else state2[r.code].delete(p.code);
-            dirty.add(r.code);
+            if (box.checked) work[r.code].add(p.code); else work[r.code].delete(p.code);
             const btn = saveRow.querySelector(`[data-save="${r.code}"]`);
             if (btn) btn.disabled = false;
           });
@@ -95,29 +104,64 @@ async function renderRolesPage() {
         })));
     });
   });
-  viewRoot.append(el("div", { class: "card" }, el("h3", null, "Permission matrix"),
+  q.addEventListener("input", () => {
+    const t = q.value.trim().toLowerCase();
+    body.querySelectorAll(".perm-row").forEach((tr) => tr.classList.toggle("hidden", !!t && !tr.dataset.text.includes(t)));
+    body.querySelectorAll(".group-row").forEach((tr) => tr.classList.toggle("hidden", !!t && ![...body.querySelectorAll(`.perm-row[data-group="${CSS.escape(tr.dataset.group)}"]`)].some((x) => !x.classList.contains("hidden"))));
+  });
+  viewRoot.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Permission matrix"), el("div", { class: "actions" }, q)),
     el("div", { class: "table-wrap matrix-wrap" }, el("table", { class: "perm-matrix" },
-      el("thead", null, el("tr", null, el("th", null, "Permission"), ...cat.roles.map((r) => el("th", { class: "center", title: r.description }, r.name)))),
+      el("thead", null, el("tr", null, el("th", null, "Permission"), ...cat.roles.map((r) => el("th", { class: "center", title: r.description }, el("i", { class: `bi bi-${r.icon}` }), el("div", null, r.name))))),
       body, el("tfoot", null, saveRow)))));
+}
+
+function rolesPeople(cat) {
+  const wrap = el("div", { class: "two-cols" });
+  cat.roles.forEach((r) => {
+    const list = el("div", { class: "member-list" });
+    if (!r.members.length) list.append(el("p", { class: "muted small" }, "Nobody has this role."));
+    r.members.forEach((m) => list.append(el("div", { class: `member-row ${m.active ? "" : "inactive"}` },
+      el("div", { class: "pi-main" }, el("strong", null, m.name), el("div", { class: "muted small" }, [m.username, m.approval_level === "CAE" ? "Chief Audit Executive (GM Audit)" : null, m.active ? null : "inactive"].filter(Boolean).join(" · "))),
+      cat.can_assign && m.id !== state.user.id ? el("div", { class: "member-actions" }, roleAssignControls({ id: m.id, username: m.username, job_role: r.code, review_level: m.approval_level }, cat, () => renderRolesPage("people"))) : null)));
+    wrap.append(panel(`${r.name} (${r.members.length})`, list));
+  });
+  viewRoot.append(wrap);
+}
+
+// Role and approval-level controls for one user (used on Roles & permissions and in user management).
+function roleAssignControls(u, cat, onChanged) {
+  const options = cat.roles.map((r) => ({ code: r.code, name: r.name, assignable: cat.can_appoint_admins || !["super_admin", "admin"].includes(r.code) }));
+  const blocked = !cat.can_appoint_admins && ["super_admin", "admin"].includes(u.job_role);
+  const sel = el("select", { class: "compact", "aria-label": `Role of ${u.username}`, disabled: blocked ? "1" : null },
+    ...options.map((r) => el("option", { value: r.code, selected: r.code === u.job_role ? "1" : null, disabled: r.assignable ? null : "1" }, r.name)));
+  const lvl = el("select", { class: "compact", "aria-label": `Approval level of ${u.username}`, title: "Unit Heads, Audit Managers and PIAs review; the GM Audit (CAE) approves and distributes" },
+    el("option", { value: "Manager", selected: u.review_level !== "CAE" ? "1" : null }, "Reviewer"),
+    el("option", { value: "CAE", selected: u.review_level === "CAE" ? "1" : null }, "GM Audit (CAE)"));
+  lvl.classList.toggle("hidden", u.job_role !== "manager");
+  const send = async () => {
+    try {
+      const body = { job_role: sel.value };
+      if (sel.value === "manager") body.approval_level = lvl.value;
+      const res = await API.patch(`/api/users/${u.id}/job-role`, body);
+      toast(`${u.username} is now ${res.job_role_name}${res.review_level === "CAE" ? " (GM Audit)" : ""}${res.sessions_ended ? "; signed out" : ""}`);
+      if (onChanged) onChanged();
+    } catch (err) { toast(err.message, "error"); sel.value = u.job_role; }
+  };
+  sel.addEventListener("change", () => { lvl.classList.toggle("hidden", sel.value !== "manager"); send(); });
+  lvl.addEventListener("change", send);
+  return el("span", { class: "inline-row" }, sel, lvl);
 }
 
 // Job-role select used in user management.
 let JOB_ROLE_OPTIONS = null;
+let ROLE_CATALOGUE = null;
 async function jobRoleSelect(u, onChanged) {
-  if (!JOB_ROLE_OPTIONS) {
-    try { JOB_ROLE_OPTIONS = await API.get("/api/roles/options"); } catch { JOB_ROLE_OPTIONS = []; }
+  if (!ROLE_CATALOGUE) {
+    try { ROLE_CATALOGUE = await API.get("/api/roles"); } catch { ROLE_CATALOGUE = { roles: [], can_assign: false, can_appoint_admins: false }; }
+    JOB_ROLE_OPTIONS = ROLE_CATALOGUE.roles.map((r) => ({ code: r.code, name: r.name, tier: r.tier, assignable: ROLE_CATALOGUE.can_appoint_admins || !["super_admin", "admin"].includes(r.code) }));
   }
-  const self = u.id === state.user.id;
-  const sel = el("select", { class: "compact", "aria-label": `Job role of ${u.username}`, disabled: self && !hasPerm("system.users") ? "1" : null },
-    ...JOB_ROLE_OPTIONS.map((r) => el("option", { value: r.code, selected: r.code === u.job_role ? "1" : null }, r.name)));
-  sel.addEventListener("change", async () => {
-    try {
-      const res = await API.patch(`/api/users/${u.id}/job-role`, { job_role: sel.value });
-      toast(`${u.username} is now ${res.job_role_name}${res.sessions_ended ? " (signed out)" : ""}`);
-      if (onChanged) onChanged();
-    } catch (err) { toast(err.message, "error"); sel.value = u.job_role; }
-  });
-  return sel;
+  if (u.id === state.user.id) return el("span", null, (JOB_ROLE_OPTIONS.find((r) => r.code === u.job_role) || {}).name || u.job_role_name || "-");
+  return roleAssignControls(u, ROLE_CATALOGUE, onChanged);
 }
 
 // ==================================================================== Audit programmes

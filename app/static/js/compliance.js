@@ -593,6 +593,7 @@ function ruleEditor(rule) {
   const recipientOptions = () => [
     ...Object.entries(cat.people).filter(([k]) => (trig().people || []).includes(k)).map(([k, v]) => ({ value: k, label: v })),
     ...cat.roles.map((x) => ({ value: `role:${x.code}`, label: `Role: ${x.name}` })),
+    { value: "level:CAE", label: "Chief Audit Executive (GM Audit)" }, { value: "level:Manager", label: "Managers with review authority" },
     ...Object.entries(cat.permissions).map(([k, v]) => ({ value: `perm:${k}`, label: `Permission: ${v}` })),
   ];
   const field = (label, input, help) => el("div", { class: "form-field" }, el("label", null, label), input, help ? el("div", { class: "help" }, help) : null);

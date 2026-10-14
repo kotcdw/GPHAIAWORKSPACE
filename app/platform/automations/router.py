@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_perm
-from app.core.permissions import JOB_ROLES, PERMISSIONS
+from app.core.permissions import JOB_ROLES, LEGACY_ROLES, PERMISSIONS
 from app.platform.automations import engine
 from app.platform.automations.models import AutomationRule, AutomationRun
 from app.platform.users.models import User
@@ -52,12 +52,13 @@ class Action(BaseModel):
     @field_validator("to")
     @classmethod
     def _to(cls, v: list[str]) -> list[str]:
-        roles = {r.code for r in JOB_ROLES}
+        roles = {r.code for r in JOB_ROLES} | set(LEGACY_ROLES)
         for token in v:
             kind, _, value = token.partition(":")
             ok = (token in engine.RECIPIENT_TOKENS or (kind == "role" and value in roles)
                   or (kind == "perm" and value in PERMISSIONS) or (kind == "user" and value.isdigit())
-                  or (kind == "tier" and value in ("Admin", "Auditor", "Auditee", "Committee")))
+                  or (kind == "tier" and value in ("Admin", "Auditor", "Auditee", "Committee"))
+                  or (kind == "level" and value in ("Manager", "CAE")))
             if not ok:
                 raise ValueError(f"unknown recipient '{token}'")
         return v

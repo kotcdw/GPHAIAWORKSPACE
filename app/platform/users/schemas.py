@@ -32,10 +32,9 @@ class UserOut(ORMModel):
 
     @model_validator(mode="after")
     def _effective_job_role(self) -> UserOut:
-        from app.core.permissions import JOB_ROLES_BY_CODE, default_job_role
+        from app.core.permissions import JOB_ROLES_BY_CODE, job_role_of
 
-        if self.job_role not in JOB_ROLES_BY_CODE:
-            self.job_role = default_job_role(self)
+        self.job_role = job_role_of(self)
         self.job_role_name = JOB_ROLES_BY_CODE[self.job_role].name
         return self
 

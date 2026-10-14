@@ -416,10 +416,16 @@ const HELP = {
     "The bell shows what needs your attention: assignments, approvals, overdue items.",
   ] },
   dashboard: { title: "Dashboard", items: ["Your headline numbers and recent work. Select a row to open it.", "GPHA Workspace (in the sidebar) lists every module."] },
+  apps: { title: "Apps & customization", items: [
+    "Super Administrators only. Switch an app off to hide it from everyone; its data is kept and returns when you switch it back on.",
+    "Rename an app to use GPHA's own terms, and set the workspace name shown in the sidebar and browser tab.",
+    "Core apps (Dashboard, Audits, Assurance Plan, Audit Universe, Remediation, Evidence, Organizations) are always on.",
+  ] },
   roles: { title: "Roles & permissions", items: [
-    "Each user has a job role (Platform Administrator, Audit Administrator, GM Audit, PIA, Audit Manager, Unit Head, Senior Auditor, Auditor, Audit Clerk, Auditee, Audit Committee).",
-    "The matrix shows what each role can do. Tick or untick a permission and save that role; Reset returns it to the GPHA defaults.",
-    "Assign job roles under Profile & Users. The role sets the access tier and review level automatically.",
+    "There are five roles: Super Administrator (full control), Administrator, Manager, Auditor and Audit Client.",
+    "Managers cover Unit Heads, Audit Managers, PIAs and the GM Audit. Give the GM Audit the 'GM Audit (CAE)' approval level: only that level approves and distributes the plan and approves reports.",
+    "Only a Super Administrator changes the matrix (tick, untick, Save; Reset returns a role to the standard permissions) and appoints administrators.",
+    "Change someone's role on the 'People by role' tab or under Profile & Users.",
   ] },
   programs: { title: "Audit programmes", items: [
     "Reusable work programmes maintained by the Audit Administrator: objectives, risks, controls and test steps.",

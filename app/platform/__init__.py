@@ -28,11 +28,14 @@ MODULES = {
     "dataio": "Import and export",
     "backups": "Encrypted database backups",
     "automations": "Admin-defined automation rules: reminders, routing and escalation",
+    "portal": "Task Manager: one simple page of everything waiting for a business user",
+    "apps": "Apps & customization: the Super Administrator switches apps on and off, renames them and sets branding",
 }
 
 
 def routers() -> list:
     from app.platform.approvals.router import router as approvals
+    from app.platform.apps.router import router as apps
     from app.platform.architecture import router as architecture
     from app.platform.auth.router import router as auth
     from app.platform.automations.router import router as automations
@@ -45,6 +48,7 @@ def routers() -> list:
     from app.platform.history.router import router as history
     from app.platform.notifications.router import router as notifications
     from app.platform.organizations.router import router as organizations
+    from app.platform.portal.router import router as portal
     from app.platform.roles.router import router as roles
     from app.platform.stakeholders.router import router as stakeholders
     from app.platform.tasks.router import router as tasks
@@ -52,4 +56,5 @@ def routers() -> list:
     from app.platform.views.router import router as views
 
     return [auth, users, history, records_router, organizations, stakeholders, tasks, approvals, backups,
-            drafts, notifications, configuration, dataio, views, customfields, roles, architecture, automations]
+            drafts, notifications, configuration, dataio, views, customfields, roles, architecture, automations,
+            portal, apps]
