@@ -529,8 +529,8 @@ function renderMfaGate() {
     el("ol", { class: "steps-list" },
       el("li", null, "An authenticator app on your phone (Microsoft Authenticator, Google Authenticator or similar)."),
       el("li", null, "Press ", el("strong", null, "Set up two-step verification"), ", add the key to the app, then type the 6-digit code it shows.")),
-    el("p", { class: "muted small" }, "No authenticator app available? Ask a Platform Administrator, who can change which roles must use two-step verification under Configuration > Security (or on the server with ",
-      el("code", null, "uv run python -m scripts.mfa_policy"), ")."));
+    el("p", { class: "muted small" }, "No authenticator app available? Ask a Platform Administrator, who can switch off enforcement or change the roles under Configuration > Security (or on the server with ",
+      el("code", null, "uv run python -m scripts.mfa_policy --off"), ")."));
   const holder = el("div", { class: "two-cols" });
   viewRoot.append(holder);
   renderMfaCard(holder);

@@ -136,11 +136,10 @@ RULES: list[Rule] = [
     Rule("mfa_required_roles", "Roles that must use two-step verification", "Security", "roles",
          "Users in these roles are asked to set it up at their next sign-in.", default_attr="mfa_required_roles",
          options=["Admin", "Auditor", "Auditee"]),
-    Rule("mfa_enforce_outside_production", "Also require two-step verification on development / test "
-         "installations", "Security", "bool",
-         "Off: the roles above must use two-step verification only once the workspace is published "
-         "(GPHA_ENVIRONMENT=production). Anyone can still turn it on for themselves in their profile.",
-         default_attr="mfa_enforce_outside_production"),
+    Rule("mfa_enforced", "Enforce two-step verification for the roles above", "Security", "bool",
+         "Off during development: nobody is forced to set it up. Turn it on when the workspace is ready for use; "
+         "users in the roles above are then asked to set it up at their next sign-in. Anyone can still turn it "
+         "on for themselves in their profile.", default_attr="mfa_enforced"),
     Rule("login_rate_limit_per_minute", "Sign-in attempts allowed per computer per minute (0 = no limit)",
          "Security", "int", default_attr="login_rate_limit_per_minute", min=0, max=1000),
     # --- follow-up of recommendations (MoF Audit Recommendations Implementation and Follow-up Instructions)

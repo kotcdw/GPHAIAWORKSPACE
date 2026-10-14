@@ -44,11 +44,10 @@ def get_current_user(
 
 
 def mfa_enforced() -> bool:
-    """Required-role MFA applies on the published (production) installation, or everywhere when an admin says so."""
+    """Required-role MFA applies only once a Platform Administrator switches it on (Configuration > Security)."""
     from app.core.appconfig import cfg
-    from app.core.config import settings
 
-    return settings.environment.lower() == "production" or bool(cfg("mfa_enforce_outside_production"))
+    return bool(cfg("mfa_enforced"))
 
 
 def mfa_setup_required(user: User) -> bool:

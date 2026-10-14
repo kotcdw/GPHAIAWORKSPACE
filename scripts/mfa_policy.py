@@ -5,6 +5,8 @@ authenticator app is at hand. Run on the machine that hosts the app (direct data
     uv run python -m scripts.mfa_policy                 (show the current setting)
     uv run python -m scripts.mfa_policy --clear         (make two-step optional for every role)
     uv run python -m scripts.mfa_policy --roles Admin   (require it for these roles only)
+    uv run python -m scripts.mfa_policy --off           (stop enforcing it; roles are kept)
+    uv run python -m scripts.mfa_policy --on            (enforce it for the configured roles)
 
 The change is recorded in the audit log. Prefer setting up two-step verification in the profile;
 use this only to recover access, then set the policy again under Configuration > Security.
@@ -29,16 +31,38 @@ from app.core.enums import Role  # noqa: E402
 KEY = "mfa_required_roles"
 
 
+def _set(key: str, value) -> int:  # noqa: ANN001
+    db = SessionLocal()
+    try:
+        row = db.get(AppConfig, key)
+        if row is None:
+            db.add(AppConfig(key=key, value=json.dumps(value)))
+        else:
+            row.value = json.dumps(value)
+        log_action(db, user_id=None, action=f"CONFIG_SET {key}={value} (server script)")
+        db.commit()
+    finally:
+        db.close()
+    invalidate()
+    print(f"{key} is now {value}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--clear", action="store_true", help="two-step verification optional for everyone")
+    group.add_argument("--on", action="store_true", help="enforce two-step verification for the configured roles")
+    group.add_argument("--off", action="store_true", help="stop enforcing two-step verification")
     group.add_argument(
         "--roles", nargs="+", metavar="ROLE", help=f"roles that must use it ({', '.join(r.value for r in Role)})"
     )
     args = parser.parse_args()
     ensure_schema()
-    print(f"Roles that must use two-step verification now: {', '.join(cfg(KEY)) or 'none'}")
+    print(f"Enforced: {'yes' if cfg('mfa_enforced') else 'no'}. "
+          f"Roles that must use two-step verification when enforced: {', '.join(cfg(KEY)) or 'none'}")
+    if args.on or args.off:
+        return _set("mfa_enforced", bool(args.on))
     if not args.clear and not args.roles:
         return 0
     roles = [] if args.clear else args.roles

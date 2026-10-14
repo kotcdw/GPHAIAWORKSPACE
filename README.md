@@ -505,12 +505,13 @@ and every run is logged.
 (Configuration). All new lists, deadlines and recipients are admin settings under Configuration >
 *Follow-up & reporting* and *Professional practice*.
 
-### Two-step verification before go-live
+### Two-step verification: switched on by an administrator
 
-Roles listed under Configuration > Security must use two-step verification once the workspace is published
-(`GPHA_ENVIRONMENT=production`). On development / test installations it is not enforced unless an administrator
-ticks *Also require two-step verification on development / test installations*. Anyone can still turn it on
-for themselves.
+While the workspace is being built nobody is forced to set up two-step verification. When the app is ready, a
+Platform Administrator ticks **Configuration > Security > Enforce two-step verification for the roles above**
+(the roles are chosen in the same card). From then on users in those roles are asked to set it up at their next
+sign-in. Anyone can turn it on for themselves at any time. Server-side recovery:
+`uv run python -m scripts.mfa_policy --off` (or `--on`).
 
 ### AI Service (optional)
 

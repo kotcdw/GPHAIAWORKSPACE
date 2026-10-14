@@ -404,7 +404,7 @@ def test_mfa_waits_for_go_live_unless_admin_enforces(client, db, monkeypatch):
     monkeypatch.setattr(settings, "mfa_required_roles", "Auditor")
     login(client, user.username)
     assert client.get("/api/audits").status_code == 200
-    monkeypatch.setattr(settings, "mfa_enforce_outside_production", True)
+    monkeypatch.setattr(settings, "mfa_enforced", True)
     from app.core import appconfig
 
     appconfig.invalidate()

@@ -254,9 +254,8 @@ def test_mfa_required_role_is_enforced(client, db, monkeypatch):
     login(client, user.username)
     assert client.get("/api/auth/me").json()["mfa_setup_required"] is False
     assert client.get("/api/audits").status_code == 200
-    # Published (production): enforced.
-    monkeypatch.setattr(settings, "environment", "production")
-    monkeypatch.setattr(settings, "cookie_secure", False)
+    # Switched on by an administrator: enforced.
+    monkeypatch.setattr(settings, "mfa_enforced", True)
     me = client.get("/api/auth/me").json()
     assert me["mfa_setup_required"] is True
     blocked = client.get("/api/audits")
