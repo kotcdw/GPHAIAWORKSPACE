@@ -55,3 +55,29 @@ class PlanDistribution(Base):
     sent_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class PlanChangeRequest(Base):
+    """A requested change to an approved plan: reason, items, computed impact, review and approval."""
+
+    __tablename__ = "plan_change_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cr_ref: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("assurance_plans.id", ondelete="CASCADE"), nullable=False,
+                                         index=True)
+    base_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    items: Mapped[str] = mapped_column(Text, nullable=False)
+    impact: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="Submitted")
+    requested_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    approver_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_version: Mapped[int | None] = mapped_column(Integer, nullable=True)

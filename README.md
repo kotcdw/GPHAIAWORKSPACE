@@ -228,6 +228,19 @@ Revised, Closed, Archived** (`lifecycle_status`, kept in step automatically; Arc
 by the GM Audit, read-only and hidden from the default list).
 API: `/api/assurance-plans/{id}/cycle…`, `/api/assurance-plans/{id}/versions/{n}[/export.docx]`.
 
+### Changes to an approved plan
+
+An approved plan is never edited in place (the old direct amendment endpoints now refuse). Every change is a
+**plan change request** (`PCR-nnnn`): title and reason, the affected plan items (add / change / cancel
+engagements), the computed **resource impact** (hours vs budget, by quarter and by lead) and **coverage impact**
+(universe coverage, high-risk units gained or lost), the **requester**, an independent **reviewer** (endorse or
+return), and the GM Audit's **approval** by e-signature (approve or reject; requester cannot approve).
+Approval applies the changes, logs each one under Plan changes with the PCR reference, freezes a **new version**
+(snapshot + Word controlled copy) and re-distributes it to the holders of the previous version for
+acknowledgement. A request raised against an older version cannot be approved. A full revision ("Revise plan")
+needs a reason and goes back through internal review and the Audit Committee.
+API: `/api/assurance-plans/{id}/change-requests[/impact]`, `/api/plan-change-requests/{id}/review|approve|withdraw|resubmit`.
+
 ## Quick start
 
 ```powershell

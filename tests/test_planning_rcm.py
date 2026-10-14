@@ -31,8 +31,13 @@ def _universe(client2, adm, tag):
     lid = loc.json()["id"]
     high = client2.post(
         "/api/entity-units",
-        json={"location_id": lid, "code": "GJT", "name": "Golden Jubilee Terminal", "risk_likelihood": 4,
-              "risk_impact": 5},
+        json={
+            "location_id": lid,
+            "code": "GJT",
+            "name": "Golden Jubilee Terminal",
+            "risk_likelihood": 4,
+            "risk_impact": 5,
+        },
         headers=adm,
     ).json()
     low = client2.post(
@@ -61,8 +66,12 @@ def _approved_plan_with_audit(client, client2, people):
     ).json()
     eng = client.post(
         f"/api/assurance-plans/{plan['id']}/engagements",
-        json={"title": "GJT revenue assurance", "entity_unit_id": high["id"], "planned_quarter": "Q2",
-              "budget_hours": 120},
+        json={
+            "title": "GJT revenue assurance",
+            "entity_unit_id": high["id"],
+            "planned_quarter": "Q2",
+            "budget_hours": 120,
+        },
         headers=aud,
     ).json()
     walk_plan_to_review(client2, plan["id"], adm)
@@ -116,9 +125,10 @@ def test_assurance_plan_lifecycle(client, client2, people):
 
     # Starting from a draft plan is refused; auditors cannot approve.
     assert client.post(f"/api/plan-engagements/{eng['id']}/start", headers=aud).status_code == 409
-    assert client.post(
-        f"/api/assurance-plans/{plan['id']}/approve", json={"password": PASSWORD}, headers=aud
-    ).status_code == 403
+    assert (
+        client.post(f"/api/assurance-plans/{plan['id']}/approve", json={"password": PASSWORD}, headers=aud).status_code
+        == 403
+    )
 
     approved = client2.post(f"/api/assurance-plans/{plan['id']}/approve", json={"password": PASSWORD}, headers=adm)
     assert approved.status_code == 200 and approved.json()["status"] == "Approved"
@@ -127,9 +137,7 @@ def test_assurance_plan_lifecycle(client, client2, people):
     release_plan(client2, plan["id"], adm)
 
     # Approved plan is frozen.
-    frozen = client.post(
-        f"/api/assurance-plans/{plan['id']}/engagements", json={"title": "Late addition"}, headers=aud
-    )
+    frozen = client.post(f"/api/assurance-plans/{plan['id']}/engagements", json={"title": "Late addition"}, headers=aud)
     assert frozen.status_code == 409
 
     started = client.post(f"/api/plan-engagements/{eng['id']}/start", headers=aud).json()
@@ -141,7 +149,11 @@ def test_assurance_plan_lifecycle(client, client2, people):
 
     # Closing with an open audit is refused; reopening returns it to Draft.
     assert client2.post(f"/api/assurance-plans/{plan['id']}/close", headers=adm).status_code == 409
-    reopened = client2.post(f"/api/assurance-plans/{plan['id']}/reopen", headers=adm).json()
+    reopened = client2.post(
+        f"/api/assurance-plans/{plan['id']}/reopen",
+        json={"reason": "Mid-year revision after restructuring"},
+        headers=adm,
+    ).json()
     assert reopened["status"] == "Draft" and reopened["approved_by"] is None
     history = client.get(f"/api/records/assurance_plan/{plan['id']}/history").json()
     assert any("REOPENED" in h["action"] for h in history)
@@ -181,8 +193,12 @@ def test_rcm_test_issue_action_flow(client, client2, people):
 
     ctl = client.post(
         f"/api/objectives/{obj['id']}/controls",
-        json={"title": "Monthly billing reconciliation", "frequency": "Monthly", "owner_email": "fin@example.com",
-              "risk_ids": [r_high["id"], r_low["id"]]},
+        json={
+            "title": "Monthly billing reconciliation",
+            "frequency": "Monthly",
+            "owner_email": "fin@example.com",
+            "risk_ids": [r_high["id"], r_low["id"]],
+        },
         headers=aud,
     )
     assert ctl.status_code == 201, ctl.text
@@ -223,8 +239,12 @@ def test_rcm_test_issue_action_flow(client, client2, people):
     assert no_results.status_code == 422
     done = client.patch(
         f"/api/control-tests/{test['id']}",
-        json={"conclusion": "Ineffective", "exceptions_found": 1, "results": "March not reviewed",
-              "status": "Completed"},
+        json={
+            "conclusion": "Ineffective",
+            "exceptions_found": 1,
+            "results": "March not reviewed",
+            "status": "Completed",
+        },
         headers=aud,
     )
     assert done.status_code == 200, done.text
@@ -254,8 +274,11 @@ def test_rcm_test_issue_action_flow(client, client2, people):
 
     patched = client.patch(
         f"/api/findings/{issue['id']}",
-        json={"cause": "Reviewer on leave", "recommendation": "Assign a backup reviewer",
-              "root_cause_whys": ["No backup", "No rota", "Policy silent"]},
+        json={
+            "cause": "Reviewer on leave",
+            "recommendation": "Assign a backup reviewer",
+            "root_cause_whys": ["No backup", "No rota", "Policy silent"],
+        },
         headers=aud,
     )
     assert patched.status_code == 200, patched.text

@@ -104,7 +104,10 @@ def create_location(payload: LocationIn, request: Request, db: DBSession = Depen
 
 @router.patch("/api/locations/{location_id}", response_model=LocationOut)
 def update_location(
-    location_id: int, payload: LocationUpdate, request: Request, db: DBSession = Depends(get_db),
+    location_id: int,
+    payload: LocationUpdate,
+    request: Request,
+    db: DBSession = Depends(get_db),
     user: User = LibraryEdit,
 ):
     loc = db.get(Location, location_id)
@@ -236,8 +239,12 @@ def _history(db: DBSession, plan_id: int, user: User, action: str, request: Requ
 
 
 @router.get("/api/assurance-plans", response_model=list[PlanOut])
-def list_plans(db: DBSession = Depends(get_db), _: User = Staff, include_archived: bool = False,
-               lifecycle_status: str | None = None) -> list[AssurancePlan]:
+def list_plans(
+    db: DBSession = Depends(get_db),
+    _: User = Staff,
+    include_archived: bool = False,
+    lifecycle_status: str | None = None,
+) -> list[AssurancePlan]:
     stmt = select(AssurancePlan).order_by(AssurancePlan.fiscal_year.desc())
     if lifecycle_status:
         stmt = stmt.where(AssurancePlan.lifecycle_status == lifecycle_status)
@@ -321,11 +328,34 @@ def approve_plan(
 
 
 @router.post("/api/assurance-plans/{plan_id}/reopen", response_model=PlanDetail)
-def reopen_plan(plan_id: int, request: Request, db: DBSession = Depends(get_db), user: User = PlanAmend) -> PlanDetail:
-    """Return an approved plan to Draft for changes; it must be re-approved."""
+def reopen_plan(
+    plan_id: int,
+    request: Request,
+    payload: CancelIn | None = None,
+    db: DBSession = Depends(get_db),
+    user: User = PlanAmend,
+) -> PlanDetail:
+    """Full revision: return an approved plan to Draft. It goes back through internal review and the Audit
+    Committee, and re-approval freezes the next version. Smaller changes use a plan change request."""
     plan = _plan_or_404(db, plan_id)
     if plan.status != PlanStatus.Approved:
         raise _conflict("Only an approved plan can be reopened")
+    reason = (payload.reason if payload else "").strip()
+    if len(reason) < 10:
+        from app.core.errors import field_error
+
+        raise field_error("reason", "explain why the approved plan is being revised (10+ characters)")
+    from app.modules.planning.models import PlanChange
+
+    db.add(
+        PlanChange(
+            plan_id=plan.id,
+            change_type="Revision",
+            reason=reason,
+            changed_by=user.id,
+            description=f"Approved version {plan.current_version} reopened for a full revision",
+        )
+    )
     plan.status = PlanStatus.Draft
     plan.approved_by = None
     plan.approved_at = None
@@ -446,23 +476,19 @@ def remove_engagement(eng_id: int, request: Request, db: DBSession = Depends(get
 
 @router.post("/api/plan-engagements/{eng_id}/cancel", response_model=EngagementOut)
 def cancel_engagement(
-    eng_id: int, request: Request, payload: CancelIn | None = None, db: DBSession = Depends(get_db),
+    eng_id: int,
+    request: Request,
+    payload: CancelIn | None = None,
+    db: DBSession = Depends(get_db),
     user: User = PlanAmend,
 ) -> EngagementOut:
     eng = _engagement_or_404(db, eng_id)
     if eng.status != EngagementStatus.Planned:
         raise _conflict("Only an engagement that has not started can be cancelled")
-    reason = (payload.reason if payload else "").strip()
     if eng.plan.status == PlanStatus.Approved:
-        if len(reason) < 10:
-            from app.core.errors import field_error
-
-            raise field_error("reason", "explain why an engagement of the approved plan is cancelled (10+ characters)")
-        from app.modules.planning.models import PlanChange
-
-        db.add(PlanChange(plan_id=eng.plan_id, engagement_id=eng.id, change_type="Cancelled",
-                          description=f"{eng.title} ({eng.planned_quarter}, {eng.budget_hours}h) cancelled",
-                          reason=reason, changed_by=user.id))
+        raise _conflict(
+            "Approved plans are changed through a plan change request (reason, impact, review and approval)"
+        )
     eng.status = EngagementStatus.Cancelled
     log_action(db, user_id=user.id, action=f"ENGAGEMENT_CANCEL id={eng.id}", request=request)
     _history(db, eng.plan_id, user, f"ENGAGEMENT CANCELLED #{eng.id} {eng.title}", request)

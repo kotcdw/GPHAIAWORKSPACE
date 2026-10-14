@@ -62,24 +62,45 @@ def test_committee_approval_and_documented_plan_changes(client, client2, db):
     detail = client.get(f"/api/assurance-plans/{plan['id']}").json()
     assert detail["committee_reference"] == "AC/2026/04"
 
-    # Amendments to the approved plan need a reason and are logged.
+    # Changes to the approved plan go through change requests (reason, impact, review, approval, new version).
     assert client2.post(f"/api/assurance-plans/{plan['id']}/amendments",
-                        json={"title": "Fraud investigation", "reason": "short"}, headers=ah).status_code == 422
-    added = client2.post(f"/api/assurance-plans/{plan['id']}/amendments",
-                         json={"title": "Fraud investigation", "planned_quarter": "Q3", "budget_hours": 80,
-                               "reason": "Requested by the Board after whistleblower report"}, headers=ah)
-    assert added.status_code == 201, added.text
-    changed = client2.post(f"/api/plan-engagements/{eng['id']}/amend",
-                           json={"planned_quarter": "Q4", "budget_hours": 100,
-                                 "reason": "Payroll system migration moved to Q4"}, headers=ah)
-    assert changed.status_code == 200 and len(changed.json()["changes"]) == 2
-    no_reason = client2.post(f"/api/plan-engagements/{eng['id']}/cancel", json={"reason": ""}, headers=ah)
-    assert no_reason.status_code == 422
-    assert client2.post(f"/api/plan-engagements/{added.json()['id']}/cancel",
-                        json={"reason": "Investigation handed to the police unit"}, headers=ah).status_code == 200
+                        json={"title": "Fraud investigation", "reason": "Requested by the Board"},
+                        headers=ah).status_code == 409
+    reviewer = _u(db, "gprev", Role.Auditor, ReviewLevel.Manager)
+    rh = csrf_headers(login(client, reviewer.username))
+
+    def change(items, reason):
+        cr = client2.post(f"/api/assurance-plans/{plan['id']}/change-requests",
+                          json={"title": "Amendment", "reason": reason, "items": items}, headers=ah)
+        assert cr.status_code == 201, cr.text
+        cr = cr.json()
+        assert client.post(f"/api/plan-change-requests/{cr['id']}/review", json={"decision": "Endorse"},
+                           headers=rh).status_code == 200
+        return cr
+
+    cr1 = change([{"action": "add", "title": "Fraud investigation", "planned_quarter": "Q3", "budget_hours": 80},
+                  {"action": "change", "engagement_id": eng["id"], "planned_quarter": "Q4", "budget_hours": 100}],
+                 "Requested by the Board after whistleblower report")
+    assert cr1["impact"]["resource"]["hours_delta"] == 60
+    # The requester cannot approve; the GM Audit (another Admin here) e-signs.
+    assert client2.post(f"/api/plan-change-requests/{cr1['id']}/approve", json={"password": DEFAULT_PASSWORD},
+                        headers=ah).status_code == 403
+    admin2 = _u(db, "gpadm2", Role.Admin)
+    a2 = csrf_headers(login(client, admin2.username))
+    done = client.post(f"/api/plan-change-requests/{cr1['id']}/approve", json={"password": DEFAULT_PASSWORD},
+                       headers=a2).json()
+    assert done["status"] == "Approved" and done["new_version"] == 2
+    added_id = next(e["id"] for e in client.get(f"/api/assurance-plans/{plan['id']}").json()["engagements"]
+                    if e["title"] == "Fraud investigation")
+    rh = csrf_headers(login(client, reviewer.username))
+    cr2 = change([{"action": "cancel", "engagement_id": added_id}], "Investigation handed to the police unit")
+    a2 = csrf_headers(login(client, admin2.username))
+    assert client.post(f"/api/plan-change-requests/{cr2['id']}/approve", json={"password": DEFAULT_PASSWORD},
+                       headers=a2).json()["new_version"] == 3
 
     log = client.get(f"/api/assurance-plans/{plan['id']}/changes").json()
-    assert [c["change_type"] for c in log] == ["Cancelled", "Changed", "Added", "Committee"]
+    assert [c["change_type"] for c in log][-1] == "Committee"
+    assert sorted(c["change_type"] for c in log[:-1]) == ["Added", "Cancelled", "Changed"]
     summary = client.get(f"/api/committee/summary?fiscal_year={fy}").json()
     assert summary["plan"]["committee_reference"] == "AC/2026/04" and len(summary["plan_changes"]) == 3
     pack = client.get(f"/api/committee/pack.docx?fiscal_year={fy}")

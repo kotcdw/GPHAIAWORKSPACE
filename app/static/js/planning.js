@@ -206,10 +206,7 @@ async function openPlan(id) {
   setActiveNav("plans");
   viewRoot.append(viewHeader(plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`, [
     draft ? btn("Edit", () => editPlanModal(plan), "secondary") : null,
-    hasPerm("plan.amend") && approved ? btn("Revise plan", async () => {
-      try { await API.post(`/api/assurance-plans/${id}/reopen`); toast("Plan reopened for revision"); openPlan(id); }
-      catch (err) { toast(err.message, "error"); }
-    }, "secondary") : null,
+    hasPerm("plan.amend") && approved ? btn("Revise plan", () => revisePlanDialog(plan), "secondary") : null,
     hasPerm("plan.amend") && plan.status === "Closed" && !plan.archived_at ? btn("Archive", async () => {
       if (!window.confirm("Archive this plan year? It becomes read-only and leaves the default plan list.")) return;
       try { await API.post(`/api/assurance-plans/${id}/archive`); toast("Plan archived"); openPlan(id); }
@@ -253,7 +250,7 @@ async function openPlan(id) {
   renderPlanCycle(cycleSlot, plan);
   if (plan.committee_meeting_date) viewRoot.append(committeeCard(plan));
 
-  const tabs = [{ key: "eng", label: "Engagements" }, { key: "cycle", label: "Planning cycle & versions" }, { key: "changes", label: "Plan changes" }, { key: "history", label: "History" },
+  const tabs = [{ key: "eng", label: "Engagements" }, { key: "cycle", label: "Planning cycle & versions" }, { key: "crs", label: "Change requests" }, { key: "changes", label: "Plan changes" }, { key: "history", label: "History" },
     { key: "approvals", label: "Approval cycles" }];
   let active = "eng";
   const detail = el("div");
@@ -265,6 +262,7 @@ async function openPlan(id) {
     detail.append(panel);
     if (active === "eng") renderEngagements(panel, plan);
     if (active === "cycle") renderPlanCycleLog(panel, plan);
+    if (active === "crs") renderChangeRequests(panel, plan);
     if (active === "changes") renderPlanChanges(panel, plan);
     if (active === "history") renderHistoryTab(panel, "assurance_plan", id);
     if (active === "approvals") renderApprovalsTab(panel, "assurance_plan", id);
@@ -292,8 +290,6 @@ async function renderEngagements(panel, plan) {
           try { const r = await API.post(`/api/plan-engagements/${e.id}/start`); toast("Audit project created"); openAudit(r.audit_id); }
           catch (err) { toast(err.message, "error"); }
         }) : null,
-        approved && e.status !== "Cancelled" && hasPerm("plan.amend") ? btn("Change", () => amendEngagement(plan, e), "secondary") : null,
-        approved && e.status === "Planned" && hasPerm("plan.amend") ? btn("Cancel", () => cancelEngagement(plan, e), "danger-ghost") : null,
         draft ? btn("Edit", () => addEngagement(plan, e), "secondary") : null,
         draft ? btn("Remove", async () => {
           try { await API.del(`/api/plan-engagements/${e.id}`); toast("Removed"); openPlan(plan.id); }
@@ -301,8 +297,10 @@ async function renderEngagements(panel, plan) {
         }, "danger-ghost") : null)))))));
   if (draft) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement", () => addEngagement(plan))));
   else if (approved) {
-    card.append(el("p", { class: "muted" }, "The plan is approved. Changes are made as amendments with a reason; each one is logged under Plan changes and reported in the Committee pack."));
-    if (hasPerm("plan.amend")) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement (amendment)", () => amendAddEngagement(plan))));
+    card.append(el("p", { class: "muted" }, "The plan is approved and is not edited directly. Changes go through a change request (reason, affected items, resource and coverage impact, review and approval) and create a new version; each change is logged under Plan changes and reported in the Committee pack."));
+    if (plan.current_version && hasPerm("plan.prepare", "oversight.port", "audit.memo_approve")) {
+      card.append(el("div", { style: "margin-top:12px" }, btn("Request a change", () => changeRequestEditor(plan))));
+    }
   }
 }
 
@@ -756,50 +754,3 @@ async function renderPlanChanges(panelEl, plan) {
   } catch (err) { card.append(el("div", { class: "muted" }, err.message)); }
 }
 
-const REASON_FIELD = { name: "reason", label: "Reason for the change", type: "textarea", required: true, minLength: 10, maxLength: 2000, full: true,
-  help: "Recorded in the plan-change log and reported to the Audit Committee" };
-
-async function amendAddEngagement(plan) {
-  const units = await safeGet("/api/entity-units?active_only=true", []);
-  openForm({
-    key: `amend:add:${plan.id}`, title: "Add engagement to the approved plan", width: 680,
-    fields: [
-      { name: "title", label: "Engagement title", required: true, maxLength: 255, singleLine: true },
-      { name: "entity_unit_id", label: "Entity unit", type: "select", emptyLabel: "- none -",
-        options: units.sort((a, b) => b.risk_score - a.risk_score).map((u) => ({ value: u.id, label: `${u.location_name} / ${u.name} (risk ${u.risk_score})` })) },
-      { name: "planned_quarter", label: "Quarter", type: "select", required: true, options: QUARTERS },
-      { name: "budget_hours", label: "Budget hours", type: "number", min: 0, max: 10000 },
-      REASON_FIELD,
-    ],
-    initial: { planned_quarter: "Q1", budget_hours: 0 },
-    submitLabel: "Add to plan",
-    onSubmit: (v) => API.post(`/api/assurance-plans/${plan.id}/amendments`, { ...v, budget_hours: v.budget_hours || 0 }),
-    onDone: () => { toast("Engagement added and logged"); openPlan(plan.id); },
-  });
-}
-
-function amendEngagement(plan, e) {
-  openForm({
-    key: `amend:change:${e.id}`, title: `Change ${e.title}`, width: 600, draftable: false,
-    fields: [
-      { name: "planned_quarter", label: "Quarter", type: "select", required: true, options: QUARTERS },
-      { name: "budget_hours", label: "Budget hours", type: "number", min: 0, max: 10000, required: true },
-      REASON_FIELD,
-    ],
-    initial: { planned_quarter: e.planned_quarter, budget_hours: e.budget_hours },
-    submitLabel: "Save change",
-    onSubmit: (v) => API.post(`/api/plan-engagements/${e.id}/amend`, v),
-    onDone: () => { toast("Change logged"); openPlan(plan.id); },
-  });
-}
-
-function cancelEngagement(plan, e) {
-  openForm({
-    key: `amend:cancel:${e.id}`, title: `Cancel ${e.title}`, width: 560, draftable: false,
-    intro: "The engagement stays on record as Cancelled.",
-    fields: [REASON_FIELD],
-    submitLabel: "Cancel engagement",
-    onSubmit: (v) => API.post(`/api/plan-engagements/${e.id}/cancel`, v),
-    onDone: () => { toast("Engagement cancelled and logged"); openPlan(plan.id); },
-  });
-}

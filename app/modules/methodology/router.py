@@ -74,45 +74,91 @@ def _plan(db: DBSession, plan_id: int) -> AssurancePlan:
     return plan
 
 
-def _log_change(db: DBSession, plan: AssurancePlan, user: User, kind: str, description: str, reason: str,
-                request: Request, engagement_id: int | None = None) -> None:
-    db.add(PlanChange(plan_id=plan.id, engagement_id=engagement_id, change_type=kind, description=description,
-                      reason=reason, changed_by=user.id))
-    log_record_history(db, record_type="assurance_plan", record_id=plan.id, user_id=user.id,
-                       action=f"PLAN {kind.upper()}: {description}"[:490], request=request)
+def _log_change(
+    db: DBSession,
+    plan: AssurancePlan,
+    user: User,
+    kind: str,
+    description: str,
+    reason: str,
+    request: Request,
+    engagement_id: int | None = None,
+) -> None:
+    db.add(
+        PlanChange(
+            plan_id=plan.id,
+            engagement_id=engagement_id,
+            change_type=kind,
+            description=description,
+            reason=reason,
+            changed_by=user.id,
+        )
+    )
+    log_record_history(
+        db,
+        record_type="assurance_plan",
+        record_id=plan.id,
+        user_id=user.id,
+        action=f"PLAN {kind.upper()}: {description}"[:490],
+        request=request,
+    )
 
 
 @router.post("/api/assurance-plans/{plan_id}/committee-approval")
-def record_committee_approval(plan_id: int, payload: CommitteeIn, request: Request, db: DBSession = Depends(get_db),
-                              user: User = Staff) -> dict:
+def record_committee_approval(
+    plan_id: int, payload: CommitteeIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
+) -> dict:
     """Record that the Audit Committee approved the (CAE-approved) plan at a meeting."""
     from app.core.deps import ensure_perm
 
     ensure_perm(user, "plan.amend")
     plan = _plan(db, plan_id)
     if plan.status != PlanStatus.Approved:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail="The CAE approves the plan first; then record the Audit Committee's approval")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The CAE approves the plan first; then record the Audit Committee's approval",
+        )
     if payload.meeting_date.replace(tzinfo=None) > utcnow():
         raise field_error("meeting_date", "cannot be in the future")
     if plan.approved_at and payload.meeting_date.replace(tzinfo=None).date() < plan.approved_at.date():
         raise field_error("meeting_date", "is before the CAE approved the plan")
-    if plan.cycle_stage in ("preparation", "universe_review", "managers_meeting", "drafting", "internal_review",
-                            "submission", "committee"):
+    if plan.cycle_stage in (
+        "preparation",
+        "universe_review",
+        "managers_meeting",
+        "drafting",
+        "internal_review",
+        "submission",
+        "committee",
+    ):
         # First Committee approval of this CAE-approved draft: freeze a numbered version (planning cycle).
         from app.modules.plancycle.router import record_committee_decision
 
-        record_committee_decision(db, plan, user, "Approved", payload.meeting_date.replace(tzinfo=None),
-                                  payload.reference.strip(), payload.notes.strip(), request)
+        record_committee_decision(
+            db,
+            plan,
+            user,
+            "Approved",
+            payload.meeting_date.replace(tzinfo=None),
+            payload.reference.strip(),
+            payload.notes.strip(),
+            request,
+        )
     else:
         plan.committee_meeting_date = payload.meeting_date.replace(tzinfo=None)
         plan.committee_reference = payload.reference.strip()
         plan.committee_notes = payload.notes.strip()
         plan.committee_recorded_by = user.id
         plan.committee_recorded_at = utcnow()
-    _log_change(db, plan, user, "Committee", f"Approved by the Audit Committee on "
-                f"{plan.committee_meeting_date:%d %b %Y} (ref {plan.committee_reference})", payload.notes.strip(),
-                request)
+    _log_change(
+        db,
+        plan,
+        user,
+        "Committee",
+        f"Approved by the Audit Committee on {plan.committee_meeting_date:%d %b %Y} (ref {plan.committee_reference})",
+        payload.notes.strip(),
+        request,
+    )
     log_action(db, user_id=user.id, action=f"PLAN_COMMITTEE_APPROVAL id={plan.id}", request=request)
     db.commit()
     return {"message": "Audit Committee approval recorded", "committee_reference": plan.committee_reference}
@@ -129,20 +175,34 @@ class AmendAddIn(BaseModel):
 
 
 @router.post("/api/assurance-plans/{plan_id}/amendments", status_code=status.HTTP_201_CREATED)
-def amend_add(plan_id: int, payload: AmendAddIn, request: Request, db: DBSession = Depends(get_db),
-              user: User = AdminOnly) -> dict:
-    """Add an engagement to an approved plan (e.g. a special investigation) with a documented reason."""
+def amend_add(
+    plan_id: int, payload: AmendAddIn, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
+) -> dict:
+    """Superseded by plan change requests (app.modules.plancycle.changes); kept so old clients get a clear answer."""
     plan = _plan(db, plan_id)
     if plan.status != PlanStatus.Approved:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail="Use the normal Add engagement while the plan is a draft")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Use the normal Add engagement while the plan is a draft"
+        )
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Approved plans are changed through a plan change request (reason, impact, review and approval)",
+    )
     reason = _reason(payload.reason)
     data = payload.model_dump(exclude={"reason"})
     eng = PlanEngagement(plan_id=plan.id, created_by=user.id, **data)
     db.add(eng)
     db.flush()
-    _log_change(db, plan, user, "Added", f"{eng.title} ({eng.planned_quarter}, {eng.budget_hours}h) added",
-                reason, request, eng.id)
+    _log_change(
+        db,
+        plan,
+        user,
+        "Added",
+        f"{eng.title} ({eng.planned_quarter}, {eng.budget_hours}h) added",
+        reason,
+        request,
+        eng.id,
+    )
     log_action(db, user_id=user.id, action=f"PLAN_AMEND_ADD plan={plan.id} eng={eng.id}", request=request)
     db.commit()
     return {"id": eng.id, "message": "Engagement added to the approved plan"}
@@ -156,8 +216,9 @@ class AmendChangeIn(BaseModel):
 
 
 @router.post("/api/plan-engagements/{eng_id}/amend")
-def amend_change(eng_id: int, payload: AmendChangeIn, request: Request, db: DBSession = Depends(get_db),
-                 user: User = AdminOnly) -> dict:
+def amend_change(
+    eng_id: int, payload: AmendChangeIn, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
+) -> dict:
     """Re-time, re-budget or re-assign an engagement of an approved plan, with a documented reason."""
     eng = db.get(PlanEngagement, eng_id)
     if eng is None:
@@ -165,6 +226,10 @@ def amend_change(eng_id: int, payload: AmendChangeIn, request: Request, db: DBSe
     plan = _plan(db, eng.plan_id)
     if plan.status != PlanStatus.Approved:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Edit the engagement directly in a draft plan")
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Approved plans are changed through a plan change request (reason, impact, review and approval)",
+    )
     if eng.status == EngagementStatus.Cancelled:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The engagement is cancelled")
     reason = _reason(payload.reason)
@@ -192,10 +257,23 @@ def amend_change(eng_id: int, payload: AmendChangeIn, request: Request, db: DBSe
 @router.get("/api/assurance-plans/{plan_id}/changes", response_model=list[ChangeOut])
 def plan_changes(plan_id: int, db: DBSession = Depends(get_db), user: User = Staff) -> list[ChangeOut]:
     _plan(db, plan_id)
-    rows = db.execute(select(PlanChange).where(PlanChange.plan_id == plan_id)
-                      .order_by(PlanChange.changed_at.desc(), PlanChange.id.desc())).scalars()
-    return [ChangeOut(id=c.id, change_type=c.change_type, engagement_id=c.engagement_id, description=c.description,
-                      reason=c.reason, changed_by=_name(db, c.changed_by), changed_at=c.changed_at) for c in rows]
+    rows = db.execute(
+        select(PlanChange)
+        .where(PlanChange.plan_id == plan_id)
+        .order_by(PlanChange.changed_at.desc(), PlanChange.id.desc())
+    ).scalars()
+    return [
+        ChangeOut(
+            id=c.id,
+            change_type=c.change_type,
+            engagement_id=c.engagement_id,
+            description=c.description,
+            reason=c.reason,
+            changed_by=_name(db, c.changed_by),
+            changed_at=c.changed_at,
+        )
+        for c in rows
+    ]
 
 
 # ==================================================================== criteria library
@@ -250,11 +328,24 @@ class CriterionList(BaseModel):
 
 
 def _crit_out(db: DBSession, c: Criterion, counts: dict[int, int] | None = None) -> CriterionOut:
-    used = counts.get(c.id, 0) if counts is not None else db.execute(
-        select(func.count()).select_from(Finding).where(Finding.criterion_id == c.id)).scalar_one()
-    return CriterionOut(id=c.id, crit_ref=c.crit_ref, title=c.title, source_type=c.source_type, reference=c.reference,
-                        body=c.body, status=c.status, used_in=used, created_by=c.created_by,
-                        created_at=c.created_at, updated_at=c.updated_at)
+    used = (
+        counts.get(c.id, 0)
+        if counts is not None
+        else db.execute(select(func.count()).select_from(Finding).where(Finding.criterion_id == c.id)).scalar_one()
+    )
+    return CriterionOut(
+        id=c.id,
+        crit_ref=c.crit_ref,
+        title=c.title,
+        source_type=c.source_type,
+        reference=c.reference,
+        body=c.body,
+        status=c.status,
+        used_in=used,
+        created_by=c.created_by,
+        created_at=c.created_at,
+        updated_at=c.updated_at,
+    )
 
 
 @router.get("/api/criteria/sources")
@@ -263,30 +354,53 @@ def criteria_sources(user: User = Staff) -> list[str]:
 
 
 @router.get("/api/criteria", response_model=CriterionList)
-def list_criteria(q: str | None = None, status_filter: str | None = Query(None, alias="status"),
-                  source_type: str | None = None, db: DBSession = Depends(get_db), user: User = Staff) -> CriterionList:
+def list_criteria(
+    q: str | None = None,
+    status_filter: str | None = Query(None, alias="status"),
+    source_type: str | None = None,
+    db: DBSession = Depends(get_db),
+    user: User = Staff,
+) -> CriterionList:
     stmt = select(Criterion).order_by(Criterion.title)
     if q:
         like = f"%{q.lower()}%"
-        stmt = stmt.where(or_(func.lower(Criterion.title).like(like), func.lower(Criterion.reference).like(like),
-                              func.lower(Criterion.crit_ref).like(like), func.lower(Criterion.body).like(like)))
+        stmt = stmt.where(
+            or_(
+                func.lower(Criterion.title).like(like),
+                func.lower(Criterion.reference).like(like),
+                func.lower(Criterion.crit_ref).like(like),
+                func.lower(Criterion.body).like(like),
+            )
+        )
     if status_filter:
         stmt = stmt.where(Criterion.status == status_filter)
     if source_type:
         stmt = stmt.where(Criterion.source_type == source_type)
     rows = list(db.execute(stmt).scalars())
-    counts = dict(db.execute(select(Finding.criterion_id, func.count()).where(Finding.criterion_id.is_not(None))
-                             .group_by(Finding.criterion_id)).all())
+    counts = dict(
+        db.execute(
+            select(Finding.criterion_id, func.count())
+            .where(Finding.criterion_id.is_not(None))
+            .group_by(Finding.criterion_id)
+        ).all()
+    )
     return CriterionList(total=len(rows), items=[_crit_out(db, c, counts) for c in rows])
 
 
 @router.post("/api/criteria", response_model=CriterionOut, status_code=status.HTTP_201_CREATED)
-def create_criterion(payload: CriterionIn, request: Request, db: DBSession = Depends(get_db),
-                     user: User = Staff) -> CriterionOut:
+def create_criterion(
+    payload: CriterionIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
+) -> CriterionOut:
     if not has_perm(user, "method.library", "audit.findings"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not maintain criteria")
-    c = Criterion(crit_ref=next_reference(db, "CR"), title=payload.title.strip(), source_type=payload.source_type,
-                  reference=payload.reference.strip(), body=payload.body.strip(), created_by=user.id)
+    c = Criterion(
+        crit_ref=next_reference(db, "CR"),
+        title=payload.title.strip(),
+        source_type=payload.source_type,
+        reference=payload.reference.strip(),
+        body=payload.body.strip(),
+        created_by=user.id,
+    )
     db.add(c)
     db.flush()
     log_action(db, user_id=user.id, action=f"CRITERION_CREATE id={c.id} ref={c.crit_ref}", request=request)
@@ -308,8 +422,9 @@ def get_criterion(crit_id: int, db: DBSession = Depends(get_db), user: User = St
 
 
 @router.patch("/api/criteria/{crit_id}", response_model=CriterionOut)
-def update_criterion(crit_id: int, payload: CriterionPatch, request: Request, db: DBSession = Depends(get_db),
-                     user: User = Staff) -> CriterionOut:
+def update_criterion(
+    crit_id: int, payload: CriterionPatch, request: Request, db: DBSession = Depends(get_db), user: User = Staff
+) -> CriterionOut:
     if not has_perm(user, "method.library", "audit.findings"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not maintain criteria")
     c = _crit(db, crit_id)
@@ -320,8 +435,14 @@ def update_criterion(crit_id: int, payload: CriterionPatch, request: Request, db
             setattr(c, field, value.strip() if isinstance(value, str) else value)
             changed.append(field)
     log_action(db, user_id=user.id, action=f"CRITERION_UPDATE id={c.id} [{', '.join(changed)}]", request=request)
-    log_record_history(db, record_type="criterion", record_id=c.id, user_id=user.id,
-                       action=f"UPDATED [{', '.join(changed)}]", request=request)
+    log_record_history(
+        db,
+        record_type="criterion",
+        record_id=c.id,
+        user_id=user.id,
+        action=f"UPDATED [{', '.join(changed)}]",
+        request=request,
+    )
     db.commit()
     return _crit_out(db, c)
 
@@ -369,19 +490,35 @@ class NoteOut(BaseModel):
 
 
 def _is_reviewer(user: User) -> bool:
-    return user.role == Role.Admin or user.review_level in (ReviewLevel.Manager, ReviewLevel.CAE) or \
-        "unit_head" == job_role_of(user)
+    return (
+        user.role == Role.Admin
+        or user.review_level in (ReviewLevel.Manager, ReviewLevel.CAE)
+        or "unit_head" == job_role_of(user)
+    )
 
 
 def _note_out(db: DBSession, n: ReviewNote, user: User) -> NoteOut:
     staff = user.role in (Role.Admin, Role.Auditor)
     return NoteOut(
-        id=n.id, audit_id=n.audit_id, target_type=n.target_type, target_id=n.target_id, target_label=n.target_label,
-        note=n.note, status=n.status, response=n.response, raised_by=n.raised_by, raised_by_name=_name(db, n.raised_by),
-        raised_at=n.raised_at, responded_by_name=_name(db, n.responded_by), responded_at=n.responded_at,
-        cleared_by_name=_name(db, n.cleared_by), cleared_at=n.cleared_at,
+        id=n.id,
+        audit_id=n.audit_id,
+        target_type=n.target_type,
+        target_id=n.target_id,
+        target_label=n.target_label,
+        note=n.note,
+        status=n.status,
+        response=n.response,
+        raised_by=n.raised_by,
+        raised_by_name=_name(db, n.raised_by),
+        raised_at=n.raised_at,
+        responded_by_name=_name(db, n.responded_by),
+        responded_at=n.responded_at,
+        cleared_by_name=_name(db, n.cleared_by),
+        cleared_at=n.cleared_at,
         can_respond=staff and n.status in ("Open", "Responded") and n.raised_by != user.id,
-        can_clear=staff and n.status == "Responded" and (n.raised_by == user.id or _is_reviewer(user))
+        can_clear=staff
+        and n.status == "Responded"
+        and (n.raised_by == user.id or _is_reviewer(user))
         and n.responded_by != user.id,
     )
 
@@ -404,29 +541,43 @@ def _target_label(db: DBSession, audit: Audit, kind: str, target_id: int | None)
     from app.modules.rcm.models import Control, ControlTest, Objective
 
     t = db.get(ControlTest, target_id)
-    ok = t is not None and db.execute(select(Objective.audit_id).join(Control, Control.objective_id == Objective.id)
-                                      .where(Control.id == t.control_id)).scalar_one_or_none() == audit.id
+    ok = (
+        t is not None
+        and db.execute(
+            select(Objective.audit_id)
+            .join(Control, Control.objective_id == Objective.id)
+            .where(Control.id == t.control_id)
+        ).scalar_one_or_none()
+        == audit.id
+    )
     if not ok:
         raise field_error("target_id", "is not a control test of this audit")
     return f"Test {t.ref}"
 
 
 def open_notes(db: DBSession, audit_id: int) -> int:
-    return db.execute(select(func.count()).select_from(ReviewNote).where(
-        ReviewNote.audit_id == audit_id, ReviewNote.status != "Cleared")).scalar_one()
+    return db.execute(
+        select(func.count())
+        .select_from(ReviewNote)
+        .where(ReviewNote.audit_id == audit_id, ReviewNote.status != "Cleared")
+    ).scalar_one()
 
 
 @router.get("/api/audits/{audit_id}/review-notes", response_model=list[NoteOut])
 def list_notes(audit_id: int, db: DBSession = Depends(get_db), user: User = Staff) -> list[NoteOut]:
     ensure_can_view(db, user, "audit", db.get(Audit, audit_id))
-    rows = db.execute(select(ReviewNote).where(ReviewNote.audit_id == audit_id)
-                      .order_by(ReviewNote.status != "Open", ReviewNote.raised_at.desc())).scalars()
+    rows = db.execute(
+        select(ReviewNote)
+        .where(ReviewNote.audit_id == audit_id)
+        .order_by(ReviewNote.status != "Open", ReviewNote.raised_at.desc())
+    ).scalars()
     return [_note_out(db, n, user) for n in rows]
 
 
 @router.post("/api/audits/{audit_id}/review-notes", response_model=NoteOut, status_code=status.HTTP_201_CREATED)
-def raise_note(audit_id: int, payload: NoteIn, request: Request, db: DBSession = Depends(get_db),
-               user: User = Staff) -> NoteOut:
+def raise_note(
+    audit_id: int, payload: NoteIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
+) -> NoteOut:
     audit = db.get(Audit, audit_id)
     ensure_can_view(db, user, "audit", audit)
     if audit.status == AuditStatus.Closed:
@@ -434,18 +585,38 @@ def raise_note(audit_id: int, payload: NoteIn, request: Request, db: DBSession =
     if not has_perm(user, "review.notes"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not raise review notes")
     if audit.created_by == user.id and not _is_reviewer(user):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Review notes are raised by a reviewer, not by the audit's preparer")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Review notes are raised by a reviewer, not by the audit's preparer",
+        )
     label = _target_label(db, audit, payload.target_type, payload.target_id)
-    n = ReviewNote(audit_id=audit_id, target_type=payload.target_type, target_id=payload.target_id,
-                   target_label=label[:255], note=payload.note.strip(), raised_by=user.id)
+    n = ReviewNote(
+        audit_id=audit_id,
+        target_type=payload.target_type,
+        target_id=payload.target_id,
+        target_label=label[:255],
+        note=payload.note.strip(),
+        raised_by=user.id,
+    )
     db.add(n)
     db.flush()
     if audit.created_by != user.id:
-        notify(db, audit.created_by, f"Review note on {audit.title}", f"{label}\n{n.note}", link_type="audit",
-               link_id=audit.id)
-    log_record_history(db, record_type="audit", record_id=audit.id, user_id=user.id,
-                       action=f"REVIEW NOTE RAISED #{n.id} on {label}"[:490], request=request)
+        notify(
+            db,
+            audit.created_by,
+            f"Review note on {audit.title}",
+            f"{label}\n{n.note}",
+            link_type="audit",
+            link_id=audit.id,
+        )
+    log_record_history(
+        db,
+        record_type="audit",
+        record_id=audit.id,
+        user_id=user.id,
+        action=f"REVIEW NOTE RAISED #{n.id} on {label}"[:490],
+        request=request,
+    )
     db.commit()
     return _note_out(db, n, user)
 
@@ -459,8 +630,9 @@ def _note(db: DBSession, note_id: int, user: User) -> ReviewNote:
 
 
 @router.post("/api/review-notes/{note_id}/respond", response_model=NoteOut)
-def respond_note(note_id: int, payload: NoteText, request: Request, db: DBSession = Depends(get_db),
-                 user: User = Staff) -> NoteOut:
+def respond_note(
+    note_id: int, payload: NoteText, request: Request, db: DBSession = Depends(get_db), user: User = Staff
+) -> NoteOut:
     n = _note(db, note_id, user)
     if n.status == "Cleared":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The note is already cleared")
@@ -470,10 +642,22 @@ def respond_note(note_id: int, payload: NoteText, request: Request, db: DBSessio
     n.status = "Responded"
     n.responded_by = user.id
     n.responded_at = utcnow()
-    notify(db, n.raised_by, "Review note answered", f"{n.target_label}\n{n.response}", link_type="audit",
-           link_id=n.audit_id)
-    log_record_history(db, record_type="audit", record_id=n.audit_id, user_id=user.id,
-                       action=f"REVIEW NOTE ANSWERED #{n.id}", request=request)
+    notify(
+        db,
+        n.raised_by,
+        "Review note answered",
+        f"{n.target_label}\n{n.response}",
+        link_type="audit",
+        link_id=n.audit_id,
+    )
+    log_record_history(
+        db,
+        record_type="audit",
+        record_id=n.audit_id,
+        user_id=user.id,
+        action=f"REVIEW NOTE ANSWERED #{n.id}",
+        request=request,
+    )
     db.commit()
     return _note_out(db, n, user)
 
@@ -484,13 +668,21 @@ def clear_note(note_id: int, request: Request, db: DBSession = Depends(get_db), 
     if n.status != "Responded":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The preparer must answer the note first")
     if not (n.raised_by == user.id or _is_reviewer(user)) or n.responded_by == user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Only the reviewer (or an Audit Manager / CAE) who did not answer it can clear it")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the reviewer (or an Audit Manager / CAE) who did not answer it can clear it",
+        )
     n.status = "Cleared"
     n.cleared_by = user.id
     n.cleared_at = utcnow()
-    log_record_history(db, record_type="audit", record_id=n.audit_id, user_id=user.id,
-                       action=f"REVIEW NOTE CLEARED #{n.id}", request=request)
+    log_record_history(
+        db,
+        record_type="audit",
+        record_id=n.audit_id,
+        user_id=user.id,
+        action=f"REVIEW NOTE CLEARED #{n.id}",
+        request=request,
+    )
     db.commit()
     return _note_out(db, n, user)
 
@@ -513,8 +705,9 @@ def _paper(db: DBSession, paper_id: int, user: User) -> WorkingPaper:
 
 
 @router.patch("/api/working-papers/{paper_id}/xref")
-def set_xref(paper_id: int, payload: XrefIn, request: Request, db: DBSession = Depends(get_db),
-             user: User = Staff) -> dict:
+def set_xref(
+    paper_id: int, payload: XrefIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
+) -> dict:
     wp = _paper(db, paper_id, user)
     audit = db.get(Audit, wp.audit_id)
     if audit.status == AuditStatus.Closed:
@@ -522,9 +715,17 @@ def set_xref(paper_id: int, payload: XrefIn, request: Request, db: DBSession = D
     sent = payload.model_fields_set
     if "wp_ref" in sent:
         ref = (payload.wp_ref or "").strip() or None
-        if ref and db.execute(select(WorkingPaper.id).where(
-                WorkingPaper.audit_id == wp.audit_id, WorkingPaper.wp_ref == ref, WorkingPaper.title != wp.title,
-                WorkingPaper.is_deleted.is_(False))).first():
+        if (
+            ref
+            and db.execute(
+                select(WorkingPaper.id).where(
+                    WorkingPaper.audit_id == wp.audit_id,
+                    WorkingPaper.wp_ref == ref,
+                    WorkingPaper.title != wp.title,
+                    WorkingPaper.is_deleted.is_(False),
+                )
+            ).first()
+        ):
             raise field_error("wp_ref", "is already used by another working paper in this audit")
         wp.wp_ref = ref
     if "test_id" in sent:
@@ -546,15 +747,22 @@ def review_paper(paper_id: int, request: Request, db: DBSession = Depends(get_db
     if not has_perm(user, "review.workpapers"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not sign off working papers")
     if wp.uploaded_by == user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="A working paper is signed off by someone other than its preparer")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A working paper is signed off by someone other than its preparer",
+        )
     if wp.reviewed_at:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already signed off")
     wp.reviewed_by = user.id
     wp.reviewed_at = utcnow()
-    log_record_history(db, record_type="audit", record_id=wp.audit_id, user_id=user.id,
-                       action=f"WORKING PAPER REVIEWED {wp.wp_ref or ''} {wp.title} v{wp.version_number}".strip(),
-                       request=request)
+    log_record_history(
+        db,
+        record_type="audit",
+        record_id=wp.audit_id,
+        user_id=user.id,
+        action=f"WORKING PAPER REVIEWED {wp.wp_ref or ''} {wp.title} v{wp.version_number}".strip(),
+        request=request,
+    )
     db.commit()
     return {"id": wp.id, "reviewed_by": _name(db, user.id), "reviewed_at": wp.reviewed_at.isoformat()}
 
@@ -569,8 +777,9 @@ class ExitMeetingIn(BaseModel):
 
 
 @router.put("/api/reports/{report_id}/exit-meeting")
-def save_exit_meeting(report_id: int, payload: ExitMeetingIn, request: Request, db: DBSession = Depends(get_db),
-                      user: User = Staff) -> dict:
+def save_exit_meeting(
+    report_id: int, payload: ExitMeetingIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
+) -> dict:
     from app.modules.reports.models import AuditReport
 
     report = db.get(AuditReport, report_id)
@@ -584,8 +793,14 @@ def save_exit_meeting(report_id: int, payload: ExitMeetingIn, request: Request, 
     report.exit_meeting_date = payload.meeting_date.replace(tzinfo=None)
     report.exit_meeting_attendees = payload.attendees.strip()
     report.exit_meeting_notes = payload.notes.strip()
-    log_record_history(db, record_type="audit_report", record_id=report.id, user_id=user.id,
-                       action=f"EXIT MEETING RECORDED {report.exit_meeting_date:%Y-%m-%d}", request=request)
+    log_record_history(
+        db,
+        record_type="audit_report",
+        record_id=report.id,
+        user_id=user.id,
+        action=f"EXIT MEETING RECORDED {report.exit_meeting_date:%Y-%m-%d}",
+        request=request,
+    )
     db.commit()
     return {"message": "Exit meeting recorded"}
 
@@ -596,17 +811,29 @@ def xref_options(audit_id: int, db: DBSession = Depends(get_db), user: User = De
     from app.modules.rcm.models import Control, ControlTest, Objective
 
     ensure_can_view(db, user, "audit", db.get(Audit, audit_id))
-    tests = db.execute(select(ControlTest.id, ControlTest.ref).join(Control, Control.id == ControlTest.control_id)
-                       .join(Objective, Objective.id == Control.objective_id)
-                       .where(Objective.audit_id == audit_id).order_by(ControlTest.ref)).all()
-    findings = db.execute(select(Finding.id, Finding.title).where(Finding.audit_id == audit_id)
-                          .order_by(Finding.id)).all()
-    papers = db.execute(select(WorkingPaper).where(WorkingPaper.audit_id == audit_id,
-                                                   WorkingPaper.is_deleted.is_(False))
-                        .order_by(WorkingPaper.title, WorkingPaper.version_number.desc())).scalars().all()
+    tests = db.execute(
+        select(ControlTest.id, ControlTest.ref)
+        .join(Control, Control.id == ControlTest.control_id)
+        .join(Objective, Objective.id == Control.objective_id)
+        .where(Objective.audit_id == audit_id)
+        .order_by(ControlTest.ref)
+    ).all()
+    findings = db.execute(
+        select(Finding.id, Finding.title).where(Finding.audit_id == audit_id).order_by(Finding.id)
+    ).all()
+    papers = (
+        db.execute(
+            select(WorkingPaper)
+            .where(WorkingPaper.audit_id == audit_id, WorkingPaper.is_deleted.is_(False))
+            .order_by(WorkingPaper.title, WorkingPaper.version_number.desc())
+        )
+        .scalars()
+        .all()
+    )
     return {
         "tests": [{"id": t.id, "label": t.ref} for t in tests],
         "findings": [{"id": f.id, "label": f"#{f.id} {f.title}"} for f in findings],
-        "working_papers": [{"id": p.id, "label": f"{p.wp_ref + ' ' if p.wp_ref else ''}{p.title} v{p.version_number}"}
-                           for p in papers],
+        "working_papers": [
+            {"id": p.id, "label": f"{p.wp_ref + ' ' if p.wp_ref else ''}{p.title} v{p.version_number}"} for p in papers
+        ],
     }
