@@ -1124,7 +1124,7 @@ async function renderWorkspace() {
   clear(viewRoot);
   const staff = isStaff();
   const admin = isAdmin();
-  viewRoot.append(viewHeader("Workspace", null, { sub: "Every GIAW app and feature, grouped by solution" }));
+  viewRoot.append(viewHeader("Workspace"));
 
   const groupsEl = el("div", { class: "ws-groups" });
   viewRoot.append(groupsEl);
@@ -1148,14 +1148,6 @@ async function renderWorkspace() {
           null);
       }))));
   });
-  // Find an app: filters the tiles as you type.
-  const find = el("input", { type: "search", class: "ws-find", placeholder: "Find an app…", "aria-label": "Find an app" });
-  find.addEventListener("input", () => {
-    const q = find.value.trim().toLowerCase();
-    groupsEl.querySelectorAll(".ws-cell").forEach((c) => c.classList.toggle("hidden", !!q && !c.dataset.app.includes(q)));
-    groupsEl.querySelectorAll(".ws-group").forEach((sec) => sec.classList.toggle("hidden", ![...sec.querySelectorAll(".ws-cell")].some((c) => !c.classList.contains("hidden"))));
-  });
-  groupsEl.before(el("div", { class: "ws-tools" }, find));
 
   // Live counts (best effort: a tile without a count still works).
   const open = (rows) => (rows.items || rows).filter((x) => x.status !== "Closed").length;

@@ -1495,8 +1495,6 @@ input.switch:disabled { opacity: .5; cursor: default; }
 .who-btn { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
 .who-btn:hover, .who-btn:focus-visible { background: rgba(255, 255, 255, .08); }
 
-/* ---- Workspace: find an app ------------------------------------------------------------------------------ */
-.ws-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
-.ws-find { flex: 1 1 280px; max-width: 460px; }
+/* ---- Workspace tiles ------------------------------------------------------------------------------------- */
 .ws-cell { position: relative; min-width: 0; }
 .ws-cell .ws-tile { height: 100%; }
