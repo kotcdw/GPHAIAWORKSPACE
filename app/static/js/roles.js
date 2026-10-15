@@ -62,7 +62,7 @@ async function renderRolesPage(tab = state.rolesTab || "matrix") {
   viewRoot.append(el("div", { class: "role-cards rbac" }, ...cat.roles.map((r) => el("div", { class: `card role-card role-${r.code}` },
     el("div", { class: "role-card-head" }, el("span", { class: "role-icon" }, el("i", { class: `bi bi-${r.icon}` })),
       el("div", null, el("h3", null, r.name), el("div", { class: "muted small" }, `${r.users} active user${r.users === 1 ? "" : "s"} · ${r.permissions.length} permissions`))),
-    el("p", { class: "small" }, r.description),
+    el("p", { class: "small", title: r.description }, r.description),
     el("div", { class: "chips" }, r.locked ? el("span", { class: "chip-mini ok" }, el("i", { class: "bi bi-lock-fill" }), " Full control") : null,
       r.customised ? el("span", { class: "chip-mini warn" }, "Customised") : null,
       el("span", { class: "chip-mini" }, `${r.tier} access`))))));
