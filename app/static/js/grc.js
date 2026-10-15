@@ -58,15 +58,15 @@ function linkPickerDialog(kind, id, other, refresh) {
 }
 
 function heatGrid(grid, titles, label, onPick) {
-  const g = el("div", { class: "heatmap", role: "grid", "aria-label": label });
+  const g = el("div", { class: "heatmap", role: "group", "aria-label": label });
   for (let im = 5; im >= 1; im -= 1) {
-    g.append(el("div", { class: "hm-axis", role: "rowheader" }, String(im)));
+    g.append(el("div", { class: "hm-axis", "aria-hidden": "true" }, String(im)));
     for (let lk = 1; lk <= 5; lk += 1) {
       const ids = grid[im - 1][lk - 1];
       const score = im * lk;
       const band = score >= (GRC.thr?.high || 15) ? "high" : score >= (GRC.thr?.medium || 8) ? "med" : "low";
       const tip = `Likelihood ${lk} × Impact ${im} = ${score} · ${ids.length} risk${ids.length === 1 ? "" : "s"}`;
-      g.append(el("button", { class: `hm-cell hm-${band} ${ids.length ? "" : "empty"}`, type: "button", role: "gridcell", "aria-label": tip,
+      g.append(el("button", { class: `hm-cell hm-${band} ${ids.length ? "" : "empty"}`, type: "button", "aria-label": tip,
         title: ids.length ? `${tip}\n${ids.map((i) => titles[i]).join("\n")}` : tip, onclick: () => onPick(ids, tip) }, ids.length ? String(ids.length) : ""));
     }
   }

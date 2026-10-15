@@ -6,8 +6,9 @@ Supports MySQL (default) and SQLite (ad-hoc override of GPHA_DATABASE_URL).
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import UTC, datetime
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import DateTime, create_engine, event, inspect
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
@@ -52,6 +53,22 @@ SessionLocal = sessionmaker(
     expire_on_commit=False,
     class_=Session,
 )
+
+
+@event.listens_for(Session, "before_flush")
+def _naive_utc(session: Session, _flush_context, _instances) -> None:  # noqa: ANN001
+    """Store every date-time as naive UTC, the convention used throughout the app.
+
+    An API caller may send a time-zone-aware value (``2026-10-18T09:00:00+00:00``). Left as is, it would be saved
+    but later compared with naive UTC values (500 after the record was already committed).
+    """
+    for obj in list(session.new) + list(session.dirty):
+        for prop in inspect(obj).mapper.column_attrs:
+            if not isinstance(prop.columns[0].type, DateTime):
+                continue
+            value = getattr(obj, prop.key, None)
+            if isinstance(value, datetime) and value.tzinfo is not None:
+                setattr(obj, prop.key, value.astimezone(UTC).replace(tzinfo=None))
 
 
 class Base(DeclarativeBase):

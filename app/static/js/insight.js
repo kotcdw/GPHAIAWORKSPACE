@@ -45,14 +45,14 @@ async function renderAnalytics(fy = new Date().getFullYear()) {
 
   // Heat map: impact (rows, 5 at top) x likelihood (columns)
   const cellInfo = el("div", { class: "muted small heat-info", "aria-live": "polite" }, "Select a cell to list its auditable units.");
-  const heatGrid = el("div", { class: "heatmap", role: "grid", "aria-label": "Inherent risk heat map: impact by likelihood" });
+  const heatGrid = el("div", { class: "heatmap", role: "group", "aria-label": "Inherent risk heat map: impact by likelihood" });
   for (let im = 5; im >= 1; im -= 1) {
-    heatGrid.append(el("div", { class: "hm-axis", role: "rowheader" }, String(im)));
+    heatGrid.append(el("div", { class: "hm-axis", "aria-hidden": "true" }, String(im)));
     for (let lk = 1; lk <= 5; lk += 1) {
       const c = a.heat_map.find((x) => x.likelihood === lk && x.impact === im);
       const band = c.score >= 15 ? "high" : c.score >= 8 ? "med" : "low";
       const tip = `Likelihood ${lk} × Impact ${im} = ${c.score} · ${c.count} unit${c.count === 1 ? "" : "s"}`;
-      heatGrid.append(el("button", { class: `hm-cell hm-${band} ${c.count ? "" : "empty"}`, type: "button", role: "gridcell",
+      heatGrid.append(el("button", { class: `hm-cell hm-${band} ${c.count ? "" : "empty"}`, type: "button",
         title: c.units.length ? `${tip}\n${c.units.join("\n")}` : tip, "aria-label": tip,
         onclick: () => { cellInfo.textContent = c.count ? `${tip}: ${c.units.join(", ")}` : `${tip}.`; } }, c.count ? String(c.count) : ""));
     }

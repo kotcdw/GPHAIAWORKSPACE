@@ -1192,7 +1192,7 @@ async function renderTasks() {
       card.append(el("table", null,
         el("thead", null, el("tr", null, el("th", null, "Title"), el("th", null, "Assignee"), el("th", null, "Status"), el("th", null, "Due"), el("th", null, ""))),
         el("tbody", null, ...items.map((t) => {
-          const sel = el("select", null, ...TASK_STATUSES.map((s) =>
+          const sel = el("select", { "aria-label": `Status of ${t.title}` }, ...TASK_STATUSES.map((s) =>
             el("option", { value: s, selected: s === t.status ? "1" : null }, s)));
           const save = el("button", { class: "btn small secondary", onclick: async () => {
             try { await API.patch(`/api/tasks/${t.id}`, { status: sel.value }); toast("Task updated"); paint(); }

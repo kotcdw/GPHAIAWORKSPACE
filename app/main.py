@@ -146,11 +146,16 @@ async def _schema_watcher() -> None:
             logger.exception("Schema watcher check failed")
 
 
+_PROD = settings.environment.lower() == "production"
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     lifespan=lifespan,
     dependencies=[Depends(csrf_protect)],
+    # The API map is for developers: not published on a production server.
+    docs_url=None if _PROD else "/docs",
+    redoc_url=None if _PROD else "/redoc",
+    openapi_url=None if _PROD else "/openapi.json",
 )
 
 _FRIENDLY = {
@@ -284,6 +289,9 @@ async def security_headers(request, call_next):  # noqa: ANN001, ANN201
     if path == "/" or path.startswith("/static/"):
         # Always revalidate the UI so a browser never mixes old scripts with a new stylesheet.
         response.headers["Cache-Control"] = "no-cache"
+    elif path.startswith("/api/"):
+        # Audit data must not be kept by the browser cache or a shared proxy.
+        response.headers.setdefault("Cache-Control", "no-store")
     return response
 
 

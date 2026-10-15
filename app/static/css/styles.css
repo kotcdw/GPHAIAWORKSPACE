@@ -212,7 +212,7 @@ button.btn.icon, a.btn.icon { padding: 5px 8px; }
 .badge-review, .badge-in-approval { background: var(--purple-soft); color: var(--purple-text); border-color: var(--purple-line); }
 .badge-closed, .badge-approved, .badge-active, .badge-risk-low, .badge-effective, .badge-reviewed, .badge-received, .badge-started { background: var(--ok-soft); color: var(--ok-text); border-color: var(--ok-line); }
 .badge-high, .badge-risk-high, .badge-ineffective, .badge-rejected, .badge-denied, .badge-on-hold, .badge-admin, .badge-locked { background: var(--danger-soft); color: var(--danger-text); border-color: var(--danger-line); }
-.badge-draft, .badge-not-tested, .badge-not-started, .badge-cancelled, .badge-inactive, .badge-auditee { background: var(--neutral-soft); color: var(--muted); border-color: var(--border); }
+.badge-draft, .badge-not-tested, .badge-not-started, .badge-cancelled, .badge-inactive, .badge-auditee { background: var(--neutral-soft); color: var(--text-2); border-color: var(--border); }
 .ref { font-family: "JetBrains Mono", "Consolas", ui-monospace, monospace; font-size: 12px; color: var(--accent-text); white-space: nowrap; }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--panel-2); font-size: 11px; color: var(--muted); }
 .sys-task { color: var(--warn-text); }
@@ -826,8 +826,8 @@ table.perm-matrix tfoot td { position: sticky; bottom: 0; background: var(--pane
 /* Two-step set-up required: hide the navigation until it is done (sign-out stays). */
 body.mfa-gate #sidebarNav, body.mfa-gate .topbar-search, body.mfa-gate #bellBtn { display: none; }
 
-.chip-mini.ok { color: var(--ok); border-color: currentColor; }
-.chip-mini.warn { color: var(--warn); border-color: currentColor; }
+.chip-mini.ok { color: var(--ok-text); border-color: currentColor; }
+.chip-mini.warn { color: var(--warn-text); border-color: currentColor; }
 
 /* AI drafts */
 .ai-slot:empty { display: none; }
@@ -1253,8 +1253,8 @@ table.dense tbody tr:hover { background: var(--accent-soft); }
 .kpi-mini .kv { margin: 0; }
 /* progress bars (plan coverage) */
 .pbar { position: relative; display: inline-block; width: 140px; height: 18px; background: var(--panel-3); border-radius: 999px; overflow: hidden; vertical-align: middle; }
-.pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ok); border-radius: 999px; }
-.pbar.bad .pbar-fill { background: var(--danger); }
+.pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #8fd3b0; border-radius: 999px; } /* light fill: the % label stays readable */
+.pbar.bad .pbar-fill { background: #f2aaa4; }
 .pbar-l { position: relative; display: block; text-align: center; font-size: 11px; line-height: 18px; font-weight: 600; color: var(--text); }
 .cov-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 8px; }
 .cov-box { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
@@ -1296,7 +1296,7 @@ table.dense td > .actions { flex-wrap: nowrap; white-space: nowrap; }
 }
 
 /* ------------------------------------------------------------------ integrated audit universe and audit risk assessment */
-.pbar.warn .pbar-fill { background: var(--warn); }
+.pbar.warn .pbar-fill { background: #f6cf86; }
 .cov-meter { display: flex; flex-direction: column; gap: 6px; }
 .cov-meter-head { display: flex; justify-content: space-between; align-items: baseline; }
 .cov-meter-head .l { font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }

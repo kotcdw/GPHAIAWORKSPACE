@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
@@ -32,6 +33,9 @@ class ProviderConfig:
 
 
 def _post(url: str, headers: dict[str, str], body: dict, timeout: int) -> dict:
+    # Only web addresses: file:, ftp: and other schemes would let the endpoint setting read local files.
+    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+        raise AiError("The AI endpoint address must start with http:// or https://")
     data = json.dumps(body).encode()
     request = urllib.request.Request(url, data=data, method="POST",
                                      headers={"Content-Type": "application/json", **headers})

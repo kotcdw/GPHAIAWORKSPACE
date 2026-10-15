@@ -96,10 +96,10 @@ async function renderFollowupReports(body) {
   const now = new Date();
   const st = { kind: "quarterly", year: now.getFullYear(), quarter: Math.floor(now.getMonth() / 3) + 1 };
   const out = el("div");
-  const kindSel = el("select", { class: "compact" }, el("option", { value: "quarterly" }, "Quarterly follow-up report"),
+  const kindSel = el("select", { class: "compact", "aria-label": "Report type" }, el("option", { value: "quarterly" }, "Quarterly follow-up report"),
     el("option", { value: "annual" }, "Annual statement (Act 921 s.88)"));
-  const yearSel = el("select", { class: "compact" }, ...[0, 1, 2, 3].map((d) => el("option", { value: st.year - d }, String(st.year - d))));
-  const qSel = el("select", { class: "compact" }, ...[1, 2, 3, 4].map((q) => el("option", { value: q, selected: q === st.quarter ? "1" : null }, `Q${q}`)));
+  const yearSel = el("select", { class: "compact", "aria-label": "Year" }, ...[0, 1, 2, 3].map((d) => el("option", { value: st.year - d }, String(st.year - d))));
+  const qSel = el("select", { class: "compact", "aria-label": "Quarter" }, ...[1, 2, 3, 4].map((q) => el("option", { value: q, selected: q === st.quarter ? "1" : null }, `Q${q}`)));
   const go = () => { st.kind = kindSel.value; st.year = Number(yearSel.value); st.quarter = Number(qSel.value); qSel.hidden = st.kind !== "quarterly"; paint(); };
   [kindSel, yearSel, qSel].forEach((s) => s.addEventListener("change", go));
   body.append(el("div", { class: "card" },
@@ -663,7 +663,7 @@ async function renderRecordFieldsCard(container) {
   const card = el("div", { class: "card" });
   container.append(card);
   let module = "audits";
-  const sel = el("select", { class: "compact" }, ...Object.entries(modules).map(([k, v]) => el("option", { value: k }, v)));
+  const sel = el("select", { class: "compact", "aria-label": "Register" }, ...Object.entries(modules).map(([k, v]) => el("option", { value: k }, v)));
   const list = el("div");
   const types = { text: "Short text", longtext: "Long text", number: "Number", date: "Date", select: "Drop-down", yesno: "Yes / No" };
   const paint = async () => {
