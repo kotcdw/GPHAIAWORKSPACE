@@ -596,6 +596,7 @@ Use this table in project reviews and update it as work progresses.
 18. Approve the issue types (default: Deficiency, Significant Deficiency, Material Weakness, Management Recommendation) and the publish rule: new issues are hidden from the auditee until Internal Audit publishes them; sending the draft report to management or recording the exit meeting publishes the audit's issues.
 19. Approve the engagement progress formula used on the plan coverage grid: not started 0 %, Planned 10 %, In Progress 25 % plus up to 50 % for fieldwork signed off (procedures or key-control tests), Review 85 %, Closed 100 %.
 20. Approve the starter assessment factors (Financial materiality, Fraud and integrity risk, Regulatory and compliance exposure, Operational complexity, Time since last audit, Prior audit results) and the default rating scale (Low- to High-risk).
+21. Approve the sign-off levels (default Preparer, Detail Reviewer, General Reviewer, Supplemental Reviewer, Specialty Reviewer), whether sign-offs need the password, and the removal of the Criteria field, the Working papers tab (now Results > Supporting workpapers) and the Survey tab from the audit screens (data kept). Robots run a fixed catalogue of read-only analytics; no uploaded scripts.
 
 ---
 
