@@ -571,6 +571,7 @@ function navigate(view) {
   }
   if (state.user && !viewAllowed(view)) view = isCommittee() ? "governance" : "dashboard";
   state.view = view;
+  if (typeof recordRecent === "function") recordRecent(view);
   setActiveNav(view);
   navCrumbs(view);
   if (view === "followup") { state.remTab = "followup"; return navigate("capa"); }
@@ -1060,25 +1061,9 @@ function panel(title, body, action = null) {
   return el("div", { class: "card panel" }, el("div", { class: "card-head" }, el("h3", null, title), action), body);
 }
 
-// ==================================================================== GPHA Workspace hub
-// One launch page for every module, grouped the way the audit work flows,
-// with live counts and quick actions. Tiles follow the user's role.
-
-async function renderWorkspace() {
-  clear(viewRoot);
-  const staff = isStaff();
-  const admin = isAdmin();
-  const quick = [];
-  if (staff && hasPerm("audit.create")) quick.push(el("button", { class: "btn secondary", onclick: () => navigate("audits") }, el("i", { class: "bi bi-clipboard-plus" }), " Start an audit"));
-  if (canWriteModule("capa")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("capa") }, el("i", { class: "bi bi-tools" }), " New remediation"));
-  viewRoot.append(viewHeader("All apps", null, { sub: "Every GIAW app, grouped by solution the same way as the sidebar" }));
-  if (quick.length) viewRoot.append(el("div", { class: "ws-quick" }, ...quick));
-
-  const groupsEl = el("div", { class: "ws-groups" });
-  viewRoot.append(groupsEl);
-
-  // Groups and order follow the sidebar (Diligent One style solution groups).
-  const groups = [
+// The apps the Workspace hosts, grouped and ordered like the sidebar (Diligent One style solution groups).
+function workspaceGroups() {
+  return [
     { title: "Home", tiles: [
       { view: "portal", icon: "inboxes", name: "Task Manager", desc: "Your tasks, requests and actions waiting for you" },
       { view: "tasks", icon: "check2-square", name: "Task Tracker", desc: "To-dos assigned to you and your team", count: "tasks" },
@@ -1121,21 +1106,62 @@ async function renderWorkspace() {
       { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
     ] },
   ];
+}
+
+// Every app tile the person may open (permission, app switched on), flattened.
+function workspaceApps() {
+  const staff = isStaff(); const admin = isAdmin();
+  return workspaceGroups().filter((g) => !g.staff || staff || isCommittee()).flatMap((g) => g.tiles
+    .filter((t) => (!t.staff || staff || isCommittee()) && (!t.admin || admin) && viewAllowed(t.view)
+      && (typeof appEnabledForView !== "function" || appEnabledForView(t.view)))
+    .map((t) => ({ ...t, group: g.title })));
+}
+
+// ==================================================================== GPHA Workspace hub
+// One launch page for every module, grouped the way the audit work flows,
+// with live counts and quick actions. Tiles follow the user's role.
+
+async function renderWorkspace() {
+  clear(viewRoot);
+  const staff = isStaff();
+  const admin = isAdmin();
+  const quick = [];
+  if (staff && hasPerm("audit.create")) quick.push(el("button", { class: "btn secondary", onclick: () => navigate("audits") }, el("i", { class: "bi bi-clipboard-plus" }), " Start an audit"));
+  if (canWriteModule("capa")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("capa") }, el("i", { class: "bi bi-tools" }), " New remediation"));
+  viewRoot.append(viewHeader("All apps", null, { sub: "Every GIAW app, grouped by solution the same way as the sidebar" }));
+  if (quick.length) viewRoot.append(el("div", { class: "ws-quick" }, ...quick));
+
+  const groupsEl = el("div", { class: "ws-groups" });
+  viewRoot.append(groupsEl);
+
+  const groups = workspaceGroups();
 
   const countEls = {};
   groups.filter((g) => !g.staff || staff || isCommittee()).forEach((g) => {
-    const tiles = g.tiles.filter((t) => (!t.staff || staff || isCommittee()) && (!t.admin || admin) && viewAllowed(t.view));
+    const tiles = g.tiles.filter((t) => (!t.staff || staff || isCommittee()) && (!t.admin || admin) && viewAllowed(t.view)
+      && (typeof appEnabledForView !== "function" || appEnabledForView(t.view)));
     if (!tiles.length) return;
     groupsEl.append(el("section", { class: "ws-group" },
       el("h3", { class: "ws-group-title" }, g.title),
       el("div", { class: "ws-grid" }, ...tiles.map((t) => {
         const badgeEl = el("span", { class: "ws-count hidden" });
         if (t.count) countEls[t.count] = badgeEl;
-        return el("button", { class: "ws-tile", type: "button", onclick: () => navigate(t.view) },
-          el("span", { class: "ws-icon" }, el("i", { class: `bi bi-${t.icon}` })),
-          el("span", { class: "ws-text" }, el("span", { class: "ws-name" }, t.name), el("span", { class: "ws-desc" }, t.desc), badgeEl));
+        return el("div", { class: "ws-cell", "data-app": `${t.name} ${t.desc} ${g.title}`.toLowerCase() },
+          el("button", { class: "ws-tile", type: "button", onclick: () => navigate(t.view) },
+            el("span", { class: "ws-icon" }, el("i", { class: `bi bi-${t.icon}` })),
+            el("span", { class: "ws-text" }, el("span", { class: "ws-name" }, t.name), el("span", { class: "ws-desc" }, t.desc), badgeEl)),
+          pinButton(t));
       }))));
   });
+  // Find an app: filters the tiles as you type.
+  const find = el("input", { type: "search", class: "ws-find", placeholder: "Find an app…", "aria-label": "Find an app" });
+  find.addEventListener("input", () => {
+    const q = find.value.trim().toLowerCase();
+    groupsEl.querySelectorAll(".ws-cell").forEach((c) => c.classList.toggle("hidden", !!q && !c.dataset.app.includes(q)));
+    groupsEl.querySelectorAll(".ws-group").forEach((sec) => sec.classList.toggle("hidden", ![...sec.querySelectorAll(".ws-cell")].some((c) => !c.classList.contains("hidden"))));
+  });
+  groupsEl.before(el("div", { class: "ws-tools" }, find, el("span", { class: "muted small" }, el("i", { class: "bi bi-star" }), " Star an app to pin it to your Workspace")));
+  loadWorkspace().then(() => groupsEl.querySelectorAll(".pin-btn").forEach((b) => paintPin(b)));
 
   // Live counts (best effort: a tile without a count still works).
   const open = (rows) => (rows.items || rows).filter((x) => x.status !== "Closed").length;
@@ -1170,6 +1196,9 @@ async function renderDashboard() {
   const staff = state.user.role !== "Auditee";
   viewRoot.append(viewHeader(`${greeting()}, ${(state.user.full_name || state.user.username).split(" ")[0]}`, null,
     { sub: new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) }), msg);
+  const launcher = el("div", { class: "ws-launcher" });
+  viewRoot.append(launcher);
+  workspaceLauncher(launcher);
   try {
     const [audits, ncs, capa, feedback, tasks, plans, drafts] = await Promise.all([
       safeGet("/api/audits", []),
