@@ -97,6 +97,7 @@ class AuditRow(BaseModel):
     findings: int
     working_papers: int
     report_status: str | None
+    progress: int = 0
     updated_at: datetime
 
 
@@ -105,6 +106,7 @@ _AUDIT_SORT = {
     "audit_type": lambda r: r["audit_type"], "port": lambda r: r["port"], "plan": lambda r: r["plan"],
     "lead": lambda r: r["lead"], "planned_start": lambda r: r["planned_start"],
     "open_findings": lambda r: r["open_findings"], "updated_at": lambda r: r["updated_at"],
+    "progress": lambda r: r["progress"],
 }
 
 
@@ -123,6 +125,7 @@ def audit_register(
 
     Rows are authorized first, then searched, sorted and paged on the server.
     """
+    from app.domains.assurance.planning.coverage import engagement_progress
     from app.domains.assurance.planning.models import AssurancePlan, PlanEngagement
     from app.domains.audit.reports.models import AuditReport
     from app.platform.organizations.models import Organization
@@ -184,7 +187,7 @@ def audit_register(
             "planned_quarter": e.planned_quarter if e else None, "planned_start": e.planned_start if e else None,
             "planned_end": e.planned_end if e else None, "budget_hours": e.budget_hours if e else None,
             "open_findings": f_open, "findings": f_total, "working_papers": papers.get(a.id, 0),
-            "report_status": reports.get(a.id), "updated_at": a.updated_at,
+            "report_status": reports.get(a.id), "progress": engagement_progress(db, a), "updated_at": a.updated_at,
         })
     rows = [r for r in rows if matches(params.q, r["ref"], r["title"], r["port"], r["lead"], r["audit_type"],
                                        r["plan"])]

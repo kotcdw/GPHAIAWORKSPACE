@@ -270,7 +270,8 @@ function evidenceColumns(withAudit) {
   return [
     { key: "request_ref", label: "Ref", render: (r) => el("span", { class: "ref" }, r.request_ref) },
     ...(withAudit ? [{ key: "audit_title", label: "Audit" }] : []),
-    { key: "title", label: "Evidence requested" },
+    { key: "requested_by_name", label: "Requester", render: (r) => r.requested_by_name || "-" },
+    { key: "title", label: "Description" },
     { key: "target_label", label: "Linked to", render: (r) => (r.target_label ? el("span", { class: "small" }, el("i", { class: "bi bi-link-45deg", "aria-hidden": "true" }), ` ${r.target_label}`) : el("span", { class: "muted" }, "Audit")) },
     { key: "assignee_name", label: "Owner", render: (r) => r.assignee_name || "-" },
     { key: "due_date", label: "Due", render: (r) => (r.due_date ? el("span", { class: r.overdue ? "text-danger" : null }, fmtDay(r.due_date.slice(0, 10)), r.overdue ? " · overdue" : "") : "-") },

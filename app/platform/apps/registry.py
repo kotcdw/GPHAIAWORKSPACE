@@ -18,6 +18,17 @@ from app.core import appconfig
 KEY = "app_customization"
 
 
+# Solution groups (titles and order match the sidebar and the Launchpad).
+HOME = "Home"
+AUDIT = "Audit management"
+RESOURCE = "Resource management"
+RISK = "Risk management"
+COMPLIANCE = "Compliance management"
+REPORTING = "Analytics & reporting"
+SETTINGS = "Platform settings"
+SERVICES = "Services"
+
+
 @dataclass(frozen=True)
 class App:
     key: str
@@ -32,77 +43,80 @@ class App:
 
 
 APPS: list[App] = [
-    # Overview
-    App("portal", "Task Manager", "Overview", "inboxes", "One page of everything waiting for a person.",
-        ("portal",), ("/api/portal",)),
-    App("dashboard", "Dashboard", "Overview", "grid-1x2", "Role-based home page with KPIs and work in progress.",
+    # Home
+    App("dashboard", "Dashboard", HOME, "grid-1x2", "Role-based home page with KPIs and work in progress.",
         ("dashboard",), (), core=True),
-    App("workspace", "GPHA Workspace", "Overview", "grid-3x3-gap", "Launch page for every app.", ("workspace",),
-        (), core=True),
-    App("tasks", "Task Center", "Overview", "check2-square", "Tasks assigned to people, with due dates.",
+    App("workspace", "Launchpad", HOME, "grid-3x3-gap", "Launch page for every app, grouped by solution.",
+        ("workspace",), (), core=True),
+    App("portal", "Task Manager", HOME, "inboxes", "One page of everything waiting for a person.",
+        ("portal",), ("/api/portal",)),
+    App("tasks", "Task Tracker", HOME, "check2-square", "Tasks assigned to people, with due dates.",
         ("tasks",), ("/api/tasks",)),
-    App("drafts", "My Drafts", "Overview", "pencil-square", "Autosaved forms waiting to be finished.",
+    App("drafts", "My Drafts", HOME, "pencil-square", "Autosaved forms waiting to be finished.",
         ("drafts",), (), core=True),
-    App("governance", "Governance portal", "Overview", "bank", "Read-only view for governing bodies.",
-        ("governance",), ("/api/governance",)),
-    App("portfolio", "Port portfolio", "Overview", "geo-alt", "Audit coverage and results by port.",
-        ("portfolio",), ("/api/portfolio",)),
-    App("committee", "Audit Committee", "Overview", "bar-chart-line",
-        "Committee packs, meetings, minutes and decisions.", ("committee",), ("/api/committee",)),
-    App("analytics", "Analytics", "Overview", "graph-up-arrow", "KPIs, trends and heat maps.", ("analytics",),
-        ("/api/analytics",)),
-    App("qaip", "Quality (QAIP)", "Overview", "patch-check", "Quality assurance and improvement programme.",
-        ("qaip",), ("/api/qaip",)),
-    # Planning
-    App("plans", "Assurance Plan", "Planning", "calendar3", "Annual plan, approval cycle and distribution.",
-        ("plans",), (), core=True),
-    App("universe", "Audit Universe", "Planning", "diagram-3", "Auditable units and their risk ratings.",
+    # Audit management
+    App("universe", "Audit universe", AUDIT, "diagram-3",
+        "Auditable entities from the Org Structure and Process library.",
         ("universe",), (), core=True),
-    App("scheduler", "Scheduler", "Planning", "calendar-week", "Engagement dates and staff bookings.",
+    App("plans", "Assurance Plans", AUDIT, "calendar3", "Annual plan, approval cycle and distribution.",
+        ("plans",), (), core=True),
+    App("audits", "Audits", AUDIT, "clipboard-check", "Engagements from planning to closure.",
+        ("audits",), (), core=True),
+    App("programs", "Audit programmes", AUDIT, "list-check", "Reusable work programmes.", ("programs",),
+        ("/api/audit-programs",)),
+    App("evidence", "Evidence requests", AUDIT, "inbox", "Requests to auditees and the evidence received.",
+        ("evidence",), (), core=True),
+    App("capa", "Remediation & Follow-up", AUDIT, "tools", "Agreed actions, follow-up and MoF returns.",
+        ("capa",), (), core=True),
+    # Resource management
+    App("scheduler", "Scheduler", RESOURCE, "calendar-week", "Engagement dates and staff bookings.",
         ("scheduler",), ("/api/schedule",)),
-    App("capacity", "Capacity & time", "Planning", "people-fill", "Available hours, utilisation and time sheets.",
+    App("capacity", "Timesheets & capacity", RESOURCE, "people-fill", "Available hours, utilisation and time sheets.",
         ("capacity",), ("/api/capacity",)),
-    App("practice", "Professional practice", "Planning", "person-check",
+    App("practice", "Professional practice", RESOURCE, "person-check",
         "Charter, independence declarations, CPD and external assessments.", ("practice",),
         ("/api/proficiency", "/api/charter")),
-    # Audit work
-    App("audits", "Audits", "Audit work", "clipboard-check", "Engagements from planning to closure.",
-        ("audits",), (), core=True),
-    App("capa", "Remediation & Follow-up", "Audit work", "tools", "Agreed actions, follow-up and MoF returns.",
-        ("capa",), (), core=True),
-    App("evidence", "Evidence requests", "Audit work", "inbox", "Requests to auditees and the evidence received.",
-        ("evidence",), (), core=True),
-    App("nonconformances", "Nonconformance", "Audit work", "exclamation-triangle", "Nonconformance register.",
-        ("nonconformances",), ("/api/nonconformances",)),
-    # Risk & compliance
-    App("risk", "Risk Manager", "Risk & compliance", "shield-exclamation",
+    # Risk management
+    App("risk", "Risk Manager", RISK, "shield-exclamation",
         "Enterprise risk register, strategic objectives, heat maps and KRIs.", ("risk",),
         ("/api/grc/risks", "/api/grc/objectives", "/api/grc/kris")),
-    App("compliance", "Compliance Maps", "Risk & compliance", "diagram-2",
+    App("assets", "Asset Inventory", RISK, "hdd-network",
+        "Systems, data, facilities and third parties with due diligence.", ("assets",), ("/api/grc/assets",)),
+    # Compliance management
+    App("library", "Frameworks", COMPLIANCE, "diagram-3-fill", "Frameworks and standard controls.",
+        ("library",), ("/api/library",)),
+    App("compliance", "Compliance Maps", COMPLIANCE, "diagram-2",
         "Obligations, requirements and the controls that meet them.", ("compliance",),
         ("/api/grc/regulations", "/api/grc/requirements", "/api/grc/compliance")),
-    App("policies", "Policy Manager", "Risk & compliance", "file-earmark-ruled",
+    App("policies", "Policy Manager", COMPLIANCE, "file-earmark-ruled",
         "Policy drafting, approval, publication and attestations.", ("policies",),
         ("/api/grc/policies", "/api/grc/campaigns", "/api/grc/attestations")),
-    App("assets", "Asset Inventory", "Risk & compliance", "hdd-network",
-        "Systems, data, facilities and third parties with due diligence.", ("assets",), ("/api/grc/assets",)),
-    # Registers
-    App("organizations", "Organizations", "Registers", "building", "GPHA ports, departments, units and parties.",
-        ("organizations",), (), core=True),
-    App("stakeholders", "Stakeholders", "Registers", "people", "Stakeholder and auditee contacts.",
-        ("stakeholders",), ("/api/stakeholders",)),
-    App("library", "Frameworks & controls", "Registers", "diagram-3-fill", "Frameworks and standard controls.",
-        ("library",), ("/api/library",)),
-    App("criteria", "Criteria library", "Registers", "journal-bookmark", "Laws, policies and standards cited.",
+    App("criteria", "Criteria library", COMPLIANCE, "journal-bookmark", "Laws, policies and standards cited.",
         ("criteria",), ("/api/criteria",)),
-    App("programs", "Audit programmes", "Registers", "list-check", "Reusable work programmes.", ("programs",),
-        ("/api/audit-programs",)),
-    App("service-feedback", "Service Feedback", "Registers", "chat-left-text", "Feedback on audit services.",
+    App("nonconformances", "Nonconformance", COMPLIANCE, "exclamation-triangle", "Nonconformance register.",
+        ("nonconformances",), ("/api/nonconformances",)),
+    # Analytics & reporting
+    App("analytics", "Analytics", REPORTING, "graph-up-arrow", "KPIs, trends and heat maps.", ("analytics",),
+        ("/api/analytics",)),
+    App("committee", "Audit Committee", REPORTING, "bar-chart-line",
+        "Committee packs, meetings, minutes and decisions.", ("committee",), ("/api/committee",)),
+    App("governance", "Governance portal", REPORTING, "bank", "Read-only view for governing bodies.",
+        ("governance",), ("/api/governance",)),
+    App("portfolio", "Port portfolio", REPORTING, "geo-alt", "Audit coverage and results by port.",
+        ("portfolio",), ("/api/portfolio",)),
+    App("qaip", "Quality (QAIP)", REPORTING, "patch-check", "Quality assurance and improvement programme.",
+        ("qaip",), ("/api/qaip",)),
+    App("service-feedback", "Service Feedback", REPORTING, "chat-left-text", "Feedback on audit services.",
         ("service-feedback",), ("/api/service-feedback",)),
-    # Platform
-    App("automations", "Automations", "Account", "lightning-charge", "Reminders, routing and escalation rules.",
+    # Platform settings
+    App("organizations", "Organizations", SETTINGS, "building", "GPHA ports, departments, units and parties.",
+        ("organizations",), (), core=True),
+    App("stakeholders", "Stakeholders", SETTINGS, "people", "Stakeholder and auditee contacts.",
+        ("stakeholders",), ("/api/stakeholders",)),
+    App("automations", "Automations", SETTINGS, "lightning-charge", "Reminders, routing and escalation rules.",
         ("automations",), ("/api/automations",)),
-    App("ai", "AI assistance", "Services", "stars", "Optional drafting help (also needs the AI settings).", (),
+    # Services
+    App("ai", "AI assistance", SERVICES, "stars", "Optional drafting help (also needs the AI settings).", (),
         ("/api/ai",)),
 ]
 APPS_BY_KEY = {a.key: a for a in APPS}

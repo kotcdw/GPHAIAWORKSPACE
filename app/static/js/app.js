@@ -1055,51 +1055,66 @@ async function renderWorkspace() {
   if (staff && hasPerm("audit.create")) quick.push(el("button", { class: "btn secondary", onclick: () => navigate("audits") }, el("i", { class: "bi bi-clipboard-plus" }), " Start an audit"));
   if (canWriteModule("capa")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("capa") }, el("i", { class: "bi bi-tools" }), " New remediation"));
   if (canWriteModule("nonconformances")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("nonconformances") }, el("i", { class: "bi bi-exclamation-triangle" }), " New nonconformance"));
-  viewRoot.append(viewHeader("GPHA Workspace", null, { sub: "Every Internal Audit module in one place" }));
+  viewRoot.append(viewHeader("Launchpad", null, { sub: "Every GIAW app, grouped by solution the same way as the sidebar" }));
   if (quick.length) viewRoot.append(el("div", { class: "ws-quick" }, ...quick));
 
   const groupsEl = el("div", { class: "ws-groups" });
   viewRoot.append(groupsEl);
 
+  // Groups and order follow the sidebar (Diligent One style solution groups).
   const groups = [
-    { title: "Overview", tiles: [
+    { title: "Home", tiles: [
       { view: "dashboard", icon: "grid-1x2", name: "Dashboard", desc: "Your headline numbers and recent work" },
-      { view: "tasks", icon: "check2-square", name: "Task Center", desc: "Tasks assigned to you and your team", count: "tasks" },
+      { view: "portal", icon: "inboxes", name: "Task Manager", desc: "Assessments and requests waiting for you" },
+      { view: "tasks", icon: "check2-square", name: "Task Tracker", desc: "To-dos assigned to you and your team", count: "tasks" },
       { view: "drafts", icon: "pencil-square", name: "My Drafts", desc: "Forms you started and can finish later", count: "drafts" },
-      { view: "governance", icon: "bank", name: "Governance portal", desc: "Approved plans, issued reports and headline KPIs" },
-      { view: "portfolio", icon: "geo-alt", name: "Port portfolio", desc: "Audits, findings and remediation by port" },
-      { view: "committee", icon: "bar-chart-line", name: "Committee pack", desc: "Audit Committee summary and Word pack", staff: true },
-      { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Heat map, trends, repeat findings and KPIs", staff: true },
-      { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews and auditee satisfaction", staff: true },
     ] },
-    { title: "Planning", staff: true, tiles: [
-      { view: "plans", icon: "calendar3", name: "Assurance Plan", desc: "Annual risk-based audit plan by fiscal year", count: "plans" },
-      { view: "universe", icon: "diagram-3", name: "Audit Universe", desc: "Auditable units and their risk ratings" },
-      { view: "capacity", icon: "people-fill", name: "Capacity & time", desc: "Skills, available hours, time sheets, budgets" },
+    { title: "Audit management", tiles: [
+      { view: "universe", icon: "bullseye", name: "Audit universe", desc: "Auditable entities defined from the Org Structure and Process library" },
+      { view: "riskassess", icon: "clipboard-data", name: "Audit risk assessment", desc: "Score entities on assessment factors and prioritise them for the plan", staff: true },
+      { view: "plans", icon: "calendar3", name: "Assurance Plans", desc: "Annual risk-based audit plan by fiscal year", count: "plans", staff: true },
+      { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: planning, fieldwork, issues, results", count: "audits" },
+      { view: "programs", icon: "list-check", name: "Audit programmes", desc: "Reusable work programmes (project templates)", staff: true },
+      { view: "evidence", icon: "inbox", name: "Evidence requests", desc: "Requests sent to auditees and the files they return" },
+      { view: "issues", icon: "flag", name: "Issue Tracker", desc: "Every issue across audits, with KPIs", staff: true },
+      { view: "capa", icon: "tools", name: "Remediation & Follow-up", desc: "Agreed actions tracked to validated closure", count: "capa" },
+    ] },
+    { title: "Resource management", staff: true, tiles: [
       { view: "scheduler", icon: "calendar-week", name: "Scheduler", desc: "Engagement timeline, team bookings, double-booking warnings" },
+      { view: "capacity", icon: "people-fill", name: "Timesheets & capacity", desc: "Time sheets, available hours, skills, budget versus actual" },
       { view: "practice", icon: "person-check", name: "Professional practice", desc: "Declarations, CPD, charter and external assessment" },
     ] },
-    { title: "Audit work", tiles: [
-      { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: RCM, testing, findings, reports", count: "audits" },
-      { view: "capa", icon: "tools", name: "Remediation & Follow-up", desc: "Agreed actions tracked to validated closure", count: "capa" },
-      { view: "evidence", icon: "inbox", name: "Evidence requests", desc: "Documents requested from and submitted by auditees" },
+    { title: "Risk management", tiles: [
+      { view: "risk", icon: "shield-exclamation", name: "Risk Manager", desc: "Enterprise risk register, heat maps and indicators" },
+      { view: "processes", icon: "gear-wide-connected", name: "Process library", desc: "Business processes linked to org units, risks and controls", staff: true },
+      { view: "assets", icon: "hdd-network", name: "Asset Inventory", desc: "Systems, vendors and other assets with their criticality" },
+    ] },
+    { title: "Compliance management", tiles: [
+      { view: "library", icon: "diagram-3-fill", name: "Frameworks", desc: "COSO, ISO, PFM and GPHA frameworks with standard controls", staff: true },
+      { view: "compliance", icon: "diagram-2", name: "Compliance Maps", desc: "Obligations mapped to common controls, with gaps" },
+      { view: "policies", icon: "file-earmark-ruled", name: "Policy Manager", desc: "Policies, versions, reviews and attestation" },
+      { view: "criteria", icon: "journal-bookmark", name: "Criteria library", desc: "Laws, policies and standards findings are measured against", staff: true },
       { view: "nonconformances", icon: "exclamation-triangle", name: "Nonconformance", desc: "Nonconformities and their disposition", count: "ncs" },
     ] },
-    { title: "Registers", tiles: [
-      { view: "organizations", icon: "building", name: "Organizations", desc: "Departments, units and external bodies", staff: true },
-      { view: "stakeholders", icon: "people", name: "Stakeholders", desc: "Key contacts for each organization", staff: true },
-      { view: "library", icon: "diagram-3-fill", name: "Frameworks & controls", desc: "COSO, ISO, PFM and GPHA frameworks with standard controls", staff: true },
-      { view: "criteria", icon: "journal-bookmark", name: "Criteria library", desc: "Laws, policies and standards findings are measured against", staff: true },
-      { view: "programs", icon: "list-check", name: "Audit programmes", desc: "Reusable work programmes applied to an audit's RCM", staff: true },
+    { title: "Analytics & reporting", tiles: [
+      { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Heat map, trends, repeat findings and KPIs", staff: true },
+      { view: "committee", icon: "bar-chart-line", name: "Audit Committee", desc: "Committee summary, Word pack, meetings and decisions", staff: true },
+      { view: "governance", icon: "bank", name: "Governance portal", desc: "Approved plans, issued reports and headline KPIs" },
+      { view: "portfolio", icon: "geo-alt", name: "Port portfolio", desc: "Audits, findings and remediation by port" },
+      { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews and auditee satisfaction", staff: true },
       { view: "service-feedback", icon: "chat-left-text", name: "Service Feedback", desc: "Auditee feedback on audit services", count: "feedback" },
     ] },
-    { title: "Account & administration", tiles: [
-      { view: "profile", icon: "person-gear", name: "Profile & Users", desc: "Your profile, password and two-step sign-in" },
+    { title: "Platform settings", tiles: [
+      { view: "orgstructure", icon: "diagram-3", name: "Org Structure", desc: "Ports, head office, departments, units and sections", staff: true },
+      { view: "organizations", icon: "building", name: "Organizations", desc: "Departments, units and external bodies", staff: true },
+      { view: "stakeholders", icon: "people", name: "Stakeholders", desc: "Key contacts for each organization", staff: true },
+      { view: "profile", icon: "person-gear", name: "Profile & Users", desc: "Your profile, password, two-step sign-in and users" },
       { view: "roles", icon: "shield-lock", name: "Roles & permissions", desc: "Job roles and what each one can do" },
       { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, audit types, plan settings, SLAs" },
-      { view: "logs", icon: "journal-text", name: "Audit Log", desc: "Who did what, and when", admin: true },
-      { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
+      { view: "apps", icon: "sliders2", name: "Apps & customization", desc: "Turn apps on or off and adjust their fields" },
       { view: "automations", icon: "lightning-charge", name: "Automations", desc: "Reminders, routing and escalation rules" },
+      { view: "logs", icon: "journal-text", name: "Activity logs", desc: "Who did what, and when", admin: true },
+      { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
       { view: "platform", icon: "diagram-2", name: "Platform map", desc: "Core, domain modules, shared data and services (AI, analytics, documents)" },
     ] },
   ];
@@ -1196,7 +1211,7 @@ async function renderDashboard() {
         el("tbody", null, ...myTasks.slice(0, 6).map((x) => el("tr", { onclick: () => navigate("tasks") },
           el("td", null, x.title), el("td", null, badge(x.status)),
           el("td", { class: "muted num" }, x.due_date ? fmtDate(x.due_date).split(",")[0] : "-"))))),
-    el("button", { class: "btn small secondary", onclick: () => navigate("tasks") }, "Task Center")));
+    el("button", { class: "btn small secondary", onclick: () => navigate("tasks") }, "Task Tracker")));
 
     if (staff) {
       const plan = plans.find((x) => x.status !== "Closed") || plans[0];
@@ -1213,7 +1228,7 @@ async function renderDashboard() {
             el("div", { class: "muted small" }, `${sm.started} of ${live} engagements started (${pct}%) · ${sm.coverage_pct}% universe coverage · ${sm.planned_hours}h planned`));
         }
       }
-      grid.append(panel("Assurance Plan", body, el("button", { class: "btn small secondary", onclick: () => navigate("plans") }, "Open plans")));
+      grid.append(panel("Assurance Plans", body, el("button", { class: "btn small secondary", onclick: () => navigate("plans") }, "Open plans")));
     }
     if (drafts.length) {
       grid.append(panel("Continue where you left off", el("ul", { class: "plain-list" },
@@ -1227,7 +1242,7 @@ async function renderDashboard() {
 async function renderTasks() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Task Center", el("button", { class: "btn", onclick: newTaskModal }, "New task")), msg);
+  viewRoot.append(viewHeader("Task Tracker", el("button", { class: "btn", onclick: newTaskModal }, "New task")), msg);
   const tabs = [
     { key: "assigned_to_me", label: "Assigned to me" },
     { key: "by_me", label: "Assigned by me" },
@@ -1326,6 +1341,7 @@ async function renderAudits() {
       { key: "status", label: "Status", sort: true, render: (a) => statusBadge(a.status), csv: (a) => a.status },
       { key: "open_findings", label: "Open findings", sort: true, num: true, render: (a) => a.findings ? `${a.open_findings} / ${a.findings}` : "0", csv: (a) => a.open_findings },
       { key: "working_papers", label: "Working papers", num: true, hidden: true },
+      { key: "progress", label: "Progress", sort: true, num: true, render: (a) => progressBar(a.progress), csv: (a) => a.progress },
       { key: "report_status", label: "Report", render: (a) => a.report_status ? statusBadge(a.report_status) : "-", csv: (a) => a.report_status || "" },
       { key: "updated_at", label: "Updated", sort: true, render: (a) => fmtDay(a.updated_at), csv: (a) => a.updated_at },
     ],
@@ -1423,15 +1439,15 @@ async function openAudit(id, startTab = null) {
     { key: "dashboard", label: "Dashboard" },
     ...(canWrite ? [{ key: "memo", label: "Planning" }, { key: "fieldwork", label: "Fieldwork" }] : []),
     { key: "papers", label: "Working papers" },
+    ...(canWrite ? [{ key: "quality", label: "Reviews" }] : []),
+    { key: "report", label: "Results" },
     { key: "findings", label: "Issues" },
-    { key: "evidence", label: "Evidence requests" },
-    { key: "report", label: "Report" },
-    ...(canWrite ? [{ key: "quality", label: "Quality review" }] : []),
+    { key: "evidence", label: "Requests" },
     { key: "survey", label: "Survey" },
   ];
   const utility = [
-    ...(canWrite ? [{ label: "Review notes", icon: "chat-square-text", key: "notes" }, { label: "Time", icon: "clock", key: "time" }] : []),
-    { label: "Tasks", icon: "check2-square", key: "tasks" },
+    ...(canWrite ? [{ label: "Review notes", icon: "chat-square-text", key: "notes" }, { label: "Time entries", icon: "clock", key: "time" }] : []),
+    { label: "To-dos", icon: "check2-square", key: "tasks" },
     { label: "History", icon: "clock-history", key: "history" },
     { label: "Approvals", icon: "pen", key: "approvals" },
   ];
@@ -1897,7 +1913,7 @@ async function renderUserManagement(container, msg) {
 
 async function renderLogs() {
   clear(viewRoot);
-  viewRoot.append(viewHeader("Audit log", null, { sub: "Immutable activity trail. Search the action text, filter by date; paging and export run on the server." }));
+  viewRoot.append(viewHeader("Activity logs", null, { sub: "Immutable activity trail. Search the action text, filter by date; paging and export run on the server." }));
   const card = el("div", { class: "card" });
   viewRoot.append(card);
   const today = new Date();
@@ -1907,7 +1923,7 @@ async function renderLogs() {
     storageKey: "audit-log",
     defaultSort: "-timestamp",
     pageSize: 50,
-    exportName: "Audit log",
+    exportName: "Activity logs",
     filters: [{ key: "date_from", label: "Period", options: [{ value: ago(1), label: "Last 24 hours" }, { value: ago(7), label: "Last 7 days" }, { value: ago(30), label: "Last 30 days" }] }],
     emptyTitle: "No activity recorded",
     columns: [

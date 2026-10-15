@@ -348,7 +348,7 @@ function recordLayout(opts) {
 // ------------------------------------------------------------------ application shell
 // Sidebar groups (the blueprint's modules) collapse and expand; the group holding the current page stays open.
 function initNavGroups() {
-  const collapsed = new Set(Prefs.get("nav.collapsed", ["access", "operations"]));
+  const collapsed = new Set(Prefs.get("nav.collapsed", ["settings"]));
   document.querySelectorAll("#sidebarNav .nav-group").forEach((g) => {
     const head = g.querySelector(".nav-group-head");
     const set = (open) => { g.classList.toggle("collapsed", !open); head.setAttribute("aria-expanded", open ? "true" : "false"); };

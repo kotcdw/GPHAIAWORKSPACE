@@ -153,7 +153,7 @@ async function renderFieldworkTab(pane, audit, canWrite) {
   const subs = workplan
     ? [{ key: "plan", label: "Project plan" }, { key: "exec", label: "Execute procedures", count: fw.procedures }]
     : [{ key: "rcm", label: "Risk control matrix" }, { key: "walk", label: "Walkthroughs" }, { key: "tplan", label: "Test plan" },
-      ...fw.round_labels.map((l, i) => ({ key: `r${i + 1}`, label: fw.round_labels.length === 1 ? l : `${l} round` }))];
+      ...fw.round_labels.map((l, i) => ({ key: `r${i + 1}`, label: l }))];
   let sub = state.fwSub[audit.id];
   if (!subs.some((s) => s.key === sub)) sub = subs[0].key;
 

@@ -167,16 +167,16 @@ def test_shell_breadcrumbs_groups_and_scope(browser, base_url):
     ctx, page, watch = _signed_in(browser, base_url)
     page.evaluate("navigate('audits')")
     page.wait_for_load_state("networkidle")
-    assert page.inner_text("#crumbs") .replace("\n", " ").strip().startswith("Engagements & fieldwork")
+    assert page.inner_text("#crumbs") .replace("\n", " ").strip().startswith("Audit management")
     assert page.get_attribute('#sidebarNav button[data-view="audits"]', "aria-current") == "page"
     # Groups collapse and expand, and the state survives a reload.
-    head = page.locator('.nav-group[data-group="universe"] .nav-group-head')
+    head = page.locator('.nav-group[data-group="risk"] .nav-group-head')
     head.click()
-    assert page.get_attribute('.nav-group[data-group="universe"] .nav-group-head', "aria-expanded") == "false"
+    assert page.get_attribute('.nav-group[data-group="risk"] .nav-group-head', "aria-expanded") == "false"
     page.reload()
     page.wait_for_selector("#appView:not(.hidden)")
-    assert "collapsed" in (page.get_attribute('.nav-group[data-group="universe"]', "class") or "")
-    page.locator('.nav-group[data-group="universe"] .nav-group-head').click()
+    assert "collapsed" in (page.get_attribute('.nav-group[data-group="risk"]', "class") or "")
+    page.locator('.nav-group[data-group="risk"] .nav-group-head').click()
     # Scope chip opens a panel that Escape closes.
     page.click("#scopeChip")
     assert page.is_visible("#scopePanel")

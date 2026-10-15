@@ -100,7 +100,7 @@ async function renderPlans(filter = state.planFilter || "") {
   const pick = el("select", { class: "compact", "aria-label": "Filter by status" }, el("option", { value: "" }, "All current plans"),
     ...PLAN_STATUSES.map((s) => el("option", { value: s, selected: s === filter ? "1" : null }, s)));
   pick.addEventListener("change", () => renderPlans(pick.value));
-  viewRoot.append(viewHeader("Assurance Plan", [pick, hasPerm("plan.prepare") ? btn("New plan", () => newPlanModal()) : null],
+  viewRoot.append(viewHeader("Assurance Plans", [pick, hasPerm("plan.prepare") ? btn("New plan", () => newPlanModal()) : null],
     { sub: "Draft → In Review → Submitted → Approved → Distributed → In Execution → Closed → Archived (Returned and Revised when sent back or revised)" }), msg);
   try {
     const plans = await API.get(filter ? `/api/assurance-plans?lifecycle_status=${encodeURIComponent(filter)}` : "/api/assurance-plans");
@@ -108,10 +108,11 @@ async function renderPlans(filter = state.planFilter || "") {
     if (!plans.length) card.append(el("div", { class: "empty" }, "No Assurance Plan yet. Create the plan for the fiscal year to start."));
     else card.append(el("table", null,
       el("thead", null, el("tr", null, el("th", null, "Ref"), el("th", null, "Fiscal year"), el("th", null, "Title"),
-        el("th", null, "Status"), el("th", null, "Approved"))),
+        el("th", null, "Status"), el("th", { class: "num" }, "Budgeted hours"), el("th", null, "Approved"))),
       el("tbody", null, ...plans.map((p) => el("tr", { onclick: () => openPlan(p.id) },
         el("td", { class: "ref" }, p.plan_ref), el("td", null, `FY${p.fiscal_year}`), el("td", null, p.title),
         el("td", null, badge(p.lifecycle_status), p.current_version ? el("span", { class: "muted small" }, ` v${p.current_version}`) : null),
+        el("td", { class: "num" }, String(p.total_budget_hours || 0)),
         el("td", { class: "muted" }, fmtDate(p.approved_at)))))));
     viewRoot.append(card);
   } catch (err) { notify(msg, err.message, "error"); }
@@ -235,8 +236,11 @@ function planOverview(pane, plan) {
   const maxQ = Math.max(1, ...QUARTERS.map((q) => s.by_quarter[q] || 0));
   pane.append(el("div", { class: "stats" },
     stat(s.engagements - s.cancelled, "Planned engagements", `${s.started} started · ${s.planned} not started`),
-    stat(`${s.planned_hours}h`, "Hours planned", s.budget_hours ? `${hoursPct}% of ${s.budget_hours}h budget` : "No budget set",
+    stat(`${s.budget_hours || 0}h`, "Budgeted hours", s.budget_hours ? "Set on the plan" : "No budget set"),
+    stat(`${s.planned_hours}h`, "Sum of audit hours", s.budget_hours ? `${hoursPct}% of the budget` : "Budget hours of the engagements",
       hoursPct !== null && hoursPct > 100 ? "danger" : ""),
+    stat(`${(s.budget_hours || 0) - s.planned_hours}h`, "Remaining hours", (s.budget_hours || 0) - s.planned_hours < 0 ? "Over budget" : "Budget not yet allocated",
+      (s.budget_hours || 0) - s.planned_hours < 0 ? "danger" : ""),
     stat(`${s.coverage_pct}%`, "Universe coverage", `${s.covered_units} of ${s.universe_units} entity units`),
     el("div", { class: "stat" }, el("div", { class: "l" }, "By quarter"),
       el("div", { class: "qbars" }, ...QUARTERS.map((q) => el("div", { class: "qbar" },

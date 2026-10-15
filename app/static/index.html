@@ -218,89 +218,74 @@
         <button class="nav-group-head" type="button" aria-expanded="true"><span>Home</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
           <button data-view="dashboard" class="active"><i class="bi bi-house"></i><span>Dashboard</span></button>
+          <button data-view="workspace"><i class="bi bi-grid-3x3-gap"></i><span>Launchpad</span></button>
           <button data-view="portal"><i class="bi bi-inboxes"></i><span>Task Manager</span><span id="portalCount" class="count hidden"></span></button>
-          <button data-view="tasks"><i class="bi bi-check2-square"></i><span>Task Center</span></button>
+          <button data-view="tasks"><i class="bi bi-check2-square"></i><span>Task Tracker</span></button>
           <button data-view="drafts"><i class="bi bi-pencil-square"></i><span>My Drafts</span><span id="draftCount" class="count hidden"></span></button>
-          <button data-view="workspace"><i class="bi bi-grid-3x3-gap"></i><span>GPHA Workspace</span></button>
         </div>
       </div>
-      <div class="nav-group" data-group="universe">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Universe, risk &amp; controls</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+      <div class="nav-group" data-group="audit">
+        <button class="nav-group-head" type="button" aria-expanded="true"><span>Audit management</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
-          <button data-view="orgstructure" data-staff="1"><i class="bi bi-diagram-3"></i><span>Org Structure</span></button>
-          <button data-view="processes" data-staff="1"><i class="bi bi-gear-wide-connected"></i><span>Process library</span></button>
           <button data-view="universe"><i class="bi bi-bullseye"></i><span>Audit universe</span></button>
-          <button data-view="risk" data-perm="1"><i class="bi bi-shield-exclamation"></i><span>Risk Manager</span></button>
-          <button data-view="library" data-staff="1"><i class="bi bi-diagram-3-fill"></i><span>Frameworks &amp; controls</span></button>
-          <button data-view="criteria" data-staff="1"><i class="bi bi-journal-bookmark"></i><span>Criteria library</span></button>
-          <button data-view="compliance" data-perm="1"><i class="bi bi-diagram-2"></i><span>Compliance Maps</span></button>
-          <button data-view="policies" data-perm="1"><i class="bi bi-file-earmark-ruled"></i><span>Policy Manager</span></button>
-          <button data-view="assets" data-perm="1"><i class="bi bi-hdd-network"></i><span>Asset Inventory</span></button>
-        </div>
-      </div>
-      <div class="nav-group" data-group="planning">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Assurance planning</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
-        <div class="nav-group-items">
           <button data-view="riskassess" data-staff="1"><i class="bi bi-clipboard-data"></i><span>Audit risk assessment</span></button>
-          <button data-view="plans"><i class="bi bi-calendar3"></i><span>Assurance Plan</span></button>
-        </div>
-      </div>
-      <div class="nav-group" data-group="engagements">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Engagements &amp; fieldwork</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
-        <div class="nav-group-items">
+          <button data-view="plans"><i class="bi bi-calendar3"></i><span>Assurance Plans</span></button>
           <button data-view="audits"><i class="bi bi-clipboard-check"></i><span>Audits</span></button>
           <button data-view="programs" data-staff="1"><i class="bi bi-list-check"></i><span>Audit programmes</span></button>
-        </div>
-      </div>
-      <div class="nav-group" data-group="evidence">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Evidence</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
-        <div class="nav-group-items">
           <button data-view="evidence"><i class="bi bi-inbox"></i><span>Evidence requests</span></button>
-        </div>
-      </div>
-      <div class="nav-group" data-group="findings">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Findings &amp; remediation</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
-        <div class="nav-group-items">
           <button data-view="issues" data-staff="1"><i class="bi bi-flag"></i><span>Issue Tracker</span></button>
           <button data-view="capa"><i class="bi bi-tools"></i><span>Remediation &amp; Follow-up</span></button>
-          <button data-view="nonconformances"><i class="bi bi-exclamation-triangle"></i><span>Nonconformance</span></button>
         </div>
       </div>
       <div class="nav-group" data-group="resources">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Resources &amp; time</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+        <button class="nav-group-head" type="button" aria-expanded="true"><span>Resource management</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
           <button data-view="scheduler" data-staff="1"><i class="bi bi-calendar-week"></i><span>Scheduler</span></button>
-          <button data-view="capacity" data-staff="1"><i class="bi bi-people-fill"></i><span>Capacity &amp; time</span></button>
+          <button data-view="capacity" data-staff="1"><i class="bi bi-people-fill"></i><span>Timesheets &amp; capacity</span></button>
           <button data-view="practice" data-staff="1"><i class="bi bi-person-check"></i><span>Professional practice</span></button>
         </div>
       </div>
-      <div class="nav-group" data-group="reporting">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Reporting &amp; analytics</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+      <div class="nav-group" data-group="risk">
+        <button class="nav-group-head" type="button" aria-expanded="true"><span>Risk management</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
+          <button data-view="risk" data-perm="1"><i class="bi bi-shield-exclamation"></i><span>Risk Manager</span></button>
+          <button data-view="processes" data-staff="1"><i class="bi bi-gear-wide-connected"></i><span>Process library</span></button>
+          <button data-view="assets" data-perm="1"><i class="bi bi-hdd-network"></i><span>Asset Inventory</span></button>
+        </div>
+      </div>
+      <div class="nav-group" data-group="compliance">
+        <button class="nav-group-head" type="button" aria-expanded="true"><span>Compliance management</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+        <div class="nav-group-items">
+          <button data-view="library" data-staff="1"><i class="bi bi-diagram-3-fill"></i><span>Frameworks</span></button>
+          <button data-view="compliance" data-perm="1"><i class="bi bi-diagram-2"></i><span>Compliance Maps</span></button>
+          <button data-view="policies" data-perm="1"><i class="bi bi-file-earmark-ruled"></i><span>Policy Manager</span></button>
+          <button data-view="criteria" data-staff="1"><i class="bi bi-journal-bookmark"></i><span>Criteria library</span></button>
+          <button data-view="nonconformances"><i class="bi bi-exclamation-triangle"></i><span>Nonconformance</span></button>
+        </div>
+      </div>
+      <div class="nav-group" data-group="reporting">
+        <button class="nav-group-head" type="button" aria-expanded="true"><span>Analytics &amp; reporting</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+        <div class="nav-group-items">
+          <button data-view="analytics" data-staff="1"><i class="bi bi-graph-up-arrow"></i><span>Analytics</span></button>
+          <button data-view="committee" data-staff="1"><i class="bi bi-bar-chart-line"></i><span>Audit Committee</span></button>
           <button data-view="governance" data-perm="1"><i class="bi bi-bank"></i><span>Governance portal</span></button>
           <button data-view="portfolio" data-perm="1"><i class="bi bi-geo-alt"></i><span>Port portfolio</span></button>
-          <button data-view="committee" data-staff="1"><i class="bi bi-bar-chart-line"></i><span>Audit Committee</span></button>
-          <button data-view="analytics" data-staff="1"><i class="bi bi-graph-up-arrow"></i><span>Analytics</span></button>
           <button data-view="qaip" data-staff="1"><i class="bi bi-patch-check"></i><span>Quality (QAIP)</span></button>
           <button data-view="service-feedback"><i class="bi bi-chat-left-text"></i><span>Service Feedback</span></button>
         </div>
       </div>
-      <div class="nav-group" data-group="access">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Organization &amp; access</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
+      <div class="nav-group" data-group="settings">
+        <button class="nav-group-head" type="button" aria-expanded="true"><span>Platform settings</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
+          <button data-view="orgstructure" data-staff="1"><i class="bi bi-diagram-3"></i><span>Org Structure</span></button>
           <button data-view="organizations"><i class="bi bi-building"></i><span>Organizations</span></button>
           <button data-view="stakeholders"><i class="bi bi-people"></i><span>Stakeholders</span></button>
           <button data-view="profile"><i class="bi bi-person-gear"></i><span>Profile &amp; Users</span></button>
           <button data-view="roles" data-perm="1"><i class="bi bi-shield-lock"></i><span>Roles &amp; permissions</span></button>
           <button data-view="configuration" data-perm="1"><i class="bi bi-sliders"></i><span>Configuration</span></button>
           <button data-view="apps" data-perm="1"><i class="bi bi-sliders2"></i><span>Apps &amp; customization</span></button>
-          <button data-view="logs" data-admin="1"><i class="bi bi-journal-text"></i><span>Audit Log</span></button>
-        </div>
-      </div>
-      <div class="nav-group" data-group="operations">
-        <button class="nav-group-head" type="button" aria-expanded="true"><span>Integrations &amp; operations</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
-        <div class="nav-group-items">
           <button data-view="automations" data-perm="1"><i class="bi bi-lightning-charge"></i><span>Automations</span></button>
+          <button data-view="logs" data-admin="1"><i class="bi bi-journal-text"></i><span>Activity logs</span></button>
           <button data-view="backups" data-admin="1"><i class="bi bi-hdd-stack"></i><span>Backups</span></button>
         </div>
       </div>

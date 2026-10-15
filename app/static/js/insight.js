@@ -145,7 +145,7 @@ async function renderQaipPage(fy = new Date().getFullYear()) {
 async function renderCapacity(tab = "team", fy = new Date().getFullYear()) {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Capacity & time", el("div", { class: "actions" }, fySelect(fy, (y) => renderCapacity(tab, y)),
+  viewRoot.append(viewHeader("Timesheets & capacity", el("div", { class: "actions" }, fySelect(fy, (y) => renderCapacity(tab, y)),
     el("button", { class: "btn", onclick: () => timeEntryForm({}, () => renderCapacity("mine", fy)) }, el("i", { class: "bi bi-plus-lg" }), " Log time")),
   { sub: "Auditor skills, available hours, planned load, time charged and budget versus actual" }), msg);
   viewRoot.append(tabBar([{ key: "team", label: "Team capacity" }, { key: "skills", label: "Skills matrix" }, { key: "budgets", label: "Budget vs actual" }, { key: "mine", label: "My time sheet" }],
@@ -442,8 +442,8 @@ const HELP = {
   portfolio: { title: "Port portfolio", items: [
     "Audits, open findings and remediation by port. A PIA sees their own port (set 'Where I work' on the profile); the GM Audit sees every port.",
   ] },
-  workspace: { title: "GPHA Workspace", items: ["Every module in one place, with live counts. Quick actions start the most common work."] },
-  plans: { title: "Assurance Plan", items: [
+  workspace: { title: "Launchpad", items: ["Every app in one place, grouped by solution like the sidebar (Audit, Resource, Risk and Compliance management; Analytics & reporting; Platform settings), with live counts. Quick actions start the most common work."] },
+  plans: { title: "Assurance Plans", items: [
     "The annual risk-based plan (IIA GIAS 9.4). Add engagements from the Audit Universe, then submit for CAE approval.",
     "Follow the annual planning cycle card: preparation, universe review, managers' meeting, draft, internal review (e-sign), submission, Audit Committee decision, approved version, GM distribution, execution.",
     "Once the approved version has been distributed, PIAs and Audit Managers start engagements to create their audit projects.",
@@ -455,11 +455,11 @@ const HELP = {
   audits: { title: "Audits", items: [
     "Order of work: Planning memo (approved) → Risk & Control Matrix → tests and review → findings → report → remediation.",
     "Fieldwork can only start once the planning memo is approved (configurable by the Admin).",
-    "Log your hours on the Time tab so budget versus actual stays current.",
+    "Log your hours under Time entries so budget versus actual stays current.",
     "Reviewers raise review notes on the audit, working papers, tests or findings; the preparer answers and the reviewer clears them. Open notes block closure.",
     "Give working papers an index reference (A.1, B.2) and link them to the test or finding they support; a reviewer signs each one off.",
-    "Record the exit meeting on the Audit Report tab before the report goes for approval.",
-    "After closure another auditor completes the Quality review; auditees receive the satisfaction survey.",
+    "Record the exit meeting on the Results tab before the report goes for approval.",
+    "After closure another auditor completes the Reviews tab (quality review); auditees receive the satisfaction survey.",
   ] },
   capa: { title: "Remediation & Follow-up", items: [
     "Register: every agreed action. Follow-up: overdue actions, escalation and those awaiting validation.",
@@ -470,7 +470,7 @@ const HELP = {
     "Repeat findings flag issues found again in later audits - a sign remediation did not hold.",
   ] },
   qaip: { title: "Quality (QAIP)", items: ["Results of engagement quality reviews and auditee surveys for the year, and the weakest checklist areas to improve."] },
-  capacity: { title: "Capacity & time", items: [
+  capacity: { title: "Timesheets & capacity", items: [
     "Team capacity compares hours planned on the Assurance Plan with each auditor's available hours.",
     "Log time daily in quarter hours. Audit and Follow-up time must name the audit.",
   ] },

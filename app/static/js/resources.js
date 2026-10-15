@@ -14,9 +14,9 @@ async function renderLibrary(filters = state.libFilters || {}) {
     if (filters.q) qs.set("q", filters.q);
     [fws, lib] = await Promise.all([API.get(`/api/library/frameworks${canEdit ? "?include_inactive=true" : ""}`),
       API.get(`/api/library/controls?${qs}${canEdit ? "&include_inactive=true" : ""}`)]);
-  } catch (err) { viewRoot.append(viewHeader("Frameworks & controls"), msg); notify(msg, err.message, "error"); return; }
+  } catch (err) { viewRoot.append(viewHeader("Frameworks"), msg); notify(msg, err.message, "error"); return; }
 
-  viewRoot.append(viewHeader("Frameworks & controls", canEdit ? [
+  viewRoot.append(viewHeader("Frameworks", canEdit ? [
     el("button", { class: "btn small secondary", onclick: () => frameworkForm(null, fws.types) }, el("i", { class: "bi bi-plus-lg" }), " Framework"),
     fws.items.length ? el("button", { class: "btn small secondary", onclick: () => controlsImportDialog(fws.items) }, el("i", { class: "bi bi-upload" }), " Import CSV") : null,
     fws.items.length ? el("button", { class: "btn small", onclick: () => libraryControlForm(null, fws.items, lib) }, el("i", { class: "bi bi-plus-lg" }), " Standard control") : null,
