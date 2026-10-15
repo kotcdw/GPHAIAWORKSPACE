@@ -1,4 +1,4 @@
-"""Task Manager items: open tasks assigned to the signed-in person."""
+"""Task Tracker priorities: open tasks assigned to the signed-in person."""
 
 from __future__ import annotations
 

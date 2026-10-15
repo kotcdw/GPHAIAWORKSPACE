@@ -28,7 +28,7 @@ MODULES = {
     "dataio": "Import and export",
     "backups": "Encrypted database backups",
     "automations": "Admin-defined automation rules: reminders, routing and escalation",
-    "portal": "Task Manager: one simple page of everything waiting for a business user",
+    "portal": "Task Tracker priorities: one page of everything waiting for a person",
     "apps": "Apps & customization: the Super Administrator switches apps on and off, renames them and sets branding",
 }
 

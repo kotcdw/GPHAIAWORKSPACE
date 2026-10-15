@@ -19,7 +19,7 @@ KEY = "app_customization"
 
 
 # Solution groups (titles and order match the sidebar and the All apps page).
-HOME = "Apps"
+HOME = "Home"
 AUDIT = "Audit management"
 RESOURCE = "Resource management"
 RISK = "Risk management"
@@ -46,10 +46,6 @@ APPS: list[App] = [
     # Home
     App("dashboard", "Workspace", HOME, "grid-3x3-gap", "Home page that hosts every app and feature.",
         ("dashboard",), (), core=True),
-    App("portal", "Task Manager", HOME, "inboxes", "One page of everything waiting for a person.",
-        ("portal",), ("/api/portal",)),
-    App("tasks", "Task Tracker", HOME, "check2-square", "Tasks assigned to people, with due dates.",
-        ("tasks",), ("/api/tasks",)),
     App("drafts", "My Drafts", HOME, "pencil-square", "Autosaved forms waiting to be finished.",
         ("drafts",), (), core=True),
     # Audit management
@@ -62,6 +58,9 @@ APPS: list[App] = [
         ("audits",), (), core=True),
     App("programs", "Project Library", AUDIT, "list-check", "Reusable work programmes.", ("programs",),
         ("/api/audit-programs",)),
+    App("tasks", "Task Tracker", AUDIT, "check2-square",
+        "Priorities, to-dos and requests assigned to you or by you, across all audits.",
+        ("portal", "tasks"), ("/api/portal", "/api/tasks")),
     App("evidence", "Requests", AUDIT, "inbox", "Requests to auditees and the evidence received.",
         ("evidence",), (), core=True),
     App("capa", "Remediation & Follow-up", AUDIT, "tools", "Agreed actions, follow-up and MoF returns.",

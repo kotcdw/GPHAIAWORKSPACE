@@ -10,7 +10,7 @@ function hasPerm(...perms) {
 function isCommittee() { return state.user && state.user.role === "Committee"; }
 
 // Views a Committee (read-only governance) account may open.
-const COMMITTEE_VIEWS = ["portal", "workspace", "governance", "portfolio", "committee", "analytics", "qaip", "profile"];
+const COMMITTEE_VIEWS = ["portal", "dashboard", "governance", "portfolio", "committee", "analytics", "qaip", "profile"];
 const CONFIG_PERMS = ["system.config", "system.workflow", "system.reference", "method.reporting", "method.audit_types", "method.plan_config", "grc.manage", "governance.charter"];
 
 const GRC_VIEW_PERMS = ["grc.view", "grc.manage", "grc.risk", "grc.compliance", "grc.policy", "grc.policy_approve", "grc.assets"];

@@ -3,7 +3,6 @@
 // Loaded after planning.js and before app.js; uses helpers from api.js, forms.js
 // and app.js (el, badge, modal, toast, openForm, eSignModal, viewHeader ...) at call time.
 
-const REPORT_STAGES = ["Draft", "Management Review", "Manager Review", "CAE Approval", "Issued"];
 const REPORT_RATINGS = ["Satisfactory", "Needs Improvement", "Unsatisfactory"];
 
 function isStaff() { return state.user && ["Admin", "Auditor"].includes(state.user.role); }
@@ -352,7 +351,6 @@ async function openLink(type, id) {
     if (type === "policy") return openPolicy(id);
     if (type === "asset") return openAsset(id);
     if (type === "attestation") return navigate("portal");
-    if (typeof openLinkExtra === "function") { const done = openLinkExtra(type, id); if (done !== undefined) return done; }
     return navigate("dashboard");
   } catch (err) { toast(err.message, "error"); return null; }
 }

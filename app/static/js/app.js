@@ -11,7 +11,6 @@ const RISK_RATINGS = ["Low", "Medium", "High"];
 const FINDING_STATUSES = ["Open", "Remediating", "Closed"];
 const SEVERITIES = ["Low", "Medium", "High"];
 const TASK_STATUSES = ["Open", "In Progress", "Closed"];
-const ROLES = ["Admin", "Auditor", "Auditee", "Committee"];
 
 const WRITE_ROLES = ["Admin", "Auditor"];
 
@@ -573,10 +572,9 @@ function navigate(view) {
   state.view = view;
   setActiveNav(view);
   navCrumbs(view);
-  if (view === "followup") { state.remTab = "followup"; return navigate("capa"); }
   if (view === "capa") return renderRemediation(state.remTab);
   if (MODULES[view]) return renderList(view);
-  if (view === "dashboard" || view === "workspace") return renderWorkspace();
+  if (view === "dashboard") return renderWorkspace();
   if (view === "roles") return renderRolesPage();
   if (view === "programs") return renderProgramsPage();
   if (view === "evidence") return renderEvidencePage();
@@ -604,7 +602,6 @@ function navigate(view) {
   if (view === "profile") return renderProfile();
   if (view === "logs") return renderLogs();
   if (view === "backups") return renderBackups();
-  if (view === "platform") return renderPlatform();
   if (view === "practice") return renderPractice();
   if (view === "library") return renderLibrary();
   if (view === "scheduler") return renderScheduler();
@@ -615,6 +612,9 @@ function navigate(view) {
   if (view === "compliance") return renderComplianceMaps();
   if (view === "policies") return renderPolicies();
   if (view === "assets") return renderAssets();
+  // Unknown or retired page: open the Workspace instead of a blank screen.
+  state.view = "dashboard"; setActiveNav("dashboard"); navCrumbs("dashboard");
+  return renderWorkspace();
 }
 
 // Page header: title, optional subtitle / meta chips, and actions on the right.
@@ -1062,10 +1062,6 @@ function panel(title, body, action = null) {
 // The apps the Workspace hosts, grouped and ordered like the sidebar (Diligent One style solution groups).
 function workspaceGroups() {
   return [
-    { title: "Apps", tiles: [
-      { view: "portal", icon: "inboxes", name: "Task Manager", desc: "Your tasks, requests and actions waiting for you" },
-      { view: "tasks", icon: "check2-square", name: "Task Tracker", desc: "To-dos assigned to you and your team", count: "tasks" },
-    ] },
     { title: "Audit management", tiles: [
       { view: "universe", icon: "bullseye", name: "Audit universe", desc: "Auditable entities defined from the Org Structure and Process library" },
       { view: "riskassess", icon: "clipboard-data", name: "Audit risk assessment", desc: "Score entities on assessment factors and prioritise them for the plan", staff: true },
@@ -1073,6 +1069,7 @@ function workspaceGroups() {
       { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: planning, fieldwork, issues, results, requests", count: "audits" },
       { view: "statustracker", icon: "speedometer2", name: "Status Tracker", desc: "Time expired, work completed, budget and time spent per audit", staff: true },
       { view: "programs", icon: "list-check", name: "Project Library", desc: "Reusable audit programmes (project templates)", staff: true },
+      { view: "portal", icon: "check2-square", name: "Task Tracker", desc: "Priorities, to-dos and requests assigned to you or by you", count: "tasks" },
       { view: "issues", icon: "flag", name: "Issue Tracker", desc: "Every issue and its remediation actions, with KPIs", count: "capa" },
     ] },
     { title: "Resource management", staff: true, tiles: [
@@ -1105,15 +1102,6 @@ function workspaceGroups() {
       { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
     ] },
   ];
-}
-
-// Every app tile the person may open (permission, app switched on), flattened.
-function workspaceApps() {
-  const staff = isStaff(); const admin = isAdmin();
-  return workspaceGroups().filter((g) => !g.staff || staff || isCommittee()).flatMap((g) => g.tiles
-    .filter((t) => (!t.staff || staff || isCommittee()) && (!t.admin || admin) && viewAllowed(t.view)
-      && (typeof appEnabledForView !== "function" || appEnabledForView(t.view)))
-    .map((t) => ({ ...t, group: g.title })));
 }
 
 // ==================================================================== GPHA Workspace hub
@@ -1179,7 +1167,7 @@ async function renderWorkspace() {
 async function renderTasks() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Task Tracker", el("button", { class: "btn", onclick: newTaskModal }, "New task")), msg);
+  viewRoot.append(viewHeader("Task Tracker", el("button", { class: "btn", onclick: newTaskModal }, el("i", { class: "bi bi-plus-lg" }), " New to-do")), msg);
   const tabs = [
     { key: "assigned_to_me", label: "Assigned to me" },
     { key: "by_me", label: "Assigned by me" },
@@ -1200,7 +1188,7 @@ async function renderTasks() {
     else qs2 = "?status=Closed";
     API.get(`/api/tasks${qs2}`).then((data) => {
       const items = data.items || data;
-      if (!items.length) { card.append(el("div", { class: "empty" }, "No tasks.")); return; }
+      if (!items.length) { card.append(el("div", { class: "empty" }, "No to-dos.")); return; }
       card.append(el("table", null,
         el("thead", null, el("tr", null, el("th", null, "Title"), el("th", null, "Assignee"), el("th", null, "Status"), el("th", null, "Due"), el("th", null, ""))),
         el("tbody", null, ...items.map((t) => {
@@ -1224,9 +1212,9 @@ async function renderTasks() {
 
 function newTaskModal() {
   openForm({
-    title: "New task",
+    title: "New to-do",
     key: "task:new",
-    meta: { title: "New task" },
+    meta: { title: "New to-do" },
     fields: [
       { name: "title", label: "Title", required: true, maxLength: 255, singleLine: true },
       { name: "assignee_id", label: "Assignee user id", type: "number", min: 1, help: "Leave blank to keep it unassigned" },
@@ -1238,7 +1226,7 @@ function newTaskModal() {
       title: v.title, description: v.description || "", assignee_id: v.assignee_id,
       due_date: v.due_date ? `${v.due_date}T00:00:00` : null,
     }),
-    onDone: () => { toast("Task created"); renderTasks(); refreshDraftCount(); },
+    onDone: () => { toast("To-do created"); renderTasks(); refreshDraftCount(); },
   });
 }
 

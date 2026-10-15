@@ -13,7 +13,7 @@ async function grcEntities() {
 }
 function personOptions(p) { return p.people.map((u) => ({ value: u.id, label: `${u.name}${u.job_role ? ` · ${u.job_role}` : ""}` })); }
 function entityOptions(list) { return list.map((o) => ({ value: o.id, label: o.port_name && o.port_name !== o.name ? `${o.name} (${o.port_name})` : o.name })); }
-// Records opened from the Task Manager return there; otherwise to their app's list.
+// Records opened from the Task Tracker return there; otherwise to their app's list.
 function grcOpened(view) { setActiveNav(state.fromPortal ? "portal" : view); state.view = state.fromPortal ? "portal" : view; }
 function grcBack(fallback) { return () => { if (state.fromPortal) { state.fromPortal = false; navigate("portal"); } else fallback(); }; }
 function grcAfter(fallback) { if (state.fromPortal) { state.fromPortal = false; navigate("portal"); } else fallback(); }
@@ -87,7 +87,7 @@ async function renderRiskManager(tab = state.riskTab || "register", filters = st
   } catch (err) { viewRoot.append(viewHeader("Risk Manager"), msg); notify(msg, err.message, "error"); return; }
   GRC.thr = sum.thresholds;
   viewRoot.append(viewHeader("Risk Manager", reg.can_edit ? [
-    el("button", { class: "btn small secondary", onclick: () => objectiveForm(null) }, el("i", { class: "bi bi-flag" }), " Objective"),
+    el("button", { class: "btn small secondary", onclick: () => strategicObjectiveForm(null) }, el("i", { class: "bi bi-flag" }), " Objective"),
     el("button", { class: "btn small", onclick: () => riskForm(null, reg) }, el("i", { class: "bi bi-plus-lg" }), " Risk"),
   ] : null, { sub: "Enterprise risk register, strategic objectives and key risk indicators. Risk owners keep their assessments current." }), msg);
   viewRoot.append(el("div", { class: "stats" },
@@ -144,7 +144,7 @@ async function renderRiskManager(tab = state.riskTab || "register", filters = st
       el("span", { class: "small" }, `${o.risks} risk${o.risks === 1 ? "" : "s"}${o.high_risks ? ` · ${o.high_risks} high` : ""}`),
       el("div", { class: "inline-actions" },
         el("button", { class: "linkish small", onclick: () => renderRiskManager("register", { objective_id: o.id }) }, "Show risks"),
-        reg.can_edit ? el("button", { class: "linkish small", onclick: () => objectiveForm(o) }, "Edit") : null)))));
+        reg.can_edit ? el("button", { class: "linkish small", onclick: () => strategicObjectiveForm(o) }, "Edit") : null)))));
   } else {
     const kris = await safeGet("/api/grc/kris", []);
     body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, `Key risk indicators (${kris.length})`)),
@@ -157,7 +157,7 @@ async function renderRiskManager(tab = state.riskTab || "register", filters = st
   }
 }
 
-async function objectiveForm(o) {
+async function strategicObjectiveForm(o) {
   const [p, ents] = await Promise.all([grcPeople(), grcEntities()]);
   openForm({
     title: o ? `Edit ${o.ref}` : "New strategic objective", key: o ? `obj:${o.id}` : "obj:new", width: 720, draftable: !o,
@@ -762,14 +762,14 @@ function tpAssessForm(a) {
   });
 }
 
-// ==================================================================== Task Manager (business-user portal)
+// ==================================================================== Task Tracker: Priorities (everything waiting for a person)
 
 async function renderPortal() {
   clear(viewRoot);
   const msg = el("div");
   let data;
-  try { data = await API.get("/api/portal"); } catch (err) { viewRoot.append(viewHeader("Task Manager"), msg); notify(msg, err.message, "error"); return; }
-  viewRoot.append(viewHeader("Task Manager", el("button", { class: "btn small secondary", onclick: renderPortal }, el("i", { class: "bi bi-arrow-clockwise" }), " Refresh"),
+  try { data = await API.get("/api/portal"); } catch (err) { viewRoot.append(viewHeader("Task Tracker"), msg); notify(msg, err.message, "error"); return; }
+  viewRoot.append(viewHeader("Task Tracker", el("button", { class: "btn small secondary", onclick: renderPortal }, el("i", { class: "bi bi-arrow-clockwise" }), " Refresh"),
     { sub: `${greeting()}, ${data.user}. Everything waiting for you, in one place.` }), msg);
   viewRoot.append(el("div", { class: "stats" }, stat(data.total, "Waiting for you"), stat(data.overdue, "Overdue", null, data.overdue ? "danger" : ""),
     stat(data.due_this_week, "Due within 7 days", null, data.due_this_week ? "warn" : "")));
@@ -803,7 +803,7 @@ function portalAction(it) {
     case "evidence_request": return navigate("evidence");
     case "capa": return openRecord("capa", it.id);
     case "task": return navigate("tasks");
-    default: if (typeof portalActionExtra === "function") return portalActionExtra(it, back); return null;
+    default: return null;
   }
 }
 

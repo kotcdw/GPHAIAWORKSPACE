@@ -1,4 +1,4 @@
-"""Task Manager items from the risk & compliance apps: attestations, risk reviews, KRI readings, compliance
+"""Task Tracker priorities from the risk & compliance apps: attestations, risk reviews, KRI readings, compliance
 assessments and third-party due diligence owned by the signed-in person."""
 
 from __future__ import annotations

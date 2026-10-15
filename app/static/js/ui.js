@@ -401,7 +401,7 @@ async function initScopeChip() {
   if (state.user.work_entity_id) {
     try { where = await API.get(`/api/organizations/${state.user.work_entity_id}`); } catch { where = null; }
   }
-  const wide = isAdmin() || (typeof isCae === "function" && isCae());
+  const wide = isAdmin();
   const place = where ? (where.port_name && where.port_name !== where.name ? `${where.port_name} · ${where.name}` : where.name) : null;
   label.textContent = place || (wide ? "All ports" : "Workplace not set");
   chip.title = `Working context: ${label.textContent}`;
@@ -440,7 +440,7 @@ function fmtDay(value) {
 // ------------------------------------------------------------------ merged apps (one sidebar entry, tabs on top)
 // Pages that live inside another app: the sidebar shows the host only; the others open as its tabs.
 const HOST_GROUPS = [
-  { host: "portal", tabs: [["portal", "My tasks"], ["evidence", "Requests"]] },
+  { host: "portal", tabs: [["portal", "Priorities"], ["tasks", "To-dos"], ["evidence", "Requests"]] },
   { host: "issues", tabs: [["issues", "Issues"], ["capa", "Actions"]] },
   { host: "committee", tabs: [["committee", "Committee pack"], ["governance", "Governance portal"], ["portfolio", "Port portfolio"]] },
   { host: "qaip", tabs: [["qaip", "Quality reviews"], ["practice", "Professional practice"], ["service-feedback", "Service feedback"]] },

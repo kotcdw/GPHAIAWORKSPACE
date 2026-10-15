@@ -21,8 +21,6 @@ async function confirmThen({ title, message, confirmLabel = "Confirm", onConfirm
 
 // ------------------------------------------------------------------ sign-offs
 
-const SO_TYPES = { procedure: "procedure", test: "test", test_plan: "test plan", narrative: "narrative", rcm: "risk control matrix", finding: "issue" };
-
 async function signoffSection(type, id, auditId, onChange) {
   const box = el("div", { class: "so-panel" });
   async function paint() {
@@ -468,8 +466,6 @@ function excludeFromPlan(plan, eng, reload) {
 }
 
 // ------------------------------------------------------------------ Results
-
-const PRIORITY_TONE = { Low: "", Medium: "warn", High: "danger", Critical: "danger" };
 
 async function renderResults(tableId = state.resultsTable || null) {
   state.resultsTable = tableId;

@@ -402,14 +402,6 @@ def cancel(request_id: int, request: Request, db: DBSession = Depends(get_db), u
     return _out(db, r, user)
 
 
-def overdue_count(db: DBSession, user: User) -> int:
-    """Open requests past due assigned to (auditee) or raised by (staff) ``user``."""
-    col = EvidenceRequest.requested_by if is_privileged(user) else EvidenceRequest.assignee_id
-    return db.execute(select(func.count()).select_from(EvidenceRequest).where(
-        col == user.id, EvidenceRequest.status.in_(OPEN), EvidenceRequest.due_date < utcnow())).scalar_one()
-
-
-
 def _remind(db: DBSession, r: EvidenceRequest, now: datetime) -> None:
     due = f" It is due {r.due_date:%d %b %Y}." if r.due_date else ""
     late = " It is overdue." if r.due_date and r.due_date < now else ""

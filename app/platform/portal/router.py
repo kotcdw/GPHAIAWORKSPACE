@@ -1,4 +1,4 @@
-"""Task Manager: one simple page for business users (control owners, risk owners, auditees, policy readers).
+"""Task Tracker: one simple page for business users (control owners, risk owners, auditees, policy readers).
 
 Each domain contributes the work waiting for the signed-in person through a small ``portal`` module exposing
 ``items(db, user) -> list[dict]``. The portal never grants access by itself: every action still goes through the
@@ -56,7 +56,7 @@ def collect(db: DBSession, user: User) -> list[dict]:
                 item.setdefault("overdue", bool(item["due"] and item["due"] < date.today().isoformat()))
                 out.append(item)
         except Exception:  # noqa: BLE001 - one broken provider must not hide the rest of the page
-            logger.exception("Task Manager provider %s failed", name)
+            logger.exception("Task Tracker provider %s failed", name)
             db.rollback()
     return out
 

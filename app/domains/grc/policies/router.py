@@ -431,7 +431,7 @@ def create_campaign(policy_id: int, payload: CampaignIn, request: Request, db: D
         db.add(Attestation(campaign_id=c.id, user_id=uid))
     due = f" by {payload.due_date:%d %b %Y}" if payload.due_date else ""
     notify_many(db, people, f"Please attest: {p.title}", f"Read version {p.published_version} of {p.ref} and "
-                f"confirm{due}. Open your Task Manager.", link_type="attestation", link_id=c.id)
+                f"confirm{due}. Open your Task Tracker.", link_type="attestation", link_id=c.id)
     log_action(db, user_id=user.id, action=f"ATTESTATION_CAMPAIGN {p.ref} v{c.version} to {len(people)} people",
                request=request)
     db.commit()

@@ -18,15 +18,15 @@ Launchpad and Apps & customization:
 
 | Group | Apps |
 |---|---|
-| Home | Dashboard, Launchpad, Task Manager, Task Tracker, My Drafts |
-| Audit management | Audit universe, Audit risk assessment, Assurance Plans, Audits, Status Tracker, Project Library, Requests, Issue Tracker, Remediation & Follow-up |
+| Home | Workspace (with My Drafts in the top bar) |
+| Audit management | Audit universe, Audit risk assessment, Assurance Plans, Audits, Status Tracker, Project Library, Task Tracker (Priorities, To-dos, Requests), Issue Tracker (Issues, Actions) |
 | Resource management | Scheduler, Timesheets & capacity, Professional practice |
 | Risk management | Risk Manager, Process library, Asset Inventory |
 | Compliance management | Frameworks, Compliance Maps, Policy Manager, Nonconformance |
 | Analytics & reporting | Analytics, Results, Storyboards, Robots, Audit Committee, Governance portal, Port portfolio, Quality (QAIP), Service Feedback |
 | Platform settings | Org Structure, Organizations, Stakeholders, Profile & Users, Roles & permissions, Configuration, Audit types, Apps & customization, Automations, Activity logs, Backups |
 
-Renamed to the Diligent app names: GPHA Workspace → **Launchpad**, Task Center → **Task Tracker**, Assurance Plan →
+Renamed to the Diligent app names: GPHA Workspace → **Workspace** (Diligent: Platform home), Task Manager and Task Center → one **Task Tracker** (Priorities, To-dos, Requests; placed after Project Library as in the Diligent Projects app), Assurance Plan →
 **Assurance Plans**, Frameworks & controls → **Frameworks**, Audit Log → **Activity logs**, Capacity & time →
 **Timesheets & capacity** (Diligent: Timesheets). Kept: Audit programmes (Diligent: Project Library), Evidence requests
 (Diligent: Requests), GPHA-only apps (Port portfolio, Governance portal, Professional practice, Nonconformance,

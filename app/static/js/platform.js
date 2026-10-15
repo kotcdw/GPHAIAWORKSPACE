@@ -1,4 +1,4 @@
-// Platform map (architecture) and the optional AI Service helpers.
+// Optional AI Service helpers (drafting help on findings, report summaries and risks).
 
 // ------------------------------------------------------------------ AI Service (pluggable, off by default)
 let _aiStatus = null;
@@ -114,61 +114,4 @@ function aiRiskAction(o, reload) {
           } catch (err) { toast(err.message, "error"); }
         } }, "Add ticked risks")) });
   });
-}
-
-// ------------------------------------------------------------------ Platform map
-async function renderPlatform() {
-  clear(viewRoot);
-  const msg = el("div");
-  viewRoot.append(viewHeader("Platform map", null, { sub: "How the workspace is built: generated from the running system, so it is always current." }), msg);
-  let m;
-  try { m = await API.get("/api/platform"); } catch (err) { notify(msg, err.message, "error"); return; }
-
-  const tableChips = (tables) => tables.length
-    ? el("div", { class: "pm-tables" }, ...tables.map((t) => el("code", null, t)))
-    : el("span", { class: "muted small" }, "no tables of its own");
-  const moduleRow = (mod) => el("tr", { class: "no-click" },
-    el("td", null, el("strong", null, mod.code), el("div", { class: "muted small" }, mod.summary)),
-    el("td", null, tableChips(mod.tables)),
-    el("td", { class: "small" }, mod.endpoints.length ? mod.endpoints.map((e) => `/api/${e}`).join(", ") : "-"));
-  const layerCard = (layer, icon) => el("div", { class: "card pm-layer" },
-    el("div", { class: "card-head" }, el("h3", null, el("i", { class: `bi bi-${icon}` }), ` ${layer.name}`), el("code", { class: "muted" }, layer.package)),
-    el("p", { class: "muted" }, layer.description),
-    el("table", null, el("thead", null, el("tr", null, el("th", null, "Module"), el("th", null, "Tables it owns"), el("th", null, "API"))),
-      el("tbody", null, ...layer.modules.map(moduleRow))));
-  const arrow = () => el("div", { class: "pm-arrow" }, el("i", { class: "bi bi-arrow-down" }));
-
-  const ai = m.services.modules.find((x) => x.code === "ai");
-  const docs = m.services.modules.find((x) => x.code === "documents");
-  const aiState = ai.status.enabled ? (ai.status.ready ? ["Enabled", "ok"] : ["Enabled - not ready", "warn"]) : ["Off", "muted"];
-
-  viewRoot.append(
-    el("div", { class: "pm-top" }, el("h3", null, "GPHA INTERNAL AUDIT"), el("span", { class: "muted" }, m.system)),
-    arrow(),
-    el("div", { class: "card pm-layer" },
-      el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-cpu" }), ` ${m.core.name}`), el("code", { class: "muted" }, m.core.package)),
-      el("ul", null, ...m.core.components.map((c) => el("li", null, c))), tableChips(m.core.tables)),
-    layerCard(m.platform, "hdd-network"),
-    arrow(),
-    el("div", { class: "pm-domains" }, ...m.domains.map((d) => layerCard(d, { "Audit Domain Module": "clipboard-check", "Assurance Domain Module": "calendar2-check", "Issues Domain Module": "tools" }[d.name] || "box"))),
-    arrow(),
-    el("div", { class: "card pm-layer pm-data" },
-      el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-database" }), ` ${m.shared_data.name}`)),
-      el("p", null, m.shared_data.description),
-      el("p", { class: "muted small" }, `${m.shared_data.engine} · database ${m.shared_data.database || "-"} · ${m.shared_data.tables} tables`)),
-    arrow(),
-    el("div", { class: "pm-services" },
-      el("div", { class: "card pm-layer" },
-        el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-stars" }), " AI Service"), el("span", { class: `chip-mini ${aiState[1]}` }, aiState[0])),
-        el("p", { class: "muted" }, ai.summary),
-        el("p", { class: "small" }, `Provider: ${ai.status.provider} · model ${ai.status.model}`),
-        ...(ai.status.problems || []).map((p) => el("div", { class: "callout warn small" }, p)),
-        el("p", { class: "muted small" }, "Turn on and choose the provider under Configuration > AI. The API key stays in the server's GPHA_AI_API_KEY setting.")),
-      el("div", { class: "card pm-layer" },
-        el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-graph-up" }), " Analytics Service"), el("span", { class: "chip-mini ok" }, "On")),
-        el("p", { class: "muted" }, m.services.modules.find((x) => x.code === "analytics").summary)),
-      el("div", { class: "card pm-layer" },
-        el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-file-earmark-word" }), " Documents Service"), el("span", { class: "chip-mini ok" }, "On")),
-        el("p", { class: "muted" }, docs.summary),
-        el("ul", { class: "small" }, ...docs.status.documents.map((d) => el("li", null, d.name))))));
 }

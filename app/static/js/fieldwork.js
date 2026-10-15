@@ -20,14 +20,6 @@ function signoffDots(list) {
   ...items.map((d) => el("span", { class: `so-dot ${d.done ? "done" : ""}`, "aria-hidden": "true" })));
 }
 
-function prepReviewDots(row) {
-  if (row.signoffs) return signoffDots(row.signoffs);
-  return signoffDots([
-    { label: "Prepared", done: !!row.prepared_at, by: row.prepared_by, at: row.prepared_at },
-    { label: "Reviewed", done: !!row.reviewed_at, by: row.reviewed_by, at: row.reviewed_at },
-  ]);
-}
-
 // Segmented sub-navigation inside a tab (keyboard: arrow keys move between options).
 function subNav(items, active, onPick, label = "Views") {
   const nav = el("div", { class: "subnav", role: "tablist", "aria-label": label });

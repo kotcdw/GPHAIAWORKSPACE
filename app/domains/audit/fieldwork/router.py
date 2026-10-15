@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
@@ -572,12 +572,6 @@ def assignees(audit_id: int, db: DBSession = Depends(get_db), _: User = Staff) -
                       .join(User, User.id == AuditTeamMember.user_id)
                       .where(AuditTeamMember.audit_id == audit_id).order_by(User.full_name)).all()
     return [{"id": r.user_id, "name": r.full_name or r.username, "team_role": r.team_role} for r in rows]
-
-
-def ensure_workflow(audit: Audit, wanted: str) -> None:
-    if audit.workflow != wanted:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail=f"This audit uses the {audit.workflow} workflow")
 
 
 # ==================================================================== auditable entities covered and detailed scoping

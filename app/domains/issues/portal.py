@@ -1,4 +1,4 @@
-"""Task Manager items from follow-up: agreed actions (remediation) owned by the signed-in person."""
+"""Task Tracker priorities from follow-up: agreed actions (remediation) owned by the signed-in person."""
 
 from __future__ import annotations
 

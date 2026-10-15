@@ -15,7 +15,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session as DBSession
 
-from app.core.appconfig import cfg
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_perm
@@ -290,13 +289,3 @@ def minutes_docx(meeting_id: int, db: DBSession = Depends(get_db), _: User = Vie
                     else "", x["reference"] or "", x["notes"]] for x in (_decision_out(db, d) for d in m.decisions)])
     doc.add_paragraph("\nChairperson: ____________________    Secretary: ____________________")
     return docx_response(doc, f"{m.meeting_ref}-minutes.docx")
-
-
-def latest_meetings(db: DBSession, limit: int = 4) -> list[dict]:
-    rows = db.execute(select(CommitteeMeeting).where(CommitteeMeeting.status != "Cancelled")
-                      .order_by(CommitteeMeeting.meeting_date.desc()).limit(limit)).scalars()
-    return [_out(db, m, full=False) for m in rows]
-
-
-def committee_closes() -> bool:
-    return bool(cfg("committee_closes_recommendations"))
