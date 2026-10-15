@@ -1498,3 +1498,46 @@ input.switch:disabled { opacity: .5; cursor: default; }
 /* ---- Workspace tiles ------------------------------------------------------------------------------------- */
 .ws-cell { position: relative; min-width: 0; }
 .ws-cell .ws-tile { height: 100%; }
+
+/* ---- GPHA brand: floating port cover behind every page, GPHA-blue sidebar -------------------------------- */
+:root {
+  --gpha-blue: #1e60ae;       /* GPHA logo blue */
+  --gpha-blue-deep: #0f3f7a;
+  --gpha-yellow: #fef200;     /* GPHA logo yellow */
+  --sidebar-w: 272px;
+}
+.app-body { position: relative; }
+/* The same port photograph as the sign-in page, drifting slowly. */
+.app-body::before {
+  content: ""; position: fixed; inset: -6%; z-index: -2; pointer-events: none;
+  background: url("/static/img/loginPattern.jpg") center / cover no-repeat;
+  animation: gpha-bg-float 16s ease-in-out infinite;
+}
+/* A light wash keeps tables and text readable over the photo. */
+.app-body::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, #f3f5f8bf 0%, #f3f5f8cc 45%, #f3f5f8db 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-body::before, .sign-in-div::before { animation: none; }
+}
+
+/* Sidebar in GPHA blue */
+.sidebar {
+  background: linear-gradient(180deg, var(--gpha-blue) 0%, var(--gpha-blue-deep) 100%);
+  border-right: 0; box-shadow: 2px 0 10px #0f2a4a26;
+}
+.nav-group + .nav-group { border-top: 1px solid #ffffff1f; }
+#sidebarNav .nav-group-head { color: #c9daf2; font-size: 11px; padding: 10px 16px 5px 20px; }
+#sidebarNav .nav-group-head:hover { color: #ffffff; }
+#sidebarNav .nav-group-items button { color: #eef4fc; font-size: 13.5px; padding: 7px 16px 7px 20px; gap: 11px; }
+#sidebarNav .nav-group-items button i { color: #bcd2ef; font-size: 15px; width: 18px; }
+#sidebarNav .nav-group-items button:hover { background: #ffffff1a; color: #ffffff; }
+#sidebarNav .nav-group-items button:hover i { color: #ffffff; }
+#sidebarNav .nav-group-items button.active { background: #ffffff26; color: #ffffff; font-weight: 600; box-shadow: inset 4px 0 0 var(--gpha-yellow); }
+#sidebarNav .nav-group-items button.active i { color: var(--gpha-yellow); }
+#sidebarNav button:focus-visible { outline: 2px solid var(--gpha-yellow); outline-offset: -2px; }
+#sidebarNav .count { background: var(--gpha-yellow); color: #0f2a4a; font-weight: 700; }
+#sidebarNav .count.alert { background: var(--danger); color: #ffffff; }
+.sidebar:hover, #sidebarNav:hover { scrollbar-color: #ffffff59 transparent; }
+.sidebar:hover::-webkit-scrollbar-thumb, #sidebarNav:hover::-webkit-scrollbar-thumb { background: #ffffff59; background-clip: padding-box; }
