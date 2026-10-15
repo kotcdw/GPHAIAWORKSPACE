@@ -598,7 +598,8 @@ async function issueForm(f, auditId, canWrite, onSaved) {
   const fields = [
     { name: "title", label: "Issue title", required: true, maxLength: 255, singleLine: true, disabled: ro },
     { name: "risk_rating", label: "Risk rating", type: "select", required: true, options: RISK_RATINGS, disabled: ro },
-    { name: "status", label: "Status", type: "select", required: true, options: FINDING_STATUSES, disabled: ro },
+    { name: "status", label: "Status", type: "select", required: true, options: FINDING_STATUSES, disabled: ro,
+      help: f && f.remediation ? `Remediation: ${f.remediation.state}${f.remediation.refs.length ? ` (${f.remediation.refs.join(", ")})` : ""}. A finding closes when its actions are verified as effective.` : "A finding closes when its remediation actions are verified as effective." },
     { name: "assigned_owner_email", label: "Owner email", type: "email", disabled: ro },
     { type: "heading", label: "Issue attributes" },
     ...(canWrite ? [{ name: "criterion_id", label: "Criterion from the library", type: "select", emptyLabel: library.length ? "- none (write below) -" : "- library is empty -",

@@ -62,6 +62,9 @@ RULES: list[Rule] = [
     Rule("require_findings_actioned_to_close", "Require every finding to have a management response and, for High "
          "and Medium risk, an agreed action before closing", "Audit workflow", "bool",
          default_attr="require_findings_actioned_to_close"),
+    Rule("low_findings_close_without_action", "Low-rated findings may be closed without a remediation action",
+         "Audit workflow", "bool", "Medium and High findings always close through a remediation action that "
+         "Internal Audit validates as Effective.", default=True),
     Rule("management_response_requires_owner_and_date", "A management response must name the responsible officer "
          "and a target date", "Audit workflow", "bool", "As in the GPHA working paper template: Action Plan, "
          "Responsible Officer and Target Date.", default=True),
@@ -153,6 +156,14 @@ RULES: list[Rule] = [
     Rule("mfa_required_roles", "Roles that must use two-step verification", "Security", "roles",
          "Users in these roles are asked to set it up at their next sign-in.", default_attr="mfa_required_roles",
          options=["Admin", "Auditor", "Auditee"]),
+    Rule("port_scope_enforced", "Restrict audit staff to their port and their engagement teams", "Security", "bool",
+         "On: staff based at a port see that port's audits plus audits whose team they are on; HQ staff and the "
+         "GM Audit see every port. Administrators always see everything. Off: all audit staff see every audit.",
+         default_attr="port_scope_enforced"),
+    Rule("authority_wide_categories", "Workplace types whose audit staff see every port (HQ)", "Security", "list",
+         "One per line, from the entity types under Organizations. Staff based in one of these (or in a unit under "
+         "it) see every port's audits; leave empty to limit HQ staff to their engagement teams too.",
+         default=["Head Office"], allow_empty=True),
     Rule("mfa_enforced", "Enforce two-step verification for the roles above", "Security", "bool",
          "Off during development: nobody is forced to set it up. Turn it on when the workspace is ready for use; "
          "users in the roles above are then asked to set it up at their next sign-in. Anyone can still turn it "

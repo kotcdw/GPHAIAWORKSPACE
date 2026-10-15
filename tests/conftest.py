@@ -50,6 +50,8 @@ os.environ["GPHA_REQUIRE_ENGAGEMENT_DECLARATION"] = "false"
 # Older tests use one Audit Manager review and one working-paper sign-off; the chain has its own tests.
 os.environ["GPHA_REPORT_REVIEW_CHAIN"] = "Audit Manager"
 os.environ["GPHA_WORKPAPER_REVIEW_CHAIN"] = ""
+# Older tests let any auditor work on any audit; port/team scoping has its own tests (test_scope_team.py).
+os.environ["GPHA_PORT_SCOPE_ENFORCED"] = "false"
 
 import pytest  # noqa: E402
 from alembic.config import Config  # noqa: E402

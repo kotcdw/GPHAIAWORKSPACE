@@ -509,7 +509,7 @@ def search(
             .scalars()
             .all()
         )
-        if not staff and rtype != "entity_unit":
+        if rtype != "entity_unit":
             rows = visible(db, user, rtype, rows)
         for r in rows[:limit]:
             hits.append(

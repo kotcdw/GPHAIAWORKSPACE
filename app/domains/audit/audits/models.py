@@ -134,6 +134,18 @@ class Finding(Base):
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<Finding id={self.id} title={self.title!r} status={self.status.value}>"
 
+class AuditTeamMember(Base):
+    """A member of an engagement team. Team members see and work on the audit even outside their own port."""
+
+    __tablename__ = "audit_team_members"
+
+    audit_id: Mapped[int] = mapped_column(ForeignKey("audits.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    team_role: Mapped[str] = mapped_column(String(30), nullable=False, default="Auditor")
+    added_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    added_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
 class AuditAuditee(Base):
     """Grants an Auditee account visibility of one audit (and its records)."""
 

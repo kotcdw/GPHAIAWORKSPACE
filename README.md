@@ -20,8 +20,11 @@ with electronic attestations, and keep a strict, immutable audit trail.
 | ORM        | SQLAlchemy 2.0 + Alembic                          |
 | Database   | MySQL 8 (Docker) via PyMySQL                      |
 | Auth       | Server-side sessions in an HttpOnly cookie + CSRF |
-| Front end  | Static HTML/CSS/JS calling a JSON API             |
-| Tests      | pytest + httpx (run against a MySQL test database) |
+| Front end  | Plain JavaScript SPA in `app/static` (no build step); GIAW design system in `ui.js` + CSS tokens |
+| Tests      | pytest + httpx (MySQL test database); Playwright browser tests in `tests/ui` |
+
+Recorded decision (15 October 2026): the stack is **FastAPI + MySQL** with the plain JavaScript front end above.
+React, TypeScript, Vite, Tailwind, Celery and Redis are not used.
 
 ## Features
 

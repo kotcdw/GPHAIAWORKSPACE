@@ -93,11 +93,16 @@ def list_findings(
     audit_id: int, db: DBSession = Depends(get_db), user: User = Depends(require_active_user)
 ) -> list[Finding]:
     ensure_can_view(db, user, "audit", db.get(Audit, audit_id))
-    return list(
+    from app.domains.issues.capa.closure import remediation_summary
+
+    rows = list(
         db.execute(select(Finding).where(Finding.audit_id == audit_id).order_by(Finding.created_at.desc()))
         .scalars()
         .all()
     )
+    for f in rows:
+        f.remediation = remediation_summary(db, f)
+    return rows
 
 
 @router.post(
@@ -160,6 +165,9 @@ def get_finding(
 ) -> Finding:
     finding = db.get(Finding, finding_id)
     ensure_can_view(db, user, "finding", finding)
+    from app.domains.issues.capa.closure import remediation_summary
+
+    finding.remediation = remediation_summary(db, finding)
     return finding
 
 
@@ -187,6 +195,12 @@ def update_finding(
         finding.risk_rating = payload.risk_rating
         changes.append(f"risk_rating={payload.risk_rating.value}")
     if payload.status is not None:
+        if payload.status == FindingStatus.Closed and finding.status != FindingStatus.Closed:
+            from app.domains.issues.capa.closure import closure_blockers
+
+            blockers = closure_blockers(db, finding)
+            if blockers:
+                raise field_error("status", "cannot be Closed yet: " + "; ".join(blockers))
         finding.status = payload.status
         changes.append(f"status={payload.status.value}")
     if payload.assigned_owner_email is not None:

@@ -194,7 +194,12 @@ def _apply_to_capa(db: DBSession, m: CommitteeMeeting, d: CommitteeDecision, use
         capa.withdrawal_reason = capa.withdrawal_reason or d.notes
         capa.closed_by = user.id
         capa.closed_at = utcnow()
-    elif d.decision == "Extend deadline":
+    if d.decision in ("Close", "Withdraw") and capa.source_type == "finding":
+        from app.domains.issues.capa.closure import sync_finding
+
+        db.flush()
+        sync_finding(db, capa.source_id, user.id)
+    if d.decision == "Extend deadline":
         if d.new_due_date is None or d.new_due_date <= utcnow():
             raise HTTPException(status_code=422, detail="Give a new due date in the future")
         capa.due_date = d.new_due_date

@@ -650,6 +650,8 @@ flowchart TB
 
 ## 9. Recommended technology stack
 
+> **Recorded project decision (15 October 2026): the GIAW stack is FastAPI + MySQL.** Backend: Python 3.12+, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic. Database: MySQL 8 (InnoDB, utf8mb4). Front end: the server-served plain JavaScript single-page app in `app/static` (HTML, CSS, JS; no build step) with the GIAW design system (`app/static/js/ui.js` and the CSS tokens in `app/static/css/styles.css`). React, TypeScript, Vite, Tailwind, Celery and Redis are **not** used. Any change to this stack needs a new recorded decision.
+
 ### 9.1 Required and recommended components
 
 | Layer | Recommendation | Reason |
@@ -659,18 +661,18 @@ flowchart TB
 | ORM | SQLAlchemy 2.x | Explicit data access and transactions |
 | Migrations | Alembic | Versioned, reviewable schema changes |
 | Database | MySQL 8.0+ / supported current LTS | Relational transactional records |
-| Frontend | React + TypeScript + Vite | Componentized, maintainable web interface |
-| UI styling | Tailwind CSS + accessible component primitives | Consistent responsive design |
-| Forms | React Hook Form + schema validation | Predictable form behavior |
-| API client | Generated or typed client from OpenAPI | Reduce frontend/backend drift |
+| Frontend | Plain JavaScript SPA served by FastAPI (`app/static`), no build step | Recorded decision; simple deployment on GPHA servers |
+| UI styling | GIAW design system: CSS tokens + shared components (`ui.js`) | Consistent responsive design |
+| Forms | Shared form framework (`forms.js`): autosaved drafts, inline and server validation | Predictable form behavior |
+| API client | `api.js` fetch wrapper (cookies + CSRF) against the FastAPI OpenAPI contract | Reduce frontend/backend drift |
 | Authentication | OIDC/SSO if available; otherwise secure server-managed session or short-lived JWT design | Enterprise identity |
 | Authorization | Application RBAC + organization scope + engagement assignment checks | Fine-grained access |
 | File storage | Private S3-compatible object storage or secured managed file store | File size, versioning and scalable retention |
 | Malware scanning | ClamAV or approved enterprise scanning service | Upload safety |
-| Background jobs | Celery + Redis, or equivalent approved queue | Reminders, exports, scanning and scheduled tasks |
+| Background jobs | In-process asyncio tasks in the FastAPI app | Reminders, escalations, backups |
 | Email | GPHA-approved SMTP/transactional relay | Notifications |
 | PDF/Excel exports | Approved report renderer; openpyxl for XLSX; controlled PDF generation | Formal reports and exports |
-| Testing | pytest, HTTPX, factory fixtures; frontend component/E2E tests | Regression confidence |
+| Testing | pytest, HTTPX on MySQL; Playwright browser tests (`tests/ui`) | Regression confidence |
 | Observability | Structured logs, metrics, tracing, error reporting | Production diagnosis |
 | Deployment | Docker; managed VM/container platform approved by GPHA | Repeatable deployment |
 | CI/CD | Automated lint, tests, migrations check, dependency scan, deploy approval | Safer releases |
@@ -1491,7 +1493,7 @@ Use these as task-scoped prompts, not as a request to generate the entire produc
 
 ### Prompt 1 — Repository and architecture
 
-> You are the senior engineer implementing GPHA Internal Audit Workspace (GIAW). Read `giaw.md` first. Build a modular-monolith backend using Python, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic and MySQL. Build a React + TypeScript frontend. Preserve clear domain boundaries. Before coding, inspect the existing repository and report the current structure, gaps, risks and a proposed incremental plan. Do not delete or rewrite files without explaining why. Do not invent GPHA policies. Add tests and documentation for every implemented feature.
+> You are the senior engineer implementing GPHA Internal Audit Workspace (GIAW). Read `giaw.md` first. Build a modular-monolith backend using Python, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic and MySQL. Keep the existing plain JavaScript front end served by FastAPI (no React). Preserve clear domain boundaries. Before coding, inspect the existing repository and report the current structure, gaps, risks and a proposed incremental plan. Do not delete or rewrite files without explaining why. Do not invent GPHA policies. Add tests and documentation for every implemented feature.
 
 ### Prompt 2 — Authorization first
 

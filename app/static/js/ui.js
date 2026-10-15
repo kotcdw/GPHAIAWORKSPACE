@@ -412,7 +412,7 @@ async function initScopeChip() {
           el("dt", null, "Role"), el("dd", null, state.user.job_role_name || state.user.role),
           state.user.review_level ? el("dt", null, "Approval level") : null,
           state.user.review_level ? el("dd", null, state.user.review_level === "Manager" ? "Audit Manager" : state.user.review_level === "CAE" ? "GM Audit (CAE)" : state.user.review_level) : null),
-        el("p", { class: "muted small" }, "Lists offer a \"My port\" filter based on your workplace. What you may open is decided by your role and assignments on the server."),
+        el("p", { class: "muted small" }, "Audit staff see their own port's audits and every audit whose engagement team they are on. HQ staff and the GM Audit see all ports. Administrators can change this under Configuration > Security."),
         el("button", { class: "btn small secondary", type: "button", onclick: () => { close(); navigate("profile"); } }, "Change workplace"));
       pop.classList.remove("hidden"); chip.setAttribute("aria-expanded", "true");
     });

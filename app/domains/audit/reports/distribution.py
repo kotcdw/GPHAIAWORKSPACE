@@ -112,16 +112,24 @@ def register_rows(db: DBSession, year: int | None) -> list[dict]:
     return out
 
 
+def _scoped(db: DBSession, user: User, rows: list[dict]) -> list[dict]:
+    """Only reports of audits in the caller's port/team scope."""
+    from app.core.access import staff_audit_scope
+
+    allowed = staff_audit_scope(db, user)
+    return rows if allowed is None else [r for r in rows if r["audit_id"] in allowed]
+
+
 @router.get("/api/reports/register")
 def report_register(year: int | None = Query(default=None), db: DBSession = Depends(get_db),
-                    _: User = Staff) -> list[dict]:
-    return register_rows(db, year)
+                    user: User = Staff) -> list[dict]:
+    return _scoped(db, user, register_rows(db, year))
 
 
 @router.get("/api/reports/register.xlsx")
 def report_register_xlsx(year: int | None = Query(default=None), db: DBSession = Depends(get_db),
-                         _: User = Staff):  # noqa: ANN201
-    rows = register_rows(db, year)
+                         user: User = Staff):  # noqa: ANN201
+    rows = _scoped(db, user, register_rows(db, year))
     headers = ["Ref", "Title", "Audit", "Status", "Rating", "Draft to management", "Response due",
                "Response received", "Issued", "Copies sent", "Copies outstanding"]
     data = [[r["report_ref"], r["title"], r["audit_title"], r["status"], r["overall_rating"], r["draft_sent_at"],

@@ -111,6 +111,7 @@ class Settings(BaseSettings):
     report_review_chain: str = "Unit Head,Audit Manager,PIA"
     workpaper_review_chain: str = "Unit Head,Audit Manager,PIA"
     working_paper_locations: str = "Headquarters,Tema Port,Takoradi Port"
+    port_scope_enforced: bool = True
 
     # Per-IP throttle on sign-in attempts (in addition to account lockout).
     login_rate_limit_per_minute: int = 10

@@ -550,6 +550,14 @@ def start_engagement(
     db.flush()
     eng.status = EngagementStatus.Started
     eng.audit_id = audit.id
+    from app.domains.audit.audits.models import AuditTeamMember
+
+    lead = eng.lead_auditor_id if eng.lead_auditor_id and db.get(User, eng.lead_auditor_id) else None
+    if lead:
+        db.add(AuditTeamMember(audit_id=audit.id, user_id=lead, team_role="Lead auditor", added_by=user.id))
+    if user.id != lead:
+        db.add(AuditTeamMember(audit_id=audit.id, user_id=user.id, team_role="Auditor" if lead else "Lead auditor",
+                               added_by=user.id))
     log_action(db, user_id=user.id, action=f"ENGAGEMENT_START id={eng.id} audit={audit.id}", request=request)
     _history(db, eng.plan_id, user, f"ENGAGEMENT STARTED #{eng.id} -> audit #{audit.id}", request)
     log_record_history(

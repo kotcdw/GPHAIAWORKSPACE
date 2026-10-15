@@ -2,6 +2,9 @@
 
 **Date:** 15 October 2026 · **Commit checked:** 5ffdff9 · **Code changed by this check:** none
 
+> **Update, 15 October 2026:** rows 1, 8 and 16 are now fixed (engagement teams, port/team scope, finding closure
+> through verified remediation). The original findings are kept below for the record; see section 4.
+
 Status key: **OK** aligned · **PARTIAL** link exists but incomplete · **GAP** missing or contradicts the blueprint.
 
 Every link below was verified in the models and routers (file references in brackets). Nothing is inferred from screen labels alone.
@@ -56,3 +59,13 @@ Every link below was verified in the models and routers (file references in brac
 8. **Engagement risks link** to enterprise or universe risks; configurable scoring (rows 3, 4, 5).
 9. **Feedback loop:** open, repeat and overdue findings raise universe risk for next year (row 18). *Recommended; GPHA to approve the rule.*
 10. **Committee directive register** (row 22) and **`/api/v1`** (row 24).
+
+## 4. Fixed after this check
+
+| Row | Change | Where |
+|---|---|---|
+| 1 | Audit staff see their port's audits and their engagement teams' audits. HQ (workplace types listed under Configuration > Security, default Head Office), the GM Audit and administrators see all. Staff with no workplace see only their teams. Out-of-scope records answer 404 for reads **and writes**: a route guard resolves the record in the URL (audit, finding, working paper, report, objective, risk, control, test, review note, evidence request or file, remediation action, nonconformance, time entry) to its audit. Lists, the audit register, the report register, evidence lists, search and record history are filtered the same way. Switch: Configuration > Security > "Restrict audit staff to their port and their engagement teams" | `app/core/access.py`, `app/main.py` |
+| 8 | Engagement teams (`audit_team_members`: Lead auditor, Auditor, Reviewer; one lead per audit). Filled from the plan's lead when an engagement starts; the creator leads ad-hoc audits; existing audits were back-filled by migration 0028. Team card on the audit page; the register shows the team lead | `audits/router.py`, `planning/router.py` |
+| 16 | A finding cannot be set to Closed while any linked action is open or closed without "Effective" validation (or a Committee or external closure). Medium and High findings need an action; Low findings may close without one (configurable). Closing the last action, by e-signature or by Audit Committee decision, closes the finding automatically. Registers show one remediation status (No action raised / Action in progress / Awaiting verification / Closed - verified) | `app/domains/issues/capa/closure.py` |
+
+**Still open from the list:** aggregate dashboards (Governance portal, Port portfolio, Analytics, Committee pack) still show authority-wide figures to all audit staff, and rows 2–7 and 9–24 are unchanged.

@@ -226,7 +226,8 @@ def test_record_page_tabs_sit_under_the_title(browser, base_url):
     box = page.locator(".rec-tabs").bounding_box()
     assert box["y"] < 220, box  # tabs are visible without scrolling
     assert page.inner_text(".rec-tabs [role=tab].active") == "Dashboard"
-    assert page.locator(".rec-side .card h3", has_text="Engagement").count() == 1
+    side_titles = page.locator(".rec-side .card h3").all_inner_texts()
+    assert "Engagement" in side_titles and "Engagement team" in side_titles
     assert "Audits" in page.inner_text("#crumbs")
     # Keyboard: arrow right moves to the next tab.
     page.focus(".rec-tabs [role=tab].active")

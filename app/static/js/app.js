@@ -1502,7 +1502,43 @@ function renderAuditSide(side, audit, canWrite) {
       el("dt", null, "Created"), el("dd", null, fmtDay(audit.created_at)),
       el("dt", null, "Updated"), el("dd", null, fmtDay(audit.updated_at))),
     control ? el("div", { style: "margin-top:10px" }, control) : null));
+  const teamSlot = el("div");
+  side.append(teamSlot);
+  renderAuditTeam(teamSlot, audit, canWrite && hasPerm("audit.create") && audit.status !== "Closed");
   if (canWrite && ["In Progress", "Review"].includes(audit.status)) renderClosureCard(side, audit, isAdmin());
+}
+
+// Engagement team: members work on the audit even when it belongs to another port.
+async function renderAuditTeam(slot, audit, canEdit) {
+  const LEVEL = { "Unit Head": "Unit Head", Manager: "Audit Manager", PIA: "PIA", CAE: "GM Audit" };
+  const card = el("div", { class: "card" });
+  slot.replaceChildren(card);
+  card.append(el("div", { class: "card-head" }, el("h3", null, "Engagement team")));
+  let team;
+  try { team = await API.get(`/api/audits/${audit.id}/team`); } catch (err) { card.append(errorState(err)); return; }
+  if (!team.length) card.append(el("p", { class: "muted small" }, "No team assigned yet."));
+  else card.append(el("ul", { class: "plain-list team-list" }, ...team.map((m) => el("li", null,
+    el("div", null, el("strong", null, m.name), el("div", { class: "muted small" },
+      [m.team_role, m.approval_level ? LEVEL[m.approval_level] || m.approval_level : null].filter(Boolean).join(" · "))),
+    canEdit && m.team_role !== "Lead auditor" ? el("button", { class: "chip-x", type: "button", title: `Remove ${m.name}`, "aria-label": `Remove ${m.name}`,
+      onclick: async () => {
+        const ok = await confirmDialog({ title: "Remove from team", text: `${m.name} will lose access to this audit unless it belongs to their port.`, confirmLabel: "Remove", danger: true });
+        if (!ok.ok) return;
+        try { await API.del(`/api/audits/${audit.id}/team/${m.user_id}`); toast("Removed from the team"); renderAuditTeam(slot, audit, canEdit); }
+        catch (err) { toast(err.message, "error"); }
+      } }, "\u00d7") : null))));
+  if (!canEdit) return;
+  const who = el("select", { "aria-label": "Team member" }, el("option", { value: "" }, "Add a person…"));
+  const role = el("select", { "aria-label": "Team role" }, ...["Auditor", "Reviewer", "Lead auditor"].map((r) => el("option", { value: r }, r)));
+  safeGet(`/api/audits/${audit.id}/team-candidates`, []).then((list) => {
+    const on = new Set(team.map((t) => t.user_id));
+    list.filter((u) => !on.has(u.id)).forEach((u) => who.append(el("option", { value: u.id }, u.approval_level ? `${u.name} (${LEVEL[u.approval_level] || u.approval_level})` : u.name)));
+  });
+  card.append(el("div", { class: "team-add" }, who, role, el("button", { class: "btn small", type: "button", onclick: async () => {
+    if (!who.value) { toast("Choose a person", "error"); return; }
+    try { await API.post(`/api/audits/${audit.id}/team`, { user_id: Number(who.value), team_role: role.value }); toast("Team updated"); renderAuditTeam(slot, audit, canEdit); }
+    catch (err) { toast(err.message, "error"); }
+  } }, "Add")));
 }
 
 // Audit Dashboard tab: scope, auditees, independence, review status of working papers and the findings summary.
@@ -1608,12 +1644,14 @@ async function renderFindings(panel, id, canWrite) {
   if (!findings.length) card.append(el("div", { class: "empty" }, "No findings recorded."));
   else card.append(el("table", null,
     el("thead", null, el("tr", null, el("th", null, "#"), el("th", null, "Issue"), el("th", null, "Risk"), el("th", null, "Status"),
-      el("th", null, "Owner"), el("th", null, "Responses"))),
+      el("th", null, "Owner"), el("th", null, "Remediation"), el("th", null, "Responses"))),
     el("tbody", null, ...findings.map((f) => el("tr", { onclick: () => issueForm(f, id, canWrite, () => openAudit(id)), title: "Open issue" },
       el("td", { class: "ref" }, `#${f.id}`),
       el("td", null, f.title, f.control_id ? el("span", { class: "muted" }, " (from control test)") : null),
       el("td", null, badge(f.risk_rating)),
       el("td", null, badge(f.status)), el("td", { class: "muted" }, f.assigned_owner_email || "-"),
+      el("td", { class: "small", title: f.remediation && f.remediation.refs.length ? f.remediation.refs.join(", ") : "" },
+        f.remediation ? f.remediation.state : "-"),
       el("td", null, el("span", { class: "chips" },
         el("span", { class: `chip-mini ${f.client_response ? "ok" : ""}`, title: f.client_confirmed_at_exit ? "Confirmed at the exit meeting" : "Audit client response" },
           el("i", { class: `bi ${f.client_confirmed_at_exit ? "bi-check2-all" : f.client_response ? "bi-check2" : "bi-hourglass"}` }), " Client"),

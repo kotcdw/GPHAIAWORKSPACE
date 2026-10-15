@@ -36,10 +36,12 @@ GIAW will provide one secure, integrated workspace for:
 
 ## 3. Non-negotiable architecture decisions
 
+> **Recorded project decision (15 October 2026): the GIAW stack is FastAPI + MySQL.** Backend: Python 3.12+, FastAPI, Pydantic v2, SQLAlchemy 2.x, Alembic. Database: MySQL 8 (InnoDB, utf8mb4). Front end: the server-served plain JavaScript single-page app in `app/static` (HTML, CSS, JS; no build step) with the GIAW design system (`app/static/js/ui.js` and the CSS tokens in `app/static/css/styles.css`). React, TypeScript, Vite, Tailwind, Celery and Redis are **not** used. Any change to this stack needs a new recorded decision.
+
 1. **Integrated platform, modular monolith first.** GIAW is one platform containing 10 business modules with clear domain boundaries. Begin with one deployable FastAPI backend and separate module packages; do not start with unnecessary microservices.
 2. **Backend:** Python + FastAPI, Pydantic, SQLAlchemy 2.x and Alembic migrations.
 3. **Database:** MySQL with InnoDB, foreign keys, indexes, migrations, `utf8mb4` and reviewed backup/restore procedures.
-4. **Frontend:** React + TypeScript and a reusable responsive component system, unless a formally recorded project decision changes this.
+4. **Frontend:** server-served plain JavaScript single-page app with the GIAW design system and reusable components (`app/static`). Recorded decision of 15 October 2026 replaces the earlier React + TypeScript suggestion.
 5. **Documents:** private object/file storage; MySQL stores metadata, access relationships, version references and checksums.
 6. **Security:** deny-by-default authorization using roles, permissions, organizational scope and engagement assignment.
 7. **Workflow:** explicit, tested state transitions and recorded approval events; do not scatter workflow logic across API routes.
@@ -314,23 +316,23 @@ The action owner may update progress and submit evidence, but the designated aud
 | ORM | SQLAlchemy 2.x |
 | Schema migrations | Alembic |
 | Database | MySQL 8.0+ or a currently supported approved version |
-| Frontend | React + TypeScript + Vite |
-| Styling/components | Tailwind CSS and accessible reusable components |
-| Background tasks | Celery + Redis or an approved equivalent |
-| File storage | Private S3-compatible object storage or approved managed file store |
-| File safety | Malware scanning service such as ClamAV or approved enterprise equivalent |
-| Testing | pytest, HTTPX, frontend component tests and browser end-to-end tests |
+| Frontend | Plain JavaScript SPA served by FastAPI from `app/static` (no build step) |
+| Styling/components | GIAW design system: CSS tokens in `styles.css`, shared components in `ui.js` |
+| Background tasks | In-process asyncio tasks in the FastAPI app (escalations, backups, schema watch) |
+| File storage | Private upload directory, encrypted at rest, SHA-256 checked, served only through authorized endpoints |
+| File safety | Allow-listed types and size limits; malware scanning (e.g. ClamAV) still to be configured |
+| Testing | pytest + HTTPX on a MySQL test database; Playwright browser tests in `tests/ui` |
 | Deployment | Docker and an approved GPHA environment |
 | Observability | Structured logs, metrics, traces and alerts |
 | API docs | FastAPI OpenAPI documentation |
 
-Pin versions when the repository is created and check current support/security status. This stack is GIAW's design choice; it is not a claim about Diligent's private stack.
+Pin versions when the repository is created and check current support/security status. This stack is GIAW's recorded choice (FastAPI + MySQL); it is not a claim about Diligent's private stack.
 
 ### 7.2 Architecture
 
 ```mermaid
 flowchart TB
-    UI[React + TypeScript UI] --> API[FastAPI REST API]
+    UI[Plain JavaScript SPA served by FastAPI] --> API[FastAPI REST API]
     API --> IAM[Identity, RBAC and Scope Checks]
     API --> DOM[10 Domain Modules]
     DOM --> DB[(MySQL)]
@@ -344,6 +346,28 @@ flowchart TB
 ```
 
 ### 7.3 Repository layout
+
+Actual layout of the repository (GPHAIAWORKSPACE):
+
+```text
+app/
+  main.py                 # FastAPI app, middleware, router registration
+  core/                   # config, database, auth deps, permissions, access/scope rules, paging, errors
+  platform/               # module 1: auth, users, roles, organizations, apps, notifications, history, backups ...
+  domains/
+    audit/                # modules 4-6: audits, RCM, working papers, evidence, reports, methodology, capacity ...
+    assurance/            # modules 2-3 and 9: universe, plans and plan cycle, committee, governance, QAIP, scheduler
+    issues/               # module 7: remediation (CAPA), follow-up, nonconformances
+    grc/                  # risk, compliance, policies, assets
+  services/               # analytics and search, documents, AI
+  static/                 # front end: index.html, css/, js/ (ui.js design system), vendor/
+alembic/                  # migrations
+tests/                    # pytest (MySQL) and tests/ui (Playwright)
+docs/ui/                  # UI redesign records
+scripts/  deploy/
+```
+
+The original suggested layout is kept below for reference only:
 
 ```text
 giaw/
@@ -527,26 +551,26 @@ Use this table in project reviews and update it as work progresses.
 
 | Phase | Status | Owner | Planned start | Planned finish | Actual finish | Blockers / decision |
 |---:|---|---|---|---|---|---|
-| 1 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 2 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 3 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 4 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 5 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 6 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 7 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 8 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 9 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 10 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 11 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 12 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 13 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 14 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 15 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 16 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 17 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 18 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 19 | Not started | TBD | TBD | TBD | TBD | TBD |
-| 20 | Not started | TBD | TBD | TBD | TBD | TBD |
+| 1 | Partial | GIAW team | TBD | TBD | - | GPHA operating picture received; decisions in section 13 still open |
+| 2 | Partial | GIAW team | TBD | TBD | - | Repository, ruff, pytest (MySQL) and browser tests in place; no CI pipeline yet |
+| 3 | Partial | GIAW team | TBD | TBD | - | FastAPI, MySQL, Alembic, health check done; `/api/v1` prefix and request IDs outstanding |
+| 4 | Mostly done | GIAW team | TBD | TBD | - | 5 roles, permission matrix, audit trail, port/team scope on audits and their records (Oct 2026); aggregate dashboards still authority-wide |
+| 5 | Partial | GIAW team | TBD | TBD | - | Organization tree exists; the Audit Universe still uses a separate locations list (decision 13) |
+| 6 | Done | GIAW team | TBD | TBD | - | Entity register, import, coverage; to be attached to the organization tree |
+| 7 | Partial | GIAW team | TBD | TBD | - | Risk Manager, controls library, links done; scoring formula fixed at likelihood x impact (decision 4) |
+| 8 | Done | GIAW team | TBD | TBD | - | |
+| 9 | Done | GIAW team | TBD | TBD | - | Committee decision, version lock, change requests, distribution |
+| 10 | Partial | GIAW team | TBD | TBD | - | Plan engagement -> audit, engagement teams (Oct 2026); 12-state lifecycle and roll-forward outstanding |
+| 11 | Partial | GIAW team | TBD | TBD | - | Internal Control (RCM) workflow only; Workplan procedures outstanding |
+| 12 | Mostly done | GIAW team | TBD | TBD | - | GPHA working-paper template, review chain Unit Head -> Audit Manager -> PIA, review notes |
+| 13 | Partial | GIAW team | TBD | TBD | - | Requests, encrypted storage, SHA-256; malware scanning not configured; links to tests/findings outstanding |
+| 14 | Done | GIAW team | TBD | TBD | - | Client and management responses, actions, validation; finding closes only after verified remediation (Oct 2026) |
+| 15 | Partial | GIAW team | TBD | TBD | - | Scheduler, capacity, time entries; timesheet submission/approval outstanding |
+| 16 | Not started | GIAW team | TBD | TBD | - | |
+| 17 | Not started | GIAW team | TBD | TBD | - | |
+| 18 | Partial | GIAW team | TBD | TBD | - | Notifications, task center, KPIs, exports; registers moving to server paging |
+| 19 | Partial | GIAW team | TBD | TBD | - | Backups, restore and verify scripts; security review and load tests outstanding |
+| 20 | Not started | GIAW team | TBD | TBD | - | |
 
 ---
 
@@ -564,13 +588,18 @@ Use this table in project reviews and update it as work progresses.
 10. Approve migration sources and data quality rules.
 11. Approve integrations and any AI use cases/data boundaries.
 12. Name UAT sign-off owners and production support contacts.
+13. Is the Audit Universe the same as the organization tree, or a separate list of auditable areas mapped onto it? (Today the universe uses its own locations list.)
+14. Do ad-hoc audits (not in the approved plan) need a plan change request before they start?
+15. Confirm which workplace types have an authority-wide view (default: Head Office) and that staff with no workplace see only their engagement teams.
+16. Confirm whether Low-rated findings may be closed without a remediation action (default: yes).
 
 ---
 
 ## 14. Reference documentation and companion files
 
 - **Main project blueprint:** `mainBLUEPRINT.md` — the 10-module structure, 20-phase plan, dependencies, governance and acceptance gates.
-- **Detailed functional/technical specification:** `giaw.md` — module capabilities, screen-by-screen catalogue, data model, API examples, workflows, security, reporting and implementation prompts.
+- **Detailed functional/technical specification:** `giaw-fastAPI.md` (titled `giaw.md` inside) — module capabilities, screen-by-screen catalogue, data model, API examples, workflows, security, reporting and implementation prompts.
+- **UI redesign playbook and records:** `UI_REDESIGN_PROMPTS.md`; `docs/ui/00`–`03` (inventory, reference matrix, design system, data-flow check)
 - **Diligent One Platform Help Center:** https://help.diligentoneplatform.com/helpdocs/d1p/en-us/Content/global_topics/index.htm
 - **HighBond API reference:** https://docs-apis.highbond.com/#section/Making-requests
 

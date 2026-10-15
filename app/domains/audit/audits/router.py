@@ -19,7 +19,7 @@ from app.core.enums import ApprovalStatus, AuditStatus, Role, TestStatus, utcnow
 from app.core.history import log_record_history
 from app.core.paging import Page, PageParams, matches, page_params, paginate_rows
 from app.core.schemas import ESignRequest, MessageOut
-from app.domains.audit.audits.models import Audit, AuditAuditee, Finding, WorkingPaper
+from app.domains.audit.audits.models import Audit, AuditAuditee, AuditTeamMember, Finding, WorkingPaper
 from app.domains.audit.audits.schemas import AuditCreate, AuditeeAssign, AuditeeOut, AuditOut, AuditUpdate
 from app.domains.issues.nonconformances.models import Nonconformance
 from app.platform.approvals.models import ApprovalCycle
@@ -163,7 +163,9 @@ def audit_register(
     port_ids = {a.port_entity_id for a in audits if a.port_entity_id}
     ports = {o.id: o.name for o in
              db.execute(select(Organization).where(Organization.id.in_(port_ids or {0}))).scalars()}
-    lead_ids = {e.lead_auditor_id for e in engagements.values() if e.lead_auditor_id}
+    team_leads = dict(db.execute(select(AuditTeamMember.audit_id, AuditTeamMember.user_id).where(
+        AuditTeamMember.audit_id.in_(ids), AuditTeamMember.team_role == "Lead auditor")).all())
+    lead_ids = {e.lead_auditor_id for e in engagements.values() if e.lead_auditor_id} | set(team_leads.values())
     leads = {u.id: (u.full_name or u.username) for u in
              db.execute(select(User).where(User.id.in_(lead_ids or {0}))).scalars()}
 
@@ -177,7 +179,8 @@ def audit_register(
             "status": a.status.value, "approval_status": a.approval_status.value if a.approval_status else None,
             "port": ports.get(a.port_entity_id), "port_id": a.port_entity_id,
             "plan": f"FY{p.fiscal_year} · {p.plan_ref}" if p else None, "plan_id": a.plan_id,
-            "lead": leads.get(e.lead_auditor_id) if e and e.lead_auditor_id else None,
+            "lead": leads.get(team_leads.get(a.id))
+            or (leads.get(e.lead_auditor_id) if e and e.lead_auditor_id else None),
             "planned_quarter": e.planned_quarter if e else None, "planned_start": e.planned_start if e else None,
             "planned_end": e.planned_end if e else None, "budget_hours": e.budget_hours if e else None,
             "open_findings": f_open, "findings": f_total, "working_papers": papers.get(a.id, 0),
@@ -259,6 +262,7 @@ def create_audit(
     )
     db.add(audit)
     db.flush()
+    db.add(AuditTeamMember(audit_id=audit.id, user_id=user.id, team_role="Lead auditor", added_by=user.id))
     log_action(db, user_id=user.id, action=f"AUDIT_CREATE id={audit.id} title={audit.title}", request=request)
     log_record_history(
         db, record_type="audit", record_id=audit.id, user_id=user.id, action="CREATED", request=request
@@ -494,6 +498,108 @@ def _audit_or_404(db: DBSession, audit_id: int) -> Audit:
     if audit is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audit not found")
     return audit
+
+
+TEAM_ROLES = ("Lead auditor", "Auditor", "Reviewer")
+
+
+class TeamMemberIn(BaseModel):
+    user_id: int
+    team_role: str = "Auditor"
+
+
+class TeamMemberOut(BaseModel):
+    user_id: int
+    name: str
+    username: str
+    team_role: str
+    approval_level: str | None
+    workplace_id: int | None
+    added_at: datetime
+
+
+def _team_out(db: DBSession, audit_id: int) -> list[TeamMemberOut]:
+    rows = db.execute(select(AuditTeamMember, User).join(User, User.id == AuditTeamMember.user_id)
+                      .where(AuditTeamMember.audit_id == audit_id)).all()
+    order = {r: i for i, r in enumerate(TEAM_ROLES)}
+    out = [TeamMemberOut(user_id=u.id, name=u.full_name or u.username, username=u.username, team_role=m.team_role,
+                         approval_level=u.review_level.value if u.review_level else None,
+                         workplace_id=u.work_entity_id, added_at=m.added_at) for m, u in rows]
+    return sorted(out, key=lambda t: (order.get(t.team_role, 9), t.name.lower()))
+
+
+@router.get("/{audit_id}/team", response_model=list[TeamMemberOut])
+def get_team(audit_id: int, db: DBSession = Depends(get_db), user: User = Depends(require_active_user)) -> list:
+    """The engagement team. Team members work on the audit even when it belongs to another port."""
+    ensure_can_view(db, user, "audit", db.get(Audit, audit_id))
+    return _team_out(db, audit_id)
+
+
+@router.get("/{audit_id}/team-candidates")
+def team_candidates(audit_id: int, db: DBSession = Depends(get_db), user: User = WriteAudit) -> list[dict]:
+    ensure_can_view(db, user, "audit", db.get(Audit, audit_id))
+    rows = db.execute(select(User).where(User.is_active.is_(True), User.role.in_((Role.Admin, Role.Auditor)))
+                      .order_by(User.full_name, User.username)).scalars()
+    return [{"id": u.id, "name": u.full_name or u.username, "username": u.username,
+             "approval_level": u.review_level.value if u.review_level else None} for u in rows]
+
+
+@router.post("/{audit_id}/team", response_model=list[TeamMemberOut])
+def add_team_member(audit_id: int, payload: TeamMemberIn, request: Request, db: DBSession = Depends(get_db),
+                    user: User = WriteAudit) -> list:
+    """Add or change a team member (audit staff only; one Lead auditor per engagement)."""
+    from app.core.deps import ensure_perm
+    from app.core.errors import field_error
+
+    ensure_perm(user, "audit.create")
+    audit = db.get(Audit, audit_id)
+    ensure_can_view(db, user, "audit", audit)
+    if audit.status == AuditStatus.Closed:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The audit is closed")
+    if payload.team_role not in TEAM_ROLES:
+        raise field_error("team_role", f"choose one of: {', '.join(TEAM_ROLES)}")
+    member = db.get(User, payload.user_id)
+    if member is None or not member.is_active or member.role not in (Role.Admin, Role.Auditor):
+        raise field_error("user_id", "choose an active member of audit staff")
+    if payload.team_role == "Lead auditor":
+        for m in db.execute(select(AuditTeamMember).where(AuditTeamMember.audit_id == audit_id,
+                                                           AuditTeamMember.team_role == "Lead auditor")).scalars():
+            if m.user_id != member.id:
+                m.team_role = "Auditor"
+    row = db.get(AuditTeamMember, (audit_id, member.id))
+    if row is None:
+        db.add(AuditTeamMember(audit_id=audit_id, user_id=member.id, team_role=payload.team_role, added_by=user.id))
+    else:
+        row.team_role = payload.team_role
+    log_action(db, user_id=user.id, request=request,
+               action=f"AUDIT_TEAM_SET audit={audit_id} user={member.id} role={payload.team_role}")
+    log_record_history(db, record_type="audit", record_id=audit_id, user_id=user.id, request=request,
+                       action=f"TEAM: {member.full_name or member.username} as {payload.team_role}")
+    db.commit()
+    return _team_out(db, audit_id)
+
+
+@router.delete("/{audit_id}/team/{user_id}", response_model=list[TeamMemberOut])
+def remove_team_member(audit_id: int, user_id: int, request: Request, db: DBSession = Depends(get_db),
+                       user: User = WriteAudit) -> list:
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "audit.create")
+    audit = db.get(Audit, audit_id)
+    ensure_can_view(db, user, "audit", audit)
+    row = db.get(AuditTeamMember, (audit_id, user_id))
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not on the team")
+    if row.team_role == "Lead auditor":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Choose another Lead auditor before removing the current one")
+    db.delete(row)
+    gone = db.get(User, user_id)
+    log_action(db, user_id=user.id, request=request, action=f"AUDIT_TEAM_REMOVE audit={audit_id} user={user_id}")
+    log_record_history(db, record_type="audit", record_id=audit_id, user_id=user.id, request=request,
+                       action=f"TEAM: {(gone.full_name or gone.username) if gone else user_id} removed")
+    db.commit()
+    return _team_out(db, audit_id)
 
 
 @router.get("/{audit_id}/auditees", response_model=list[AuditeeOut])

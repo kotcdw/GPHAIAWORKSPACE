@@ -17,6 +17,7 @@ from sqlalchemy.exc import DBAPIError, OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import platform, services
+from app.core.access import audit_scope_guard
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.dbcheck import ensure_schema, heal_if_needed
@@ -287,8 +288,18 @@ async def switched_off_apps(request, call_next):  # noqa: ANN001, ANN201
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+# Audit and remediation routes resolve the record in the URL to its audit and refuse it when it lies outside the
+# caller's port/team scope (app.core.access.audit_scope_guard), for reads and writes alike.
+_SCOPED_MODULES = ("app.domains.audit.", "app.domains.issues.", "app.platform.dataio.", "app.services.ai.")
+
+
+def _scoped(router) -> bool:  # noqa: ANN001
+    return any(getattr(getattr(r, "endpoint", None), "__module__", "").startswith(_SCOPED_MODULES)
+               for r in router.routes)
+
+
 for router in _ROUTERS:
-    app.include_router(router)
+    app.include_router(router, dependencies=[Depends(audit_scope_guard)] if _scoped(router) else [])
 
 
 @app.get("/health", tags=["meta"])

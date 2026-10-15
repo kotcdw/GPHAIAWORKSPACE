@@ -1226,3 +1226,6 @@ table.dense tbody tr:hover { background: var(--accent-soft); }
 .card .stats .stat .n { font-size: 18px; }
 .rec-side .checklist-view li { font-size: var(--fs-sm); }
 .log-action { font-family: "Consolas", ui-monospace, monospace; font-size: 12px; word-break: break-word; }
+.team-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: var(--fs-sm); }
+.team-add { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.team-add select { flex: 1 1 120px; width: auto; }

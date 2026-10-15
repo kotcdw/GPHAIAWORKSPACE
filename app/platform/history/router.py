@@ -79,10 +79,12 @@ def audit_log_register(
 
 
 def _check_record_access(db: DBSession, user: User, record_type: str, record_id: int) -> None:
-    # Privileged users may also read the history of records that were deleted.
-    if is_privileged(user):
+    # Staff may also read the history of records that were deleted; existing records follow the access rules
+    # (audit staff are limited to their port and teams).
+    record = load_record(db, record_type, record_id)
+    if is_privileged(user) and (user.role == Role.Admin or record is None):
         return
-    ensure_can_view(db, user, record_type, load_record(db, record_type, record_id))
+    ensure_can_view(db, user, record_type, record)
 
 
 @records_router.get("/{record_type}/{record_id}/history", response_model=list[RecordHistoryOut])

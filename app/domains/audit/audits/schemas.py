@@ -137,6 +137,7 @@ class FindingOut(ORMModel):
     client_response: str | None = None
     client_response_at: datetime | None = None
     client_confirmed_at_exit: bool = False
+    remediation: dict | None = None  # finding + actions status (registers and the finding form)
     criterion_id: int | None = None
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None

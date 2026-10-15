@@ -315,6 +315,11 @@ def close_capa(
             nc = db.get(Nonconformance, capa.linked_nc_id)
             if nc is not None:
                 nc.status = NCStatus.Closed
+        if capa.source_type == "finding":
+            from app.domains.issues.capa.closure import sync_finding
+
+            db.flush()
+            sync_finding(db, capa.source_id, user.id, request)
 
     sign(
         db,

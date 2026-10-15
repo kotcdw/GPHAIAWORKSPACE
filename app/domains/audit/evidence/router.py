@@ -140,7 +140,14 @@ def my_requests(scope: str = Query("mine", pattern="^(mine|open|overdue)$"), db:
             stmt = stmt.where(EvidenceRequest.assignee_id == user.id, EvidenceRequest.status != "Cancelled")
     else:
         stmt = stmt.where(EvidenceRequest.status.in_((*OPEN, "Submitted")))
-    rows = [_out(db, r, user) for r in db.execute(stmt).scalars()]
+    found = list(db.execute(stmt).scalars())
+    if is_privileged(user):  # staff: only requests of audits in their port/team scope
+        from app.core.access import staff_audit_scope
+
+        allowed = staff_audit_scope(db, user)
+        if allowed is not None:
+            found = [r for r in found if r.audit_id in allowed]
+    rows = [_out(db, r, user) for r in found]
     if scope == "overdue":
         rows = [r for r in rows if r.overdue]
     return rows
