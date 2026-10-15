@@ -1487,3 +1487,10 @@ input.switch:disabled { opacity: .5; cursor: default; }
 .kanban-col { padding: 8px; min-height: 120px; }
 .kanban-card { padding: 6px 8px; margin-bottom: 6px; }
 .sb-grid { gap: 10px; }
+
+/* ---- Merged apps: sibling pages as tabs; profile and drafts in the top bar ---------------------------------- */
+.view-head-wrap { margin-bottom: 12px; }
+.view-head-wrap .view-head { margin-bottom: 8px; }
+.host-tabs { margin: 0; }
+.who-btn { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
+.who-btn:hover, .who-btn:focus-visible { background: rgba(255, 255, 255, .08); }

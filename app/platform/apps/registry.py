@@ -44,9 +44,9 @@ class App:
 
 APPS: list[App] = [
     # Home
-    App("dashboard", "Dashboard", HOME, "grid-1x2", "Role-based home page with KPIs and work in progress.",
+    App("dashboard", "Launchpad", HOME, "grid-1x2", "Role-based home page with KPIs and work in progress.",
         ("dashboard",), (), core=True),
-    App("workspace", "Launchpad", HOME, "grid-3x3-gap", "Launch page for every app, grouped by solution.",
+    App("workspace", "All apps", HOME, "grid-3x3-gap", "Launch page for every app, grouped by solution.",
         ("workspace",), (), core=True),
     App("portal", "Task Manager", HOME, "inboxes", "One page of everything waiting for a person.",
         ("portal",), ("/api/portal",)),

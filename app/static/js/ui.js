@@ -365,7 +365,9 @@ function initNavGroups() {
 }
 
 function navGroupOf(view) {
-  const b = document.querySelector(`#sidebarNav button[data-view="${view}"]`);
+  const hg = typeof hostGroup === "function" ? hostGroup(view) : null;
+  const b = document.querySelector(`#sidebarNav button[data-view="${view}"]`)
+    || (hg ? document.querySelector(`#sidebarNav button[data-view="${hg.host}"]`) : null);
   const g = b && b.closest(".nav-group");
   return g ? { key: g.dataset.group, label: g.querySelector(".nav-group-head span").textContent, button: b, group: g } : null;
 }
@@ -377,7 +379,10 @@ function navCrumbs(view) {
   info.group.classList.remove("collapsed");
   info.group.querySelector(".nav-group-head").setAttribute("aria-expanded", "true");
   const label = info.button.querySelector("span:not(.count)").textContent;
-  setCrumbs(info.key === "home" ? [{ label }] : [{ label: info.label }, { label }]);
+  const g = hostGroup(view);
+  const tab = g && view !== g.host ? (g.tabs.find((t) => t[0] === view) || [])[1] : null;
+  const host = tab ? [{ label, onClick: () => navigate(g.host) }, { label: tab }] : [{ label }];
+  setCrumbs(info.key === "home" ? host : [{ label: info.label }, ...host]);
 }
 
 // Crumbs for a record opened from a top-level page: "Module / Page / Record".
@@ -430,4 +435,36 @@ function fmtDay(value) {
   const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// ------------------------------------------------------------------ merged apps (one sidebar entry, tabs on top)
+// Pages that live inside another app: the sidebar shows the host only; the others open as its tabs.
+const HOST_GROUPS = [
+  { host: "dashboard", tabs: [["dashboard", "Overview"], ["analytics", "Analytics"], ["workspace", "All apps"]] },
+  { host: "portal", tabs: [["portal", "My tasks"], ["evidence", "Requests"]] },
+  { host: "issues", tabs: [["issues", "Issues"], ["capa", "Actions"]] },
+  { host: "committee", tabs: [["committee", "Committee pack"], ["governance", "Governance portal"], ["portfolio", "Port portfolio"]] },
+  { host: "qaip", tabs: [["qaip", "Quality reviews"], ["practice", "Professional practice"], ["service-feedback", "Service feedback"]] },
+  { host: "orgstructure", tabs: [["orgstructure", "Org Structure"], ["organizations", "Organizations"], ["stakeholders", "Contacts"]] },
+  { host: "configuration", tabs: [["configuration", "Business rules"], ["audittypes", "Audit types"], ["apps", "Apps & customization"], ["logs", "Activity logs"]] },
+  { host: "robots", tabs: [["robots", "Robots"], ["automations", "Automations"]] },
+];
+
+function hostGroup(view) {
+  return HOST_GROUPS.find((g) => g.tabs.some((t) => t[0] === view)) || null;
+}
+
+function hostTabsAllowed(g) {
+  return g.tabs.filter(([v]) => (typeof viewAllowed !== "function" || viewAllowed(v)));
+}
+
+// The tab strip shown under the page header of a merged app.
+function hostBar(view) {
+  const g = hostGroup(view);
+  if (!g) return null;
+  const tabs = hostTabsAllowed(g);
+  if (tabs.length < 2) return null;
+  return el("nav", { class: "tabs host-tabs", "aria-label": "Sections" }, ...tabs.map(([v, label]) =>
+    el("button", { class: `tab ${v === view ? "active" : ""}`, type: "button", "aria-current": v === view ? "page" : null,
+      onclick: () => { if (v !== view) navigate(v); } }, label)));
 }

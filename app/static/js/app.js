@@ -465,6 +465,8 @@ async function checkAuthHealth() {
 checkAuthHealth();
 setInterval(checkAuthHealth, 10000);
 
+qs("#draftsBtn").addEventListener("click", () => navigate("drafts"));
+whoami.addEventListener("click", () => navigate("profile"));
 qs("#signOut").addEventListener("click", async () => {
   try { await API.post("/api/auth/logout"); } catch { /* ignore */ }
   state.user = null;
@@ -550,9 +552,11 @@ const brandHome = qs("#brandHome");
 if (brandHome) brandHome.addEventListener("click", (e) => { e.preventDefault(); navigate(isCommittee() ? "governance" : state.user && state.user.role === "Auditee" ? "portal" : "dashboard"); });
 
 function setActiveNav(view) {
+  const g = hostGroup(view);
+  const target = g ? g.host : view;
   document.querySelectorAll("#sidebarNav button[data-view]").forEach((b) => {
-    b.classList.toggle("active", b.dataset.view === view);
-    if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    b.classList.toggle("active", b.dataset.view === target);
+    if (b.dataset.view === target) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   });
   document.body.classList.remove("nav-open");
   window.scrollTo(0, 0);
@@ -560,6 +564,11 @@ function setActiveNav(view) {
 
 function navigate(view) {
   if (view !== "portal") state.fromPortal = false;
+  const merged = hostGroup(view);
+  if (state.user && merged && view === merged.host && !viewAllowed(view)) {
+    const first = hostTabsAllowed(merged)[0];
+    if (first) view = first[0];
+  }
   if (state.user && !viewAllowed(view)) view = isCommittee() ? "governance" : "dashboard";
   state.view = view;
   setActiveNav(view);
@@ -616,7 +625,10 @@ function viewHeader(title, actions = null, opts = {}) {
     el("div", null,
       el("h2", null, title),
       opts.sub || opts.meta ? el("div", { class: "view-meta" }, opts.meta || null, opts.sub ? el("span", { class: "muted" }, opts.sub) : null) : null));
-  return el("div", { class: "view-head" }, left, actions ? el("div", { class: "view-actions" }, actions) : null);
+  const head = el("div", { class: "view-head" }, left, actions ? el("div", { class: "view-actions" }, actions) : null);
+  // Merged apps: the sibling pages show as tabs under the first header of the page.
+  const bar = !opts.back && !viewRoot.querySelector(".host-tabs") ? hostBar(state.view) : null;
+  return bar ? el("div", { class: "view-head-wrap" }, head, bar) : head;
 }
 
 // ==================================================================== generic list
@@ -1059,8 +1071,7 @@ async function renderWorkspace() {
   const quick = [];
   if (staff && hasPerm("audit.create")) quick.push(el("button", { class: "btn secondary", onclick: () => navigate("audits") }, el("i", { class: "bi bi-clipboard-plus" }), " Start an audit"));
   if (canWriteModule("capa")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("capa") }, el("i", { class: "bi bi-tools" }), " New remediation"));
-  if (canWriteModule("nonconformances")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("nonconformances") }, el("i", { class: "bi bi-exclamation-triangle" }), " New nonconformance"));
-  viewRoot.append(viewHeader("Launchpad", null, { sub: "Every GIAW app, grouped by solution the same way as the sidebar" }));
+  viewRoot.append(viewHeader("All apps", null, { sub: "Every GIAW app, grouped by solution the same way as the sidebar" }));
   if (quick.length) viewRoot.append(el("div", { class: "ws-quick" }, ...quick));
 
   const groupsEl = el("div", { class: "ws-groups" });
@@ -1069,26 +1080,21 @@ async function renderWorkspace() {
   // Groups and order follow the sidebar (Diligent One style solution groups).
   const groups = [
     { title: "Home", tiles: [
-      { view: "dashboard", icon: "grid-1x2", name: "Dashboard", desc: "Your headline numbers and recent work" },
-      { view: "portal", icon: "inboxes", name: "Task Manager", desc: "Assessments and requests waiting for you" },
+      { view: "portal", icon: "inboxes", name: "Task Manager", desc: "Your tasks, requests and actions waiting for you" },
       { view: "tasks", icon: "check2-square", name: "Task Tracker", desc: "To-dos assigned to you and your team", count: "tasks" },
-      { view: "drafts", icon: "pencil-square", name: "My Drafts", desc: "Forms you started and can finish later", count: "drafts" },
     ] },
     { title: "Audit management", tiles: [
       { view: "universe", icon: "bullseye", name: "Audit universe", desc: "Auditable entities defined from the Org Structure and Process library" },
       { view: "riskassess", icon: "clipboard-data", name: "Audit risk assessment", desc: "Score entities on assessment factors and prioritise them for the plan", staff: true },
       { view: "plans", icon: "calendar3", name: "Assurance Plans", desc: "Annual risk-based audit plan by fiscal year", count: "plans", staff: true },
-      { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: planning, fieldwork, issues, results", count: "audits" },
+      { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: planning, fieldwork, issues, results, requests", count: "audits" },
       { view: "statustracker", icon: "speedometer2", name: "Status Tracker", desc: "Time expired, work completed, budget and time spent per audit", staff: true },
       { view: "programs", icon: "list-check", name: "Project Library", desc: "Reusable audit programmes (project templates)", staff: true },
-      { view: "evidence", icon: "inbox", name: "Requests", desc: "Requests sent to auditees and the files they return" },
-      { view: "issues", icon: "flag", name: "Issue Tracker", desc: "Every issue across audits, with KPIs", staff: true },
-      { view: "capa", icon: "tools", name: "Remediation & Follow-up", desc: "Agreed actions tracked to validated closure", count: "capa" },
+      { view: "issues", icon: "flag", name: "Issue Tracker", desc: "Every issue and its remediation actions, with KPIs", count: "capa" },
     ] },
     { title: "Resource management", staff: true, tiles: [
       { view: "scheduler", icon: "calendar-week", name: "Scheduler", desc: "Engagement timeline, team bookings, double-booking warnings" },
       { view: "capacity", icon: "people-fill", name: "Timesheets & capacity", desc: "Time sheets, available hours, skills, budget versus actual" },
-      { view: "practice", icon: "person-check", name: "Professional practice", desc: "Declarations, CPD, charter and external assessment" },
     ] },
     { title: "Risk management", tiles: [
       { view: "risk", icon: "shield-exclamation", name: "Risk Manager", desc: "Enterprise risk register, heat maps and indicators" },
@@ -1099,32 +1105,20 @@ async function renderWorkspace() {
       { view: "library", icon: "diagram-3-fill", name: "Frameworks", desc: "COSO, ISO, PFM and GPHA frameworks with standard controls", staff: true },
       { view: "compliance", icon: "diagram-2", name: "Compliance Maps", desc: "Obligations mapped to common controls, with gaps" },
       { view: "policies", icon: "file-earmark-ruled", name: "Policy Manager", desc: "Policies, versions, reviews and attestation" },
-      { view: "nonconformances", icon: "exclamation-triangle", name: "Nonconformance", desc: "Nonconformities and their disposition", count: "ncs" },
     ] },
     { title: "Analytics & reporting", tiles: [
-      { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Heat map, trends, repeat findings and KPIs", staff: true },
       { view: "results", icon: "table", name: "Results", desc: "Analytic tables with priority, status, assignee and triggers", staff: true },
       { view: "storyboards", icon: "easel", name: "Storyboards", desc: "Charts, metrics and text from Results, shared read-only", staff: true },
-      { view: "robots", icon: "robot", name: "Robots", desc: "Scheduled analytic tasks publishing into Results", staff: true },
-      { view: "committee", icon: "bar-chart-line", name: "Audit Committee", desc: "Committee summary, Word pack, meetings and decisions", staff: true },
-      { view: "governance", icon: "bank", name: "Governance portal", desc: "Approved plans, issued reports and headline KPIs" },
-      { view: "portfolio", icon: "geo-alt", name: "Port portfolio", desc: "Audits, findings and remediation by port" },
-      { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews and auditee satisfaction", staff: true },
-      { view: "service-feedback", icon: "chat-left-text", name: "Service Feedback", desc: "Auditee feedback on audit services", count: "feedback" },
+      { view: "robots", icon: "robot", name: "Robots", desc: "Scheduled analytic tasks and automation rules", staff: true },
+      { view: "committee", icon: "bar-chart-line", name: "Audit Committee", desc: "Committee pack, governance portal and port portfolio" },
+      { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews, professional practice and service feedback", staff: true },
     ] },
     { title: "Platform settings", tiles: [
-      { view: "orgstructure", icon: "diagram-3", name: "Org Structure", desc: "Ports, head office, departments, units and sections", staff: true },
-      { view: "organizations", icon: "building", name: "Organizations", desc: "Departments, units and external bodies", staff: true },
-      { view: "stakeholders", icon: "people", name: "Stakeholders", desc: "Key contacts for each organization", staff: true },
-      { view: "profile", icon: "person-gear", name: "Profile & Users", desc: "Your profile, password, two-step sign-in and users" },
+      { view: "orgstructure", icon: "diagram-3", name: "Org Structure", desc: "Ports, departments, units, organizations and contacts", staff: true },
+      { view: "profile", icon: "person-gear", name: "Users", desc: "User accounts, your profile and two-step sign-in" },
       { view: "roles", icon: "shield-lock", name: "Roles & permissions", desc: "Job roles and what each one can do" },
-      { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, audit types, plan settings, SLAs" },
-      { view: "audittypes", icon: "ui-checks", name: "Audit types", desc: "Terms and custom attributes per audit type", staff: true },
-      { view: "apps", icon: "sliders2", name: "Apps & customization", desc: "Turn apps on or off and adjust their fields" },
-      { view: "automations", icon: "lightning-charge", name: "Automations", desc: "Reminders, routing and escalation rules" },
-      { view: "logs", icon: "journal-text", name: "Activity logs", desc: "Who did what, and when", admin: true },
+      { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, audit types, apps and activity logs" },
       { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
-      { view: "platform", icon: "diagram-2", name: "Platform map", desc: "Core, domain modules, shared data and services (AI, analytics, documents)" },
     ] },
   ];
 
@@ -1197,7 +1191,6 @@ async function renderDashboard() {
     viewRoot.append(el("div", { class: "stats" },
       stat(openAudits.length, "Open audits", `${inReview} in review · ${audits.length} total`),
       stat(capaItems.filter((c) => c.status !== "Closed").length, "Open remediation", overdueCapa ? `${overdueCapa} overdue` : "None overdue", overdueCapa ? "danger" : ""),
-      stat(ncItems.filter((n) => n.status !== "Closed").length, "Open nonconformances"),
       stat(fbItems.filter((f) => f.status !== "Closed").length, "Open feedback"),
       stat(myTasks.length, "My open tasks", null, myTasks.length ? "warn" : ""),
       stat(drafts.length, "Unfinished drafts", drafts.length ? "Continue in My Drafts" : "All saved"),

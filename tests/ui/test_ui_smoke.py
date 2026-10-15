@@ -146,9 +146,11 @@ def _ensure_audit(page) -> int:
 
 def test_every_screen_opens_without_errors(browser, base_url):
     ctx, page, watch = _signed_in(browser, base_url)
-    views = page.evaluate("[...document.querySelectorAll('#sidebarNav button[data-view]')]"
-                          ".filter(b => !b.classList.contains('hidden')).map(b => b.dataset.view)")
-    assert len(views) >= 30, views
+    views = page.evaluate("[...new Set([...document.querySelectorAll('#sidebarNav button[data-view]')]"
+                          ".filter(b => !b.classList.contains('hidden')).map(b => b.dataset.view)"
+                          ".concat(HOST_GROUPS.flatMap(g => hostTabsAllowed(g).map(t => t[0]))))]")
+    sidebar = page.evaluate("document.querySelectorAll('#sidebarNav button[data-view]:not(.hidden)').length")
+    assert sidebar <= 30 and len(views) >= 40, (sidebar, views)
     problems = {}
     for view in views:
         page.evaluate(f"navigate('{view}')")

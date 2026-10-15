@@ -207,7 +207,8 @@
           <i class="bi bi-bell"></i><span id="bellCount" class="bell-count hidden"></span>
         </button>
         <div id="bellPanel" class="bell-panel hidden" role="dialog" aria-label="Notifications"></div>
-        <span class="who" id="whoami"></span>
+        <button class="bar-btn bell-btn" id="draftsBtn" title="My drafts" aria-label="My drafts"><i class="bi bi-pencil-square"></i><span id="draftCount" class="bell-count hidden"></span></button>
+        <button class="who who-btn" id="whoami" type="button" title="My profile" aria-label="My profile"></button>
         <button class="bar-btn" id="signOut" title="Sign out" aria-label="Sign out"><i class="bi bi-box-arrow-right"></i></button>
       </div>
     </header>
@@ -217,11 +218,9 @@
       <div class="nav-group" data-group="home">
         <button class="nav-group-head" type="button" aria-expanded="true"><span>Home</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
-          <button data-view="dashboard" class="active"><i class="bi bi-house"></i><span>Dashboard</span></button>
-          <button data-view="workspace"><i class="bi bi-grid-3x3-gap"></i><span>Launchpad</span></button>
+          <button data-view="dashboard" class="active"><i class="bi bi-grid-3x3-gap"></i><span>Launchpad</span></button>
           <button data-view="portal"><i class="bi bi-inboxes"></i><span>Task Manager</span><span id="portalCount" class="count hidden"></span></button>
           <button data-view="tasks"><i class="bi bi-check2-square"></i><span>Task Tracker</span></button>
-          <button data-view="drafts"><i class="bi bi-pencil-square"></i><span>My Drafts</span><span id="draftCount" class="count hidden"></span></button>
         </div>
       </div>
       <div class="nav-group" data-group="audit">
@@ -233,9 +232,7 @@
           <button data-view="audits"><i class="bi bi-clipboard-check"></i><span>Audits</span></button>
           <button data-view="statustracker" data-staff="1"><i class="bi bi-speedometer2"></i><span>Status Tracker</span></button>
           <button data-view="programs" data-staff="1"><i class="bi bi-list-check"></i><span>Project Library</span></button>
-          <button data-view="evidence"><i class="bi bi-inbox"></i><span>Requests</span></button>
-          <button data-view="issues" data-staff="1"><i class="bi bi-flag"></i><span>Issue Tracker</span></button>
-          <button data-view="capa"><i class="bi bi-tools"></i><span>Remediation &amp; Follow-up</span></button>
+          <button data-view="issues"><i class="bi bi-flag"></i><span>Issue Tracker</span></button>
         </div>
       </div>
       <div class="nav-group" data-group="resources">
@@ -243,7 +240,6 @@
         <div class="nav-group-items">
           <button data-view="scheduler" data-staff="1"><i class="bi bi-calendar-week"></i><span>Scheduler</span></button>
           <button data-view="capacity" data-staff="1"><i class="bi bi-people-fill"></i><span>Timesheets &amp; capacity</span></button>
-          <button data-view="practice" data-staff="1"><i class="bi bi-person-check"></i><span>Professional practice</span></button>
         </div>
       </div>
       <div class="nav-group" data-group="risk">
@@ -260,36 +256,25 @@
           <button data-view="library" data-staff="1"><i class="bi bi-diagram-3-fill"></i><span>Frameworks</span></button>
           <button data-view="compliance" data-perm="1"><i class="bi bi-diagram-2"></i><span>Compliance Maps</span></button>
           <button data-view="policies" data-perm="1"><i class="bi bi-file-earmark-ruled"></i><span>Policy Manager</span></button>
-          <button data-view="nonconformances"><i class="bi bi-exclamation-triangle"></i><span>Nonconformance</span></button>
         </div>
       </div>
       <div class="nav-group" data-group="reporting">
         <button class="nav-group-head" type="button" aria-expanded="true"><span>Analytics &amp; reporting</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
-          <button data-view="analytics" data-staff="1"><i class="bi bi-graph-up-arrow"></i><span>Analytics</span></button>
           <button data-view="results" data-staff="1"><i class="bi bi-table"></i><span>Results</span></button>
           <button data-view="storyboards" data-staff="1"><i class="bi bi-easel"></i><span>Storyboards</span></button>
           <button data-view="robots" data-staff="1"><i class="bi bi-robot"></i><span>Robots</span></button>
-          <button data-view="committee" data-staff="1"><i class="bi bi-bar-chart-line"></i><span>Audit Committee</span></button>
-          <button data-view="governance" data-perm="1"><i class="bi bi-bank"></i><span>Governance portal</span></button>
-          <button data-view="portfolio" data-perm="1"><i class="bi bi-geo-alt"></i><span>Port portfolio</span></button>
+          <button data-view="committee"><i class="bi bi-bar-chart-line"></i><span>Audit Committee</span></button>
           <button data-view="qaip" data-staff="1"><i class="bi bi-patch-check"></i><span>Quality (QAIP)</span></button>
-          <button data-view="service-feedback"><i class="bi bi-chat-left-text"></i><span>Service Feedback</span></button>
         </div>
       </div>
       <div class="nav-group" data-group="settings">
         <button class="nav-group-head" type="button" aria-expanded="true"><span>Platform settings</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
           <button data-view="orgstructure" data-staff="1"><i class="bi bi-diagram-3"></i><span>Org Structure</span></button>
-          <button data-view="organizations"><i class="bi bi-building"></i><span>Organizations</span></button>
-          <button data-view="stakeholders"><i class="bi bi-people"></i><span>Stakeholders</span></button>
-          <button data-view="profile"><i class="bi bi-person-gear"></i><span>Profile &amp; Users</span></button>
+          <button data-view="profile"><i class="bi bi-person-gear"></i><span>Users</span></button>
           <button data-view="roles" data-perm="1"><i class="bi bi-shield-lock"></i><span>Roles &amp; permissions</span></button>
           <button data-view="configuration" data-perm="1"><i class="bi bi-sliders"></i><span>Configuration</span></button>
-          <button data-view="audittypes" data-staff="1"><i class="bi bi-ui-checks"></i><span>Audit types</span></button>
-          <button data-view="apps" data-perm="1"><i class="bi bi-sliders2"></i><span>Apps &amp; customization</span></button>
-          <button data-view="automations" data-perm="1"><i class="bi bi-lightning-charge"></i><span>Automations</span></button>
-          <button data-view="logs" data-admin="1"><i class="bi bi-journal-text"></i><span>Activity logs</span></button>
           <button data-view="backups" data-admin="1"><i class="bi bi-hdd-stack"></i><span>Backups</span></button>
         </div>
       </div>

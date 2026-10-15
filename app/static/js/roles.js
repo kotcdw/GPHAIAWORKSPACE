@@ -36,7 +36,9 @@ function viewAllowed(view) {
 
 function applyNavPermissions() {
   document.querySelectorAll("#sidebarNav button[data-view]").forEach((b) => {
-    if (!viewAllowed(b.dataset.view)) b.classList.add("hidden");
+    const g = typeof hostGroup === "function" ? hostGroup(b.dataset.view) : null;
+    const allowed = g && g.host === b.dataset.view ? hostTabsAllowed(g).length > 0 : viewAllowed(b.dataset.view);
+    if (!allowed) b.classList.add("hidden");
     else if (b.dataset.perm !== undefined || isCommittee()) b.classList.remove("hidden");
   });
   // Section headings with nothing visible under them are hidden too.
@@ -408,9 +410,6 @@ async function renderGovernance() {
       el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/export.docx` }, el("i", { class: "bi bi-file-earmark-word" }), " Word"),
       el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/print`, target: "_blank", rel: "noopener" }, el("i", { class: "bi bi-printer" }), " Print")) },
   ], { exportName: "issued-reports.csv", emptyText: "No reports issued yet." })));
-  viewRoot.append(el("div", { class: "actions" },
-    el("button", { class: "btn secondary", onclick: () => navigate("committee") }, el("i", { class: "bi bi-bar-chart-line" }), " Committee pack"),
-    el("button", { class: "btn secondary", onclick: () => navigate("portfolio") }, el("i", { class: "bi bi-geo-alt" }), " Port portfolio")));
 }
 
 // ==================================================================== Port portfolio
