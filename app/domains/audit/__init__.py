@@ -31,7 +31,9 @@ def routers() -> list:
     from app.domains.audit.audits.working_papers import router as working_papers
     from app.domains.audit.capacity.router import router as capacity
     from app.domains.audit.evidence.router import router as evidence
+    from app.domains.audit.fieldwork.extras import router as fieldwork_extras
     from app.domains.audit.fieldwork.router import router as fieldwork
+    from app.domains.audit.fieldwork.signoffs import router as signoffs
     from app.domains.audit.frameworks.router import router as frameworks
     from app.domains.audit.memos.router import router as memos
     from app.domains.audit.methodology.router import router as methodology
@@ -44,5 +46,7 @@ def routers() -> list:
 
     # report_distribution before reports: /api/reports/register must win over /api/reports/{id}.
     # issue_tracker before findings: /api/findings/register must win over /api/findings/{id}.
-    return [audits, issue_tracker, findings, working_papers, service_feedback, rcm, fieldwork, report_distribution,
+    # fieldwork_extras before audits: /api/audits/status-tracker must win over /api/audits/{id}.
+    return [fieldwork_extras, signoffs, audits, issue_tracker, findings, working_papers, service_feedback, rcm,
+            fieldwork, report_distribution,
             reports, lifecycle, memos, capacity, methodology, programs, evidence, proficiency, frameworks]

@@ -160,6 +160,7 @@ class ControlOut(ORMModel):
     risk_ids: list[int] = []
     tests: list[TestOut] = []
     effectiveness: str = "Not Tested"
+    plan_signoffs: list[dict] = []
 
 
 class ObjectiveOut(ORMModel):
@@ -170,6 +171,7 @@ class ObjectiveOut(ORMModel):
     description: str
     risks: list[RiskOut] = []
     controls: list[ControlOut] = []
+    rcm_signoffs: list[dict] = []
 
 
 class RcmSummary(BaseModel):

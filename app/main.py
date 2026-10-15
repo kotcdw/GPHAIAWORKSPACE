@@ -120,6 +120,13 @@ async def _escalation_watcher() -> None:
             run_scheduled(db)
         finally:
             db.close()
+        db = SessionLocal()
+        try:
+            from app.services.results.router import run_scheduled_robots
+
+            run_scheduled_robots(db)
+        finally:
+            db.close()
 
     while True:
         await asyncio.sleep(settings.escalation_check_minutes * 60)

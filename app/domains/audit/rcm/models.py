@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -36,6 +36,7 @@ class Objective(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     risks: Mapped[list[Risk]] = relationship(back_populates="objective", order_by="Risk.id")
@@ -65,6 +66,7 @@ class Risk(Base):
     enterprise_risk_id: Mapped[int | None] = mapped_column(ForeignKey("enterprise_risks.id", ondelete="SET NULL"),
                                                            nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     objective: Mapped[Objective] = relationship(back_populates="risks")
@@ -106,6 +108,7 @@ class Control(Base):
     total_sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     test_steps: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     objective: Mapped[Objective] = relationship(back_populates="controls")
@@ -142,6 +145,7 @@ class ControlTest(Base):
     assigned_to: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
     control: Mapped[Control] = relationship(back_populates="tests", foreign_keys=[control_id])
@@ -178,6 +182,81 @@ class Procedure(Base):
     review_comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
     risks: Mapped[list[Risk]] = relationship(secondary="procedure_risks")
+
+
+class Signoff(Base):
+    """One sign-off on a fieldwork page (level 1 = Preparer, then up to four reviewer levels)."""
+
+    __tablename__ = "signoffs"
+    __table_args__ = (UniqueConstraint("target_type", "target_id", "level", name="uq_signoffs_target_level"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    audit_id: Mapped[int | None] = mapped_column(ForeignKey("audits.id", ondelete="CASCADE"), nullable=True)
+    level: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    signed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class SignoffReviewer(Base):
+    """The "Next Reviewer" set on a page, and the level they are asked to sign."""
+
+    __tablename__ = "signoff_reviewers"
+
+    target_type: Mapped[str] = mapped_column(String(20), primary_key=True)
+    target_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reviewer_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    level: Mapped[int] = mapped_column(Integer, nullable=False)
+    set_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    set_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class NarrativeControl(Base):
+    __tablename__ = "narrative_controls"
+
+    narrative_id: Mapped[int] = mapped_column(ForeignKey("narratives.id", ondelete="CASCADE"), primary_key=True)
+    control_id: Mapped[int] = mapped_column(ForeignKey("controls.id", ondelete="CASCADE"), primary_key=True)
+
+
+class Narrative(Base):
+    """A process narrative under an objective (Internal Control workflow), linked to up to 100 controls."""
+
+    __tablename__ = "narratives"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    objective_id: Mapped[int] = mapped_column(ForeignKey("objectives.id", ondelete="CASCADE"), nullable=False,
+                                              index=True)
+    ref: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(60), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    controls: Mapped[list[Control]] = relationship(secondary="narrative_controls")
+
+
+class AuditFavorite(Base):
+    __tablename__ = "audit_favorites"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    audit_id: Mapped[int] = mapped_column(ForeignKey("audits.id", ondelete="CASCADE"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class AuditTypeTerm(Base):
+    """A renamed term for one audit type (Terms settings), e.g. Objective -> Section."""
+
+    __tablename__ = "audit_type_terms"
+
+    audit_type: Mapped[str] = mapped_column(String(60), primary_key=True)
+    term_key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    label: Mapped[str] = mapped_column(String(60), nullable=False)

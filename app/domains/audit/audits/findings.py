@@ -93,13 +93,11 @@ def _issue_type(value: str | None) -> str | None:
 
 
 def _signoffs(db: DBSession, findings: list[Finding]) -> None:
-    from app.domains.audit.audits.issue_tracker import signoffs
+    from app.domains.audit.audits.issue_tracker import signoffs_map
 
-    ids = {f.created_by for f in findings} - {None}
-    names = {u.id: u.full_name or u.username for u in db.execute(select(User).where(User.id.in_(ids))).scalars()} \
-        if ids else {}
+    dots = signoffs_map(db, findings)
     for f in findings:
-        f.signoffs = signoffs(f, names)
+        f.signoffs = dots.get(f.id, [])
 
 
 def _get_finding_or_404(db: DBSession, finding_id: int) -> Finding:

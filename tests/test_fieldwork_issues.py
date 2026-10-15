@@ -192,7 +192,7 @@ def test_evidence_request_linked_to_procedure_with_cc_and_reminders(client, clie
 
 
 def test_issue_tracker_register_publish_and_signoffs(client, client2, db, team):
-    h, ah = team["h"], team["ah"]
+    h = team["h"]
     audit = _audit(client, h)
     tag = uuid.uuid4().hex[:6]
     owner = make_user(db, f"isown_{tag}", Role.Auditee)
@@ -207,7 +207,7 @@ def test_issue_tracker_register_publish_and_signoffs(client, client2, db, team):
     assert reg["total"] == 2 and reg["items"][0]["title"] == f"Payroll {tag}"
     row = reg["items"][0]
     assert row["issue_type"] == "Material Weakness" and row["published"] is False and row["owner"]
-    assert row["signoffs"][0]["label"] == "Prepared" and row["remediation"] == "No action raised"
+    assert row["signoffs"][0]["label"] == "Preparer" and row["remediation"] == "No action raised"
     assert client.get(f"/api/findings/register?q={tag}&severity=Low").json()["total"] == 1
     summ = client.get(f"/api/findings/register/summary?q={tag}").json()
     assert {x["label"]: x["count"] for x in summ["by_severity"]} == {"High": 1, "Medium": 0, "Low": 1}
@@ -222,20 +222,15 @@ def test_issue_tracker_register_publish_and_signoffs(client, client2, db, team):
                client2.get("/api/notifications").json()["items"])
     assert client2.get("/api/findings/register").status_code == 403  # the register is for audit staff
 
-    # Review sign-off through the working paper chain (here one Unit Head stage); never the preparer.
-    ah = csrf_headers(login(client2, team["admin"].username))
-    client2.put("/api/config", json={"values": {"workpaper_review_chain": ["Unit Head"]}}, headers=ah)
-    try:
-        assert client.post(f"/api/findings/{f1['id']}/review", headers=h).status_code == 403
-        uh = _u(db, "isuh", level=ReviewLevel.UnitHead)
-        uhh = csrf_headers(login(client2, uh.username))
-        r = client2.post(f"/api/findings/{f1['id']}/review", headers=uhh)
-        assert r.status_code == 200, r.text
-        assert r.json()["reviewed"] and r.json()["signoffs"][1] | {"at": None} == {
-            "label": "Unit Head", "done": True, "by": uh.full_name or uh.username, "at": None}
-    finally:
-        ah = csrf_headers(login(client2, team["admin"].username))
-        client2.post("/api/config/workpaper_review_chain/reset", headers=ah)
+    # Review sign-off: the next sign-off level (Detail Reviewer); never the preparer.
+    assert client.post(f"/api/findings/{f1['id']}/review", headers=h).status_code == 403
+    uh = _u(db, "isuh", level=ReviewLevel.UnitHead)
+    uhh = csrf_headers(login(client2, uh.username))
+    r = client2.post(f"/api/findings/{f1['id']}/review", headers=uhh)
+    assert r.status_code == 200, r.text
+    dots = r.json()["signoffs"]
+    assert dots[0]["label"] == "Preparer" and dots[0]["done"]
+    assert dots[1]["label"] == "Detail Reviewer" and dots[1]["done"] and dots[1]["by"] == (uh.full_name or uh.username)
 
 
 def test_plan_coverage_grid(client, client2, db, team):

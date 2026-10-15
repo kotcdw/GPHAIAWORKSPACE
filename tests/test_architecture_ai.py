@@ -71,7 +71,7 @@ def test_every_layer_registers_its_routers_and_platform_map(client, db):
     assert "findings" in tables["audits"] and "plan_versions" in tables["plancycle"] and "capa" in tables["capa"]
     assert m["shared_data"]["tables"] > 30
     svc = {mod["code"]: mod for mod in m["services"]["modules"]}
-    assert set(svc) == {"ai", "analytics", "documents"}
+    assert set(svc) == {"ai", "analytics", "documents", "results"}
     assert svc["ai"]["status"]["enabled"] is False  # off by default
     assert any(d["name"] == "Audit report" for d in svc["documents"]["status"]["documents"])
     assert "ai_requests" in svc["ai"]["tables"] and "ai" in svc["ai"]["endpoints"]

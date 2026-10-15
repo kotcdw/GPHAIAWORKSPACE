@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import object_session
 
 from app.core.appconfig import cfg, parse_sample_sizes
 from app.core.approvalsvc import sign
@@ -37,6 +38,7 @@ from app.core.refs import next_reference
 from app.core.schemas import ESignRequest, MessageOut
 from app.domains.audit.audits.models import Audit, AuditTeamMember, Finding
 from app.domains.audit.audits.schemas import FindingOut
+from app.domains.audit.fieldwork.signoffs import dots_for, record_legacy
 from app.domains.audit.rcm.models import Control, ControlTest, Objective, Procedure, ProcedureRisk, Risk
 from app.domains.audit.rcm.router import (
     Staff,
@@ -248,6 +250,7 @@ def _procedure_out(p: Procedure, objective: Objective, names: dict[int, str], is
         "prepared_at": p.performed_at.isoformat() if p.performed_at else None,
         "reviewed_by": names.get(p.reviewed_by), "reviewed_at": p.reviewed_at.isoformat() if p.reviewed_at else None,
         "review_comment": p.review_comment, "issue_ids": issues, "evidence_requests": requests,
+        "signoffs": dots_for(object_session(p), "procedure", [p.id])[p.id],
     }
 
 
@@ -356,10 +359,12 @@ def update_procedure(procedure_id: int, payload: ProcedureUpdate, request: Reque
         if p.outcome not in (NO_ISSUES, ISSUES_NOTED):
             raise field_error("outcome", "answer 'Were issues identified?' before signing off")
         p.status, p.performed_by, p.performed_at = P_PREPARED, user.id, utcnow()
+        record_legacy(db, "procedure", p.id, audit.id, user.id)
     elif new_status is not None:
         p.status = new_status
         if new_status != P_PREPARED:
             p.performed_by = p.performed_at = None
+            record_legacy(db, "procedure", p.id, audit.id, None, reset=True)
     elif sent and p.status == P_NOT_STARTED and ({"results", "outcome"} & set(sent)):
         p.status = P_IN_PROGRESS
     changed = list(sent) + ([f"status={new_status}"] if new_status else [])
@@ -381,6 +386,7 @@ def review_procedure(procedure_id: int, payload: ESignRequest, request: Request,
 
     def _approve(_: DBSession) -> None:
         p.status, p.reviewed_by, p.reviewed_at, p.review_comment = P_REVIEWED, user.id, utcnow(), payload.comment
+        record_legacy(db, "procedure", p.id, audit.id, user.id)
 
     entry = sign(db, record_type="procedure", record_id=p.id, user=user, password=payload.password,
                  decision=payload.decision.value, comment=payload.comment, request=request, on_approve=_approve,
@@ -388,6 +394,7 @@ def review_procedure(procedure_id: int, payload: ESignRequest, request: Request,
     if entry.decision.value == "Reject":
         p.status, p.review_comment = P_IN_PROGRESS, payload.comment
         p.performed_by = p.performed_at = None
+        record_legacy(db, "procedure", p.id, audit.id, None, reset=True)
     log_action(db, user_id=user.id, action=f"PROCEDURE_REVIEW id={p.id} {payload.decision.value}", request=request)
     _history(db, audit.id, user, f"PROCEDURE {p.ref} REVIEW {payload.decision.value}"
              + (f": {payload.comment}" if payload.comment else ""), request)
@@ -461,6 +468,7 @@ def _test_row(t: ControlTest, names: dict[int, str], issues: dict[int, int], req
         "prepared_at": t.performed_at.isoformat() if t.performed_at else None,
         "reviewed_by": names.get(t.reviewed_by), "reviewed_at": t.reviewed_at.isoformat() if t.reviewed_at else None,
         "issue_id": issues.get(t.id), "evidence_requests": requests.get(t.id, 0),
+        "signoffs": dots_for(object_session(t), "test", [t.id])[t.id],
     }
 
 

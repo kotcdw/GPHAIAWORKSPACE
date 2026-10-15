@@ -29,7 +29,7 @@ function viewAllowed(view) {
     apps: ["system.superadmin"],
     risk: GRC_VIEW_PERMS, compliance: GRC_VIEW_PERMS, policies: GRC_VIEW_PERMS, assets: GRC_VIEW_PERMS,
   };
-  if (["programs", "practice", "library", "scheduler", "issues", "orgstructure", "processes", "riskassess"].includes(view)) return state.user.role !== "Auditee";
+  if (["programs", "practice", "library", "scheduler", "issues", "orgstructure", "processes", "riskassess", "statustracker", "results", "robots", "audittypes"].includes(view)) return state.user.role !== "Auditee";
   if (view === "logs" || view === "backups") return isAdmin() && hasPerm("system.technical");
   return rules[view] ? hasPerm(...rules[view]) : true;
 }
@@ -172,7 +172,7 @@ async function renderProgramsPage() {
   clear(viewRoot);
   const msg = el("div");
   const canEdit = hasPerm("method.programs");
-  viewRoot.append(viewHeader("Audit programmes", canEdit ? el("button", { class: "btn", onclick: () => programEditor(null) },
+  viewRoot.append(viewHeader("Project Library", canEdit ? el("button", { class: "btn", onclick: () => programEditor(null) },
     el("i", { class: "bi bi-plus-lg" }), " New programme") : null,
   { sub: "Reusable work programmes: objectives, risks, controls and test steps that can be applied to an audit's risk & control matrix" }), msg);
   let rows;
@@ -285,7 +285,7 @@ async function renderEvidencePage(scope = "mine") {
   const msg = el("div");
   const staff = isStaff();
   const tabs = staff ? [{ key: "mine", label: "Raised by me" }, { key: "open", label: "All open" }, { key: "overdue", label: "Overdue" }] : null;
-  viewRoot.append(viewHeader("Evidence requests", null,
+  viewRoot.append(viewHeader("Requests", null,
     { sub: staff ? "Documents requested from auditees - review what was submitted and accept or return it"
       : "Documents the audit team has asked you for - upload the files and submit" }), msg);
   if (tabs) viewRoot.append(tabBar(tabs, scope, (k) => renderEvidencePage(k)));

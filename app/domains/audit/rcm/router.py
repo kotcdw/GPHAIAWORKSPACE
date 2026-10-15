@@ -274,10 +274,19 @@ def get_rcm(audit_id: int, db: DBSession = Depends(get_db), _: User = Staff) -> 
         tests_awaiting_review=sum(1 for t in tests if t.status == TestStatus.Completed),
         open_issues=open_issues,
     )
+    from app.domains.audit.fieldwork.signoffs import dots_for
+
+    outs = [_objective_out(o) for o in objectives]
+    plan_dots = dots_for(db, "test_plan", [c.id for c in controls])
+    rcm_dots = dots_for(db, "rcm", [o.id for o in objectives])
+    for o in outs:
+        o.rcm_signoffs = rcm_dots.get(o.id, [])
+        for c in o.controls:
+            c.plan_signoffs = plan_dots.get(c.id, [])
     return RcmOut(
         audit_id=audit_id,
         locked=audit.status == AuditStatus.Closed,
-        objectives=[_objective_out(o) for o in objectives],
+        objectives=outs,
         summary=summary,
     )
 
@@ -615,6 +624,9 @@ def update_test(
             raise field_error("results", "describe the exceptions found before completing")
         test.performed_by = user.id
         test.performed_at = utcnow()
+        from app.domains.audit.fieldwork.signoffs import record_legacy
+
+        record_legacy(db, "test", test.id, test.control.objective.audit_id, user.id)
     if new_status is not None:
         test.status = new_status
     elif changes and test.status == TestStatus.NotStarted:
@@ -649,6 +661,9 @@ def review_test(
         raise _conflict("Only a completed test can be reviewed")
 
     def _on_approve(_: DBSession) -> None:
+        from app.domains.audit.fieldwork.signoffs import record_legacy
+
+        record_legacy(db, "test", test.id, test.control.objective.audit_id, user.id)
         test.status = TestStatus.Reviewed
         test.reviewed_by = user.id
         test.reviewed_at = utcnow()
@@ -669,6 +684,9 @@ def review_test(
     if entry.decision.value == "Reject":
         test.status = TestStatus.InProgress
         test.review_comment = payload.comment
+        from app.domains.audit.fieldwork.signoffs import record_legacy
+
+        record_legacy(db, "test", test.id, test.control.objective.audit_id, None, reset=True)
     log_action(db, user_id=user.id, action=f"TEST_REVIEW id={test.id} {payload.decision.value}", request=request)
     _history(
         db,

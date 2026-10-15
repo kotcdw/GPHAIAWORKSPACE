@@ -138,6 +138,15 @@ RULES: list[Rule] = [
     Rule("finding_issue_types", "Issue types", "Audit methodology", "list",
          "One per line. Offered on every finding and used by the Issue Tracker charts.",
          default=["Deficiency", "Significant Deficiency", "Material Weakness", "Management Recommendation"]),
+    Rule("signoff_levels", "Sign-off levels on fieldwork pages", "Audit methodology", "list",
+         "One per line, in order, up to five. The first is the preparer; the others are reviewers who sign after "
+         "being set as the Next Reviewer. Applies to procedures, narratives, walkthroughs, test plans, tests, the "
+         "risk control matrix and issues.",
+         default=["Preparer", "Detail Reviewer", "General Reviewer", "Supplemental Reviewer", "Specialty Reviewer"]),
+    Rule("signoff_preparer_required", "Reviewers sign only after the preparer has signed off", "Audit methodology",
+         "bool", "When off, an Audit Manager may sign a reviewer level before the preparer.", default=True),
+    Rule("signoff_requires_password", "Ask for the password on every sign-off (electronic signature)",
+         "Audit methodology", "bool", "Off by default; switch on when sign-offs must be e-signed.", default=False),
     Rule("risk_high_threshold", "Inherent risk score (likelihood x impact) from which a unit is High risk",
          "Plan configuration", "int", default=15, min=2, max=25),
     Rule("risk_medium_threshold", "Inherent risk score from which a unit is Medium risk", "Plan configuration", "int",

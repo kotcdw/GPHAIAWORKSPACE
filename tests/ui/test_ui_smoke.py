@@ -312,7 +312,7 @@ def test_workplan_execute_and_issue_tracker(browser, base_url):
     page.wait_for_selector(".side-panel")
     page.fill(".side-panel textarea", "2 of 25 days banked late")
     page.check(".side-panel input[value='Issue(s) noted']")
-    page.click(".side-panel button:has-text('Sign off as prepared')")
+    page.click(".side-panel button:has-text('Save and sign-off')")
     page.wait_for_selector(".side-panel", state="detached")
     _wait_for(page, "document.querySelector('table.dense tbody') && "
                     "document.querySelector('table.dense tbody').innerText.includes('Prepared')")

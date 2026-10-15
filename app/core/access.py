@@ -200,6 +200,12 @@ def _resolve_audit(db: DBSession, name: str, value: int) -> int | None:
             obj_id = c.objective_id if c else None
         o = db.get(Objective, obj_id) if obj_id else None
         return o.audit_id if o else None
+    if name == "narrative_id":
+        from app.domains.audit.rcm.models import Narrative, Objective
+
+        nar = db.get(Narrative, value)
+        o = db.get(Objective, nar.objective_id) if nar else None
+        return o.audit_id if o else None
     if name == "note_id":
         from app.domains.audit.methodology.models import ReviewNote
 

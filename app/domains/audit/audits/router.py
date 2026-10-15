@@ -98,6 +98,7 @@ class AuditRow(BaseModel):
     working_papers: int
     report_status: str | None
     progress: int = 0
+    favorite: bool = False
     updated_at: datetime
 
 
@@ -120,6 +121,7 @@ def audit_register(
     port_id: int | None = None,
     plan_id: int | None = None,
     mine: bool = False,
+    fav_first: bool = False,
 ) -> Page[AuditRow]:
     """The engagement register: one row per audit the user may read, with plan, lead, port and progress counts.
 
@@ -127,6 +129,7 @@ def audit_register(
     """
     from app.domains.assurance.planning.coverage import engagement_progress
     from app.domains.assurance.planning.models import AssurancePlan, PlanEngagement
+    from app.domains.audit.fieldwork.extras import favorite_ids
     from app.domains.audit.reports.models import AuditReport
     from app.platform.organizations.models import Organization
 
@@ -172,6 +175,7 @@ def audit_register(
     leads = {u.id: (u.full_name or u.username) for u in
              db.execute(select(User).where(User.id.in_(lead_ids or {0}))).scalars()}
 
+    favs = favorite_ids(db, user)
     rows = []
     for a in audits:
         e = engagements.get(a.id)
@@ -188,10 +192,12 @@ def audit_register(
             "planned_end": e.planned_end if e else None, "budget_hours": e.budget_hours if e else None,
             "open_findings": f_open, "findings": f_total, "working_papers": papers.get(a.id, 0),
             "report_status": reports.get(a.id), "progress": engagement_progress(db, a), "updated_at": a.updated_at,
+            "favorite": a.id in favs,
         })
     rows = [r for r in rows if matches(params.q, r["ref"], r["title"], r["port"], r["lead"], r["audit_type"],
                                        r["plan"])]
-    page, total, sort = paginate_rows(rows, params, _AUDIT_SORT, "-updated_at")
+    page, total, sort = paginate_rows(rows, params, _AUDIT_SORT, "-updated_at", first=(
+        (lambda r: r["favorite"]) if fav_first else None))
     return Page[AuditRow](items=page, total=total, page=params.page, page_size=params.page_size, sort=sort)
 
 

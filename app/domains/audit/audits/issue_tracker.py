@@ -23,7 +23,7 @@ from app.core.appconfig import cfg
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import ensure_perm, require_role
-from app.core.enums import AuditStatus, FindingStatus, ReviewLevel, RiskRating, Role, utcnow
+from app.core.enums import AuditStatus, FindingStatus, RiskRating, Role, utcnow
 from app.core.history import log_record_history
 from app.core.paging import Page, PageParams, matches, page_params, paginate_rows
 from app.core.permissions import has_perm
@@ -55,24 +55,14 @@ def publish_audit(db: DBSession, audit_id: int, user: User, request: Request | N
     return sum(1 for f in rows if publish(db, f, user, request))
 
 
-def signoffs(f: Finding, names: dict[int, str]) -> list[dict]:
-    """HighBond sign-off dots: the preparer, then each configured review level (done or pending)."""
-    dots = [{"label": "Prepared", "done": True, "by": names.get(f.created_by), "at": f.created_at.isoformat()}]
-    trail = review_chain.trail(f.review_trail)
-    levels = review_chain.chain("workpaper")
-    if not levels:
-        dots.append({"label": "Reviewed", "done": bool(f.reviewed_at), "by": trail[0]["name"] if trail else None,
-                     "at": f.reviewed_at.isoformat() if f.reviewed_at else None})
-        return dots
-    signed = {t["level"]: t for t in trail}
-    for lvl in levels:
-        t = signed.get(review_chain.label(lvl))
-        dots.append({"label": review_chain.label(lvl), "done": t is not None, "by": t["name"] if t else None,
-                     "at": t["at"] if t else None})
-    return dots
+def signoffs_map(db: DBSession, findings: list[Finding]) -> dict[int, list[dict]]:
+    """Sign-off dots of each issue (Issue Information page): Preparer, then the configured reviewer levels."""
+    from app.domains.audit.fieldwork.signoffs import dots_for
+
+    return dots_for(db, "finding", [f.id for f in findings])
 
 
-def _row(f: Finding, audit: Audit, owners: dict[str, str], names: dict[int, str]) -> dict:
+def _row(f: Finding, audit: Audit, owners: dict[str, str], dots: dict[int, list[dict]]) -> dict:
     now = utcnow()
     deadline = f.target_date
     return {
@@ -83,7 +73,7 @@ def _row(f: Finding, audit: Audit, owners: dict[str, str], names: dict[int, str]
         "overdue": bool(deadline and deadline < now and f.status != FindingStatus.Closed),
         "issue_type": f.issue_type, "published": f.published,
         "published_at": f.published_at.isoformat() if f.published_at else None,
-        "signoffs": signoffs(f, names), "reviewed": bool(f.reviewed_at),
+        "signoffs": dots.get(f.id, []), "reviewed": bool(f.reviewed_at),
         "review_stage": review_chain.label(f.review_stage) if f.review_stage else None,
         "audit_id": audit.id, "audit": audit.title, "audit_status": audit.status.value,
         "source": "Procedure" if f.procedure_id else ("Control test" if f.test_id else "Manual"),
@@ -122,10 +112,8 @@ def _rows(db: DBSession, user: User, params: PageParams | None, *, status_f: str
     if emails:
         for u in db.execute(select(User).where(User.email.in_(emails))).scalars():
             owners[u.email.lower()] = u.full_name or u.username
-    ids = {f.created_by for f, _ in pairs} - {None}
-    names = {u.id: u.full_name or u.username for u in db.execute(select(User).where(User.id.in_(ids))).scalars()} \
-        if ids else {}
-    rows = [_row(f, a, owners, names) for f, a in pairs]
+    dots = signoffs_map(db, [f for f, _ in pairs])
+    rows = [_row(f, a, owners, dots) for f, a in pairs]
     q = params.q if params else None
     return [r for r in rows if (not overdue or r["overdue"])
             and matches(q, r["ref"], r["title"], r["owner"], r["audit"], r["issue_type"], r["status"])]
@@ -220,40 +208,42 @@ def publish_finding(finding_id: int, request: Request, db: DBSession = Depends(g
 @router.post("/api/findings/{finding_id}/review")
 def review_finding(finding_id: int, request: Request, db: DBSession = Depends(get_db),
                    user: User = StaffUser) -> dict:
-    """Reviewer sign-off on an issue, through the working paper review chain (never by its preparer)."""
+    """Reviewer sign-off on an issue: signs the next sign-off level (never by its preparer).
+
+    The Sign-offs panel (``/api/signoffs/finding/{id}``) adds Next Reviewer, override and removal.
+    """
+    from app.domains.audit.fieldwork.signoffs import levels
+    from app.domains.audit.rcm.models import Signoff, SignoffReviewer
+
     f, audit = _finding(db, finding_id, user)
     if not has_perm(user, "review.workpapers"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role does not sign off audit work")
     if f.created_by == user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The preparer cannot review their own issue")
-    if f.reviewed_at:
+    names_ = levels()
+    signed = {s.level: s for s in db.execute(select(Signoff).where(Signoff.target_type == "finding",
+                                                                   Signoff.target_id == f.id)).scalars()}
+    if 1 not in signed:
+        first = Signoff(target_type="finding", target_id=f.id, audit_id=audit.id, level=1, user_id=f.created_by,
+                        signed_at=f.created_at)
+        db.add(first)
+        signed[1] = first
+    level = next((n for n in range(2, len(names_) + 1) if n not in signed), None)
+    if level is None or f.reviewed_at:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already signed off")
-    levels = review_chain.chain("workpaper")
-    if not levels:
-        f.review_trail = review_chain.sign(f.review_trail, user, user.review_level or ReviewLevel.UnitHead)
-        f.reviewed_at = utcnow()
-        what = "REVIEWED"
-    else:
-        try:
-            stage = ReviewLevel(f.review_stage) if f.review_stage else levels[0]
-        except ValueError:
-            stage = levels[0]
-        allowed, why = review_chain.may_sign(user, stage, f.review_trail, f.created_by)
-        if not allowed:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=why)
-        f.review_trail = review_chain.sign(f.review_trail, user, stage)
-        following = review_chain.next_stage("workpaper", stage)
-        if following is None:
-            f.review_stage, f.reviewed_at = None, utcnow()
-            what = f"REVIEWED ({review_chain.label(stage)}, final)"
-        else:
-            f.review_stage = following.value
-            what = f"SIGNED OFF by {review_chain.label(stage)}; next {review_chain.label(following)}"
+    if user.id in {s.user_id for s in signed.values()}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You have already signed this issue")
+    nxt = db.get(SignoffReviewer, ("finding", f.id))
+    db.add(Signoff(target_type="finding", target_id=f.id, audit_id=audit.id, level=level, user_id=user.id,
+                   signed_at=utcnow(), override=not (nxt and nxt.reviewer_id == user.id)))
+    if nxt is not None:
+        db.delete(nxt)
+    if level == len(names_):
+        f.reviewed_at, f.review_stage = utcnow(), None
+    what = f"SIGNED OFF {names_[level - 1]}" + (" (final)" if f.reviewed_at else "")
     log_record_history(db, record_type="audit", record_id=audit.id, user_id=user.id,
                        action=f"ISSUE #{f.id} {what}", request=request)
     log_action(db, user_id=user.id, action=f"FINDING_REVIEW id={f.id}", request=request)
     db.commit()
-    names = {f.created_by: (db.get(User, f.created_by).full_name if f.created_by and db.get(User, f.created_by)
-                            else None)}
-    return {"id": f.id, "reviewed": bool(f.reviewed_at), "signoffs": signoffs(f, names),
-            "review_stage": review_chain.label(f.review_stage) if f.review_stage else None}
+    return {"id": f.id, "reviewed": bool(f.reviewed_at), "signoffs": signoffs_map(db, [f])[f.id],
+            "review_stage": None}

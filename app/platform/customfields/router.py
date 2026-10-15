@@ -22,7 +22,11 @@ from app.platform.users.models import User
 
 router = APIRouter(prefix="/api/custom-fields", tags=["custom fields"])
 Admin = Depends(require_perm("system.reference"))
-MODULES = ("organizations", "audits", "findings", "capa")  # modules whose records carry custom fields
+MODULES = ("organizations", "audits", "findings", "capa", "objectives", "narratives", "risks", "controls",
+           "procedures", "control_tests")  # modules whose records carry custom fields
+# Fieldwork pages: custom attributes may be limited to one audit type (HighBond project types), at most 10 each.
+PER_AUDIT_TYPE = ("objectives", "narratives", "risks", "controls", "procedures", "control_tests", "findings")
+MAX_PER_PAGE = 10
 _MODULE_PATTERN = "^(" + "|".join(MODULES) + ")$"
 
 
@@ -34,6 +38,7 @@ class FieldIn(BaseModel):
     required: bool = False
     help: str = Field("", max_length=255)
     sort_order: int = Field(0, ge=0, le=999)
+    audit_type: str | None = Field(None, max_length=60)
 
     @field_validator("field_type")
     @classmethod
@@ -81,16 +86,21 @@ class FieldOut(BaseModel):
     help: str
     sort_order: int
     active: bool
+    audit_type: str | None = None
 
 
 def _out(f: CustomField) -> FieldOut:
     return FieldOut(id=f.id, module=f.module, key=f.field_key, label=f.label, field_type=f.field_type,
                     options=json.loads(f.options or "[]"), required=f.required, help=f.help,
-                    sort_order=f.sort_order, active=f.active)
+                    sort_order=f.sort_order, active=f.active, audit_type=f.audit_type)
 
 
-def definitions(db: DBSession, module: str, include_inactive: bool = False) -> list[CustomField]:
+def definitions(db: DBSession, module: str, include_inactive: bool = False,
+                audit_type: str | None = None) -> list[CustomField]:
+    """Field definitions of a module; with ``audit_type``, those for every type plus those for that type."""
     q = select(CustomField).where(CustomField.module == module)
+    if audit_type is not None:
+        q = q.where((CustomField.audit_type.is_(None)) | (CustomField.audit_type == audit_type))
     if not include_inactive:
         q = q.where(CustomField.active.is_(True))
     return list(db.execute(q.order_by(CustomField.sort_order, CustomField.id)).scalars())
@@ -102,14 +112,17 @@ def _slug(label: str) -> str:
 
 
 def clean_values(db: DBSession, module: str, values: dict[str, Any] | None,
-                 existing: dict[str, Any] | None = None) -> dict[str, Any]:
+                 existing: dict[str, Any] | None = None, audit_type: str | None = None) -> dict[str, Any]:
     """Validate submitted custom values against the module's active definitions.
 
     Unknown keys are refused; inactive fields keep their stored value. Errors name ``cf_<key>`` so
     the form can show them under the right input.
     """
     values = values or {}
-    defs = {d.field_key: d for d in definitions(db, module, include_inactive=True)}
+    all_defs = definitions(db, module, include_inactive=True)
+    if audit_type is not None:
+        all_defs = [d for d in all_defs if d.audit_type in (None, audit_type)]
+    defs = {d.field_key: d for d in all_defs}
     errors: list[dict[str, str]] = []
     out = dict(existing or {})
     for key in values:
@@ -158,14 +171,22 @@ def clean_values(db: DBSession, module: str, values: dict[str, Any] | None,
 
 @router.get("", response_model=list[FieldOut])
 def list_fields(module: str = Query(..., pattern=_MODULE_PATTERN), include_inactive: bool = False,
+                audit_type: str | None = Query(None, max_length=60),
                 db: DBSession = Depends(get_db), user: User = Depends(require_active_user)) -> list[FieldOut]:
     show_all = include_inactive and user.role == Role.Admin
-    return [_out(f) for f in definitions(db, module, include_inactive=show_all)]
+    return [_out(f) for f in definitions(db, module, include_inactive=show_all, audit_type=audit_type)]
 
 
 @router.post("", response_model=FieldOut, status_code=status.HTTP_201_CREATED)
 def create_field(payload: FieldIn, request: Request, db: DBSession = Depends(get_db), user: User = Admin) -> FieldOut:
     existing = {f.field_key for f in definitions(db, payload.module, include_inactive=True)}
+    audit_type = (payload.audit_type or "").strip() or None
+    if audit_type is not None and payload.module not in PER_AUDIT_TYPE:
+        raise field_error("audit_type", "only fieldwork pages and issues take attributes per audit type")
+    if payload.module in PER_AUDIT_TYPE:
+        same = [f for f in definitions(db, payload.module) if f.audit_type == audit_type]
+        if len(same) >= MAX_PER_PAGE:
+            raise field_error("label", f"a page takes at most {MAX_PER_PAGE} custom attributes")
     if any(f.label.lower() == payload.label.strip().lower() for f in definitions(db, payload.module)):
         raise field_error("label", "a field with this name already exists")
     key, n = _slug(payload.label), 2
@@ -174,7 +195,7 @@ def create_field(payload: FieldIn, request: Request, db: DBSession = Depends(get
         key, n = f"{base}_{n}", n + 1
     f = CustomField(module=payload.module, field_key=key, label=payload.label.strip(), field_type=payload.field_type,
                     options=json.dumps(payload.options), required=payload.required, help=payload.help.strip(),
-                    sort_order=payload.sort_order, created_by=user.id)
+                    sort_order=payload.sort_order, audit_type=audit_type, created_by=user.id)
     db.add(f)
     db.flush()
     log_action(db, user_id=user.id, action=f"CUSTOM_FIELD_CREATE {payload.module}.{key}", request=request)

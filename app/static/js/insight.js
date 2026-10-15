@@ -428,11 +428,11 @@ const HELP = {
     "Only a Super Administrator changes the matrix (tick, untick, Save; Reset returns a role to the standard permissions) and appoints administrators.",
     "Change someone's role on the 'People by role' tab or under Profile & Users.",
   ] },
-  programs: { title: "Audit programmes", items: [
+  programs: { title: "Project Library", items: [
     "Reusable work programmes maintained by the Audit Administrator: objectives, risks, controls and test steps.",
     "On an audit's Risk & Control Matrix tab, use 'Apply audit programme' to copy the steps into the engagement.",
   ] },
-  evidence: { title: "Evidence requests", items: [
+  evidence: { title: "Requests", items: [
     "Auditors request documents from the auditees assigned to an audit, with a due date.",
     "Auditees upload files and submit; the auditor accepts (optionally filing them as working papers) or returns them with a comment.",
   ] },

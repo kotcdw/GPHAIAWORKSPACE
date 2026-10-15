@@ -21,6 +21,7 @@ function signoffDots(list) {
 }
 
 function prepReviewDots(row) {
+  if (row.signoffs) return signoffDots(row.signoffs);
   return signoffDots([
     { label: "Prepared", done: !!row.prepared_at, by: row.prepared_by, at: row.prepared_at },
     { label: "Reviewed", done: !!row.reviewed_at, by: row.reviewed_by, at: row.reviewed_at },
@@ -47,7 +48,7 @@ function subNav(items, active, onPick, label = "Views") {
 const CHART_TONES = ["var(--accent)", "var(--danger)", "var(--warn)", "var(--ok)", "var(--purple)", "var(--muted)", "var(--bar-2)"];
 const SEVERITY_TONES = { High: "var(--danger)", Medium: "var(--warn)", Low: "var(--ok)" };
 
-function donutChart(title, items, tones = {}) {
+function donutChart(title, items, tones = {}, unit = "issues") {
   const total = items.reduce((a, b) => a + b.count, 0);
   const r = 15.9155; // circumference 100
   let offset = 25;
@@ -66,7 +67,7 @@ function donutChart(title, items, tones = {}) {
     svg.append(c);
     offset -= pct;
   });
-  const centre = el("div", { class: "donut-centre" }, el("div", { class: "n" }, String(total)), el("div", { class: "l" }, "issues"));
+  const centre = el("div", { class: "donut-centre" }, el("div", { class: "n" }, String(total)), el("div", { class: "l" }, unit));
   return el("figure", { class: "chart-card", role: "group", "aria-label": `${title}: ${items.map((i) => `${i.label} ${i.count}`).join(", ")}` },
     el("figcaption", null, title),
     el("div", { class: "donut-wrap" }, el("div", { class: "donut-box" }, svg, centre),
@@ -149,13 +150,15 @@ async function renderFieldworkTab(pane, audit, canWrite) {
   clear(pane);
   const open = canWrite && audit.status !== "Closed";
   const workplan = fw.workflow === "Workplan";
+  const terms = await auditTerms(audit.id);
   state.fwSub = state.fwSub || {};
   const subs = workplan
-    ? [{ key: "plan", label: "Project plan" }, { key: "exec", label: "Execute procedures", count: fw.procedures }]
-    : [{ key: "rcm", label: "Risk control matrix" }, { key: "walk", label: "Walkthroughs" }, { key: "tplan", label: "Test plan" },
-      ...fw.round_labels.map((l, i) => ({ key: `r${i + 1}`, label: l }))];
+    ? [{ key: "plan", label: "Project plan" }, { key: "exec", label: termOf(terms, "execute", "Execute procedures"), count: fw.procedures }]
+    : [{ key: "narr", label: `${termOf(terms, "narrative", "Narrative")}s` }, { key: "rcm", label: termOf(terms, "rcm", "Risk control matrix") },
+      { key: "walk", label: `${termOf(terms, "walkthrough", "Walkthrough")}s` }, { key: "tplan", label: termOf(terms, "test_plan", "Test plan") },
+      ...fw.round_labels.map((l, i) => ({ key: `r${i + 1}`, label: fw.round_labels.length === 1 ? termOf(terms, "testing", l) : l }))];
   let sub = state.fwSub[audit.id];
-  if (!subs.some((s) => s.key === sub)) sub = subs[0].key;
+  if (!subs.some((s) => s.key === sub)) sub = workplan ? subs[0].key : "rcm";
 
   // Workflow strip: which HighBond workflow this project uses, and its settings.
   const wfSelect = open && !fw.workflow_locked ? el("select", { class: "compact", "aria-label": "Workflow" },
@@ -190,6 +193,7 @@ async function renderFieldworkTab(pane, audit, canWrite) {
   if (sub === "plan") renderProjectPlan(body, ctx);
   if (sub === "exec") renderExecuteProcedures(body, ctx);
   if (sub === "rcm") renderRcm(body, audit.id);
+  if (sub === "narr") renderNarratives(body, ctx);
   if (sub === "walk") renderWalkthroughs(body, ctx);
   if (sub === "tplan") renderTestPlan(body, ctx);
   if (sub.startsWith("r") && sub !== "rcm") renderTestingRound(body, ctx, Number(sub.slice(1)));
@@ -315,7 +319,7 @@ async function renderExecuteProcedures(body, ctx) {
         el("td", { "data-label": "Issues identified" }, p.outcome ? el("span", { class: `outcome ${p.outcome === "No Issues" ? "ok" : "bad"}` },
           el("i", { class: `bi ${p.outcome === "No Issues" ? "bi-check-circle" : "bi-exclamation-circle"}`, "aria-hidden": "true" }), ` ${p.outcome}`) : el("span", { class: "muted" }, "-"),
           p.issue_ids.length ? el("div", { class: "muted small" }, p.issue_ids.map((i) => `Issue #${i}`).join(", ")) : null),
-        el("td", { "data-label": "Sign-offs" }, prepReviewDots(p)),
+        el("td", { "data-label": "Sign-offs" }, signoffCell("procedure", p.id, p.signoffs, audit.id, `${p.ref} ${p.title}`, reload)),
         el("td", { class: "num", "data-label": "Evidence" }, p.evidence_requests ? String(p.evidence_requests) : "-")))))));
   }
   paint();
@@ -323,7 +327,10 @@ async function renderExecuteProcedures(body, ctx) {
 
 // Execute a procedure in the side panel: results, "Were issues identified?", sign-offs, issue, evidence.
 async function procedurePanel(p, { audit, open, reload }) {
-  const editable = open && !["Prepared", "Reviewed"].includes(p.status);
+  const signed = (p.signoffs || []).some((d) => d.done);
+  const editable = open && !signed && !["Prepared", "Reviewed"].includes(p.status);
+  const soBox = el("div");
+  signoffSection("procedure", p.id, audit.id, () => { panel.close(); reload(); }).then((n) => soBox.append(n));
   const results = el("textarea", { rows: "7", maxlength: "50000", "aria-label": "Procedure results", disabled: editable ? null : "1" }, p.results || "");
   const radios = ["No Issues", "Issue(s) noted"].map((o) => {
     const id = `out-${p.id}-${o.replace(/\W/g, "")}`;
@@ -344,9 +351,7 @@ async function procedurePanel(p, { audit, open, reload }) {
     formSection("Procedure results", results),
     formSection("Were issues identified?", el("div", { class: "radio-row" }, ...radios.map((x) => x.node))),
     p.review_comment ? el("div", { class: "callout warn" }, el("i", { class: "bi bi-chat-left-text" }), el("div", null, el("strong", null, "Reviewer: "), p.review_comment)) : null,
-    formSection("Sign-offs", el("dl", { class: "kv" },
-      el("dt", null, "Prepared"), el("dd", null, p.prepared_at ? `${p.prepared_by} · ${fmtDate(p.prepared_at)}` : el("span", { class: "muted" }, "Not signed")),
-      el("dt", null, "Reviewed"), el("dd", null, p.reviewed_at ? `${p.reviewed_by} · ${fmtDate(p.reviewed_at)}` : el("span", { class: "muted" }, "Not signed")))),
+    formSection("Sign-offs", el("div", null, editable ? el("p", { class: "muted small" }, "Save the results and answer 'Were issues identified?' before the preparer signs off.") : null, soBox)),
     formSection("Issues", p.issue_ids.length ? el("ul", { class: "plain-list" }, ...p.issue_ids.map((i) => el("li", null,
       el("a", { href: "#", onclick: async (e) => { e.preventDefault(); panel.close(); const f = await API.get(`/api/findings/${i}`); issueForm(f, audit.id, open, reload); } }, `Issue #${i}`))))
       : el("p", { class: "muted small" }, "No issue raised from this procedure.")),
@@ -357,12 +362,8 @@ async function procedurePanel(p, { audit, open, reload }) {
   } }, label);
   const footer = el("div", { class: "actions" },
     editable ? act("Save", async () => { await save(); toast("Saved"); panel.close(); reload(); }, "secondary") : null,
-    editable ? act("Sign off as prepared", async () => { await save(); await API.patch(`/api/procedures/${p.id}`, { status: "Prepared" }); toast("Signed off as prepared"); panel.close(); reload(); }) : null,
-    open && p.status === "Prepared" ? act("Reopen", async () => { await API.patch(`/api/procedures/${p.id}`, { status: "In Progress" }); toast("Reopened"); panel.close(); reload(); }, "secondary") : null,
-    open && p.status === "Prepared" && p.prepared_by_id !== state.user.id ? act("Review (e-sign)", async () => {
-      panel.close();
-      eSignModal({ title: `Review ${p.ref}`, pathOverride: `/api/procedures/${p.id}/review`, actionLabel: "Sign review", allowReject: true, onDone: reload });
-    }) : null,
+    editable ? act("Save and sign-off", async () => { await save(); await API.post(`/api/signoffs/procedure/${p.id}`, {}); toast("Signed off as Preparer"); panel.close(); reload(); }) : null,
+    act("Attributes", async () => editAttributes("procedures", p.id, p.ref, reload, !editable), "secondary"),
     open && p.outcome === "Issue(s) noted" && !p.issue_ids.length ? act("Raise issue", async () => {
       const f = await API.post(`/api/procedures/${p.id}/raise-issue`); toast(`Issue #${f.id} raised - complete it under Findings`); panel.close(); reload();
     }) : null,
@@ -405,15 +406,14 @@ async function renderWalkthroughs(body, { audit, open, reload }) {
         el("td", { class: "ref", "data-label": "Walkthrough" }, r.test ? r.test.ref : "-"),
         el("td", { "data-label": "Status" }, r.test ? statusBadge(r.test.status) : el("span", { class: "muted" }, "-")),
         el("td", { "data-label": "Designed appropriately?" }, el("span", { class: `outcome ${designTone[r.design] || ""}` }, r.design)),
-        el("td", { "data-label": "Sign-offs" }, r.test ? prepReviewDots(r.test) : "-"),
+        el("td", { "data-label": "Sign-offs" }, r.test ? signoffCell("test", r.test.id, r.test.signoffs, audit.id, `${r.test.ref} ${r.control}`, reload) : "-"),
         el("td", null, el("div", { class: "actions" },
           r.test ? btn("Open", () => openControlTest(audit.id, r, r.test.id, open, reload), "secondary") : null,
           !r.test && open ? btn("Start walkthrough", async () => {
             try { const t = await API.post(`/api/controls/${r.control_id}/tests`, { test_type: "Walkthrough", procedure: r.test_steps || "" }); openControlTest(audit.id, r, t.id, open, reload); }
             catch (err) { toast(err.message, "error"); }
           }) : null,
-          r.test && open && r.test.status === "Completed" && r.test.prepared_by_id !== state.user.id ? btn("Review (e-sign)", () => eSignModal({
-            title: `Review ${r.test.ref}`, pathOverride: `/api/control-tests/${r.test.id}/review`, actionLabel: "Sign review", allowReject: true, onDone: reload })) : null)))))))));
+          r.test ? btn("Attributes", () => editAttributes("control_tests", r.test.id, r.test.ref, reload, !open), "secondary") : null)))))))));
 }
 
 async function renderTestPlan(body, { audit, open, reload }) {
@@ -425,7 +425,7 @@ async function renderTestPlan(body, { audit, open, reload }) {
   if (!controls.length) { body.append(emptyState({ icon: "clipboard-check", title: "No controls yet", text: "The test plan lists each control from the Risk control matrix." })); return; }
   body.append(el("div", { class: "card" }, el("p", { class: "muted small" }, "How each control will be tested. The testing method, total sample size and test steps carry into every testing round."),
     el("div", { class: "table-wrap" }, el("table", { class: "dense" },
-      el("thead", null, el("tr", null, ...["Control", "Key", "Frequency", "Nature", "Testing method", "Total sample size", "Test steps", ""].map((h) => el("th", { scope: "col" }, h)))),
+      el("thead", null, el("tr", null, ...["Control", "Key", "Frequency", "Nature", "Testing method", "Total sample size", "Test steps", "Sign-offs", ""].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...controls.map((c) => el("tr", { class: "no-click" },
         el("td", { class: "col-wide", "data-label": "Control" }, el("span", { class: "ref" }, c.ref), ` ${c.title}`),
         el("td", { "data-label": "Key" }, c.is_key ? statusBadge("Key") : "-"),
@@ -433,7 +433,9 @@ async function renderTestPlan(body, { audit, open, reload }) {
         el("td", { "data-label": "Testing method" }, c.test_method || el("span", { class: "muted" }, "Not set")),
         el("td", { class: "num", "data-label": "Total sample size" }, c.total_sample_size != null ? String(c.total_sample_size) : el("span", { class: "muted" }, "Default")),
         el("td", { class: "small", "data-label": "Test steps" }, c.test_steps ? clip(c.test_steps, 120) : el("span", { class: "muted" }, "-")),
-        el("td", null, open ? btn("Edit", () => testPlanForm(c, reload), "secondary") : null))))))));
+        el("td", { "data-label": "Sign-offs" }, signoffCell("test_plan", c.id, c.plan_signoffs, audit.id, `Test plan ${c.ref}`, reload)),
+        el("td", null, el("div", { class: "actions" }, open ? btn("Edit", () => testPlanForm(c, reload), "secondary") : null,
+          btn("Attributes", () => editAttributes("controls", c.id, c.ref, reload, !open), "secondary"))))))))));
 }
 
 const TEST_METHODS = ["Inquiry", "Observation", "Inspection", "Re-performance", "Data analytics"];
@@ -506,12 +508,10 @@ async function renderTestingRound(body, { audit, open, reload }, roundNo) {
           el("td", { class: "num", "data-label": "Exceptions" }, t ? String(t.exceptions_found) : "-"),
           el("td", { "data-label": "Status" }, t ? statusBadge(t.status) : "-"),
           el("td", { "data-label": "Conclusion" }, t ? statusBadge(t.conclusion) : "-"),
-          el("td", { "data-label": "Sign-offs" }, t ? prepReviewDots(t) : "-"),
+          el("td", { "data-label": "Sign-offs" }, t ? signoffCell("test", t.id, t.signoffs, audit.id, `${t.ref} ${r.control}`, reload) : "-"),
           el("td", { class: "num", "data-label": "Evidence" }, t && t.evidence_requests ? String(t.evidence_requests) : "-"),
           el("td", null, t ? el("div", { class: "actions" },
             btn("Open", () => openControlTest(audit.id, r, t.id, open, reload), "secondary"),
-            open && t.status === "Completed" && t.prepared_by_id !== state.user.id ? btn("Review", () => eSignModal({
-              title: `Review ${t.ref}`, pathOverride: `/api/control-tests/${t.id}/review`, actionLabel: "Sign review", allowReject: true, onDone: reload })) : null,
             open && t.conclusion === "Ineffective" && ["Completed", "Reviewed"].includes(t.status) && !t.issue_id ? btn("Raise issue", async () => {
               try { await API.post(`/api/control-tests/${t.id}/raise-issue`); toast("Issue raised - see Findings"); reload(); } catch (err) { toast(err.message, "error"); }
             }) : null,
@@ -558,7 +558,7 @@ async function renderAuditIssues(panel, audit, canWrite) {
       el("td", { "data-label": "Remediation deadline" }, f.target_date ? fmtDay(f.target_date.slice(0, 10)) : el("span", { class: "muted" }, "-")),
       el("td", { "data-label": "Issue type" }, f.issue_type || el("span", { class: "muted" }, "-")),
       el("td", { "data-label": "Published" }, f.published ? el("span", { class: "outcome ok" }, el("i", { class: "bi bi-eye" }), " Yes") : el("span", { class: "outcome" }, el("i", { class: "bi bi-eye-slash" }), " No")),
-      el("td", { "data-label": "Sign-offs" }, signoffDots(f.signoffs)),
+      el("td", { "data-label": "Sign-offs" }, signoffCell("finding", f.id, f.signoffs, id, `Issue #${f.id}`, reload)),
       el("td", { class: "small", "data-label": "Remediation" }, f.remediation ? f.remediation.state : "-"),
       el("td", { "data-label": "Responses" }, el("span", { class: "chips" },
         el("span", { class: `chip-mini ${f.client_response ? "ok" : ""}`, title: "Audit client response" }, el("i", { class: `bi ${f.client_response ? "bi-check2" : "bi-hourglass"}` }), " Client"),
@@ -573,9 +573,8 @@ function issueExtraActions(f, auditId, canWrite, onSaved) {
     !f.published ? el("button", { class: "btn secondary", type: "button", title: "Make the issue visible to the auditee and notify its owner", onclick: async () => {
       try { await API.post(`/api/findings/${f.id}/publish`); toast("Published - the owner has been notified"); closeForm(); onSaved(); } catch (err) { toast(err.message, "error"); }
     } }, el("i", { class: "bi bi-send" }), " Publish") : null,
-    !f.reviewed_at && f.created_by !== state.user.id && hasPerm("review.workpapers") ? el("button", { class: "btn secondary", type: "button", onclick: async () => {
-      try { const r = await API.post(`/api/findings/${f.id}/review`); toast(r.reviewed ? "Issue reviewed" : `Signed off; next: ${r.review_stage}`); closeForm(); onSaved(); } catch (err) { toast(err.message, "error"); }
-    } }, el("i", { class: "bi bi-pen" }), f.review_stage ? ` Sign off as ${f.review_stage}` : " Sign off") : null,
+    el("button", { class: "btn secondary", type: "button", onclick: () => { closeForm(); openSignoffs("finding", f.id, auditId, `Issue #${f.id}`, onSaved); } },
+      el("i", { class: "bi bi-pen" }), " Sign-offs"),
     hasPerm("audit.evidence") ? el("button", { class: "btn secondary", type: "button", onclick: () => requestEvidenceDialog(auditId, { type: "finding", id: f.id, label: `Issue #${f.id}` }, onSaved) },
       el("i", { class: "bi bi-paperclip" }), " Request evidence") : null,
   ].filter(Boolean);

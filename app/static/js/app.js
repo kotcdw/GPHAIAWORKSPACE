@@ -580,6 +580,11 @@ function navigate(view) {
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "issues") return renderIssueTracker();
+  if (view === "statustracker") return renderStatusTracker();
+  if (view === "results") return renderResults();
+  if (view === "storyboards") return renderStoryboards();
+  if (view === "robots") return renderRobots();
+  if (view === "audittypes") return renderAuditTypes();
   if (view === "orgstructure") return renderOrgStructure();
   if (view === "processes") return renderProcessLibrary();
   if (view === "riskassess") return renderRiskAssessments();
@@ -1074,8 +1079,9 @@ async function renderWorkspace() {
       { view: "riskassess", icon: "clipboard-data", name: "Audit risk assessment", desc: "Score entities on assessment factors and prioritise them for the plan", staff: true },
       { view: "plans", icon: "calendar3", name: "Assurance Plans", desc: "Annual risk-based audit plan by fiscal year", count: "plans", staff: true },
       { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: planning, fieldwork, issues, results", count: "audits" },
-      { view: "programs", icon: "list-check", name: "Audit programmes", desc: "Reusable work programmes (project templates)", staff: true },
-      { view: "evidence", icon: "inbox", name: "Evidence requests", desc: "Requests sent to auditees and the files they return" },
+      { view: "statustracker", icon: "speedometer2", name: "Status Tracker", desc: "Time expired, work completed, budget and time spent per audit", staff: true },
+      { view: "programs", icon: "list-check", name: "Project Library", desc: "Reusable audit programmes (project templates)", staff: true },
+      { view: "evidence", icon: "inbox", name: "Requests", desc: "Requests sent to auditees and the files they return" },
       { view: "issues", icon: "flag", name: "Issue Tracker", desc: "Every issue across audits, with KPIs", staff: true },
       { view: "capa", icon: "tools", name: "Remediation & Follow-up", desc: "Agreed actions tracked to validated closure", count: "capa" },
     ] },
@@ -1093,11 +1099,13 @@ async function renderWorkspace() {
       { view: "library", icon: "diagram-3-fill", name: "Frameworks", desc: "COSO, ISO, PFM and GPHA frameworks with standard controls", staff: true },
       { view: "compliance", icon: "diagram-2", name: "Compliance Maps", desc: "Obligations mapped to common controls, with gaps" },
       { view: "policies", icon: "file-earmark-ruled", name: "Policy Manager", desc: "Policies, versions, reviews and attestation" },
-      { view: "criteria", icon: "journal-bookmark", name: "Criteria library", desc: "Laws, policies and standards findings are measured against", staff: true },
       { view: "nonconformances", icon: "exclamation-triangle", name: "Nonconformance", desc: "Nonconformities and their disposition", count: "ncs" },
     ] },
     { title: "Analytics & reporting", tiles: [
       { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Heat map, trends, repeat findings and KPIs", staff: true },
+      { view: "results", icon: "table", name: "Results", desc: "Analytic tables with priority, status, assignee and triggers", staff: true },
+      { view: "storyboards", icon: "easel", name: "Storyboards", desc: "Charts, metrics and text from Results, shared read-only", staff: true },
+      { view: "robots", icon: "robot", name: "Robots", desc: "Scheduled analytic tasks publishing into Results", staff: true },
       { view: "committee", icon: "bar-chart-line", name: "Audit Committee", desc: "Committee summary, Word pack, meetings and decisions", staff: true },
       { view: "governance", icon: "bank", name: "Governance portal", desc: "Approved plans, issued reports and headline KPIs" },
       { view: "portfolio", icon: "geo-alt", name: "Port portfolio", desc: "Audits, findings and remediation by port" },
@@ -1111,6 +1119,7 @@ async function renderWorkspace() {
       { view: "profile", icon: "person-gear", name: "Profile & Users", desc: "Your profile, password, two-step sign-in and users" },
       { view: "roles", icon: "shield-lock", name: "Roles & permissions", desc: "Job roles and what each one can do" },
       { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, audit types, plan settings, SLAs" },
+      { view: "audittypes", icon: "ui-checks", name: "Audit types", desc: "Terms and custom attributes per audit type", staff: true },
       { view: "apps", icon: "sliders2", name: "Apps & customization", desc: "Turn apps on or off and adjust their fields" },
       { view: "automations", icon: "lightning-charge", name: "Automations", desc: "Reminders, routing and escalation rules" },
       { view: "logs", icon: "journal-text", name: "Activity logs", desc: "Who did what, and when", admin: true },
@@ -1327,10 +1336,12 @@ async function renderAudits() {
       ...(types.length ? [{ key: "audit_type", label: "Stream", options: types }] : []),
       ...(ports.length ? [{ key: "port_id", label: "Port", options: ports.map((p) => ({ value: p.id, label: p.name })) }] : []),
       ...(state.user.work_entity_id ? [{ key: "mine", label: "Scope", options: [{ value: "true", label: "My port" }] }] : []),
+      { key: "fav_first", label: "Order", options: [{ value: "true", label: "Show favorites first" }] },
     ],
     emptyTitle: "No audits yet",
     emptyText: "Audits are started from an approved plan engagement or created here.",
     columns: [
+      { key: "favorite", label: "Favorite", render: (a) => favoriteStar(a, () => t.reload()), csv: (a) => (a.favorite ? "Yes" : "") },
       { key: "ref", label: "Ref", sort: true, render: (a) => el("span", { class: "ref" }, a.ref) },
       { key: "title", label: "Audit", sort: true, render: (a) => el("a", { href: "#", onclick: (e) => { e.preventDefault(); e.stopPropagation(); openAudit(a.id); } }, a.title) },
       { key: "audit_type", label: "Stream", sort: true },
@@ -1415,6 +1426,7 @@ async function openAudit(id, startTab = null) {
   catch (err) { clear(viewRoot); viewRoot.append(errorState(err, () => openAudit(id, startTab))); return; }
   clear(viewRoot);
   const canWrite = canWriteModule("audits");
+  const terms = canWrite || isStaff() ? await auditTerms(id) : {};
   const ref = `AUD-${String(id).padStart(4, "0")}`;
 
   const actions = [
@@ -1437,13 +1449,12 @@ async function openAudit(id, startTab = null) {
   // Phase tabs straight under the title; supporting views open from the utility links on the right.
   const tabs = [
     { key: "dashboard", label: "Dashboard" },
-    ...(canWrite ? [{ key: "memo", label: "Planning" }, { key: "fieldwork", label: "Fieldwork" }] : []),
-    { key: "papers", label: "Working papers" },
-    ...(canWrite ? [{ key: "quality", label: "Reviews" }] : []),
-    { key: "report", label: "Results" },
-    { key: "findings", label: "Issues" },
-    { key: "evidence", label: "Requests" },
-    { key: "survey", label: "Survey" },
+    ...(canWrite ? [{ key: "memo", label: termOf(terms, "planning", "Planning") }, { key: "fieldwork", label: termOf(terms, "fieldwork", "Fieldwork") }] : []),
+    ...(canWrite ? [{ key: "quality", label: termOf(terms, "reviews", "Reviews") }] : []),
+    { key: "report", label: termOf(terms, "results", "Results") },
+    { key: "findings", label: `${termOf(terms, "issue", "Issue")}s` },
+    ...(canWrite ? [{ key: "progress", label: "Progress" }] : []),
+    { key: "evidence", label: `${termOf(terms, "request", "Request")}s` },
   ];
   const utility = [
     ...(canWrite ? [{ label: "Review notes", icon: "chat-square-text", key: "notes" }, { label: "Time entries", icon: "clock", key: "time" }] : []),
@@ -1464,7 +1475,7 @@ async function openAudit(id, startTab = null) {
     onTab: (key, pane) => {
       state.lastAuditTab = { id, key };
       // Work screens (HighBond execution views) use the full width; the summary panel shows on the others.
-      layout.root.querySelector(".rec-grid").classList.toggle("no-side", ["fieldwork", "findings", "evidence", "papers"].includes(key));
+      layout.root.querySelector(".rec-grid").classList.toggle("no-side", ["fieldwork", "findings", "evidence", "progress"].includes(key));
       paintTab(key, pane);
     },
   });
@@ -1479,15 +1490,20 @@ async function openAudit(id, startTab = null) {
     if (key === "time") renderAuditTimeTab(pane, audit);
     if (key === "notes") renderReviewNotesTab(pane, audit);
     if (key === "quality") renderQualityTab(pane, audit);
-    if (key === "survey") renderSurveyTab(pane, audit);
+    if (key === "progress") renderProgressTab(pane, audit);
     if (key === "findings") renderAuditIssues(pane, audit, canWrite);
-    if (key === "report") renderReportTab(pane, id, canWrite);
-    if (key === "papers") renderPapers(pane, id, canWrite);
+    if (key === "report") {
+      // Results: the report, then the supporting workpapers (Diligent: Results > Supporting Workpapers).
+      const rep = el("div"); const wp = el("div", { class: "supporting-wp" });
+      pane.append(rep, wp);
+      renderReportTab(rep, id, canWrite);
+      renderPapers(wp, id, canWrite);
+    }
     if (key === "tasks") renderTasksTab(pane, "audit", id);
     if (key === "history") renderHistoryTab(pane, "audit", id);
     if (key === "approvals") renderApprovalsTab(pane, "audit", id);
   }
-  const legacy = { rcm: "fieldwork" };
+  const legacy = { rcm: "fieldwork", papers: "report", survey: "dashboard" };
   // Reloading the same audit (after a save) keeps the tab the user was on.
   const remembered = state.lastAuditTab && state.lastAuditTab.id === id ? state.lastAuditTab.key : null;
   layout.select(startTab ? (legacy[startTab] || startTab) : (remembered || "dashboard"));
@@ -1570,7 +1586,7 @@ async function renderAuditDashboard(pane, audit, canWrite, goTo) {
   if (canWrite) renderAuditees(info.querySelector(".auditee-strip"), id);
 
   const review = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Working paper review status"),
-    el("button", { class: "link-btn", type: "button", onclick: () => goTo("papers") }, "Open working papers")));
+    el("button", { class: "link-btn", type: "button", onclick: () => goTo("report") }, "Open supporting workpapers")));
   const fsum = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Findings"),
     el("button", { class: "link-btn", type: "button", onclick: () => goTo("findings") }, "Open findings")));
   pane.append(review, fsum);
@@ -1739,7 +1755,7 @@ function wpTemplateForm(t, reload) {
 }
 
 async function renderPapers(panel, id, canWrite) {
-  const card = el("div", { class: "card" }, el("h3", null, "Working papers"));
+  const card = el("div", { class: "card" }, el("h3", null, "Supporting workpapers"));
   panel.append(card);
   const papers = await API.get(`/api/audits/${id}/working-papers`);
   if (!papers.length) card.append(el("div", { class: "empty" }, "No working papers yet. Create one below: the GPHA template form, with or without a file."));

@@ -267,8 +267,20 @@ function planOverview(pane, plan) {
 async function renderEngagements(panel, plan) {
   const draft = plan.status === "Draft";
   const approved = plan.status === "Approved";
-  const card = el("div", { class: "card" }, el("h3", null, "Planned engagements"));
+  const reload = () => openPlan(plan.id);
+  state.planView = state.planView || "table";
+  const canInclude = plan.status !== "Closed" && (draft || hasPerm("plan.amend")) && typeof includeAuditsDialog === "function";
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "All audits"),
+    el("div", { class: "actions" },
+      subNav([{ key: "table", label: "Table" }, { key: "timeline", label: "Timeline" }], state.planView, (k) => { state.planView = k; clear(panel); renderEngagements(panel, plan); }, "Plan views"),
+      canInclude ? btn("Include audits", () => includeAuditsDialog(plan, reload), "secondary") : null)));
   panel.append(card);
+  if (state.planView === "timeline" && typeof planTimeline === "function") {
+    const box = el("div");
+    card.append(box);
+    planTimeline(box, plan, reload);
+    return;
+  }
   if (!plan.engagements.length) card.append(el("div", { class: "empty" }, "No engagements yet."));
   else card.append(el("table", null,
     el("thead", null, el("tr", null, el("th", null, "Quarter"), el("th", null, "Engagement"), el("th", null, "Entity"),
@@ -281,6 +293,7 @@ async function renderEngagements(panel, plan) {
       el("td", null, String(e.budget_hours)), el("td", null, badge(e.status)),
       el("td", null, el("div", { class: "actions" },
         e.audit_id ? btn("Open audit", () => openAudit(e.audit_id), "secondary") : null,
+        e.audit_id && canInclude && e.status !== "Cancelled" ? btn("Exclude from audit plan", () => excludeFromPlan(plan, e, reload), "danger-ghost") : null,
         approved && e.status === "Planned" ? btn("Start", async () => {
           try { const r = await API.post(`/api/plan-engagements/${e.id}/start`); toast("Audit project created"); openAudit(r.audit_id); }
           catch (err) { toast(err.message, "error"); }
@@ -384,7 +397,10 @@ function objectiveForm(auditId, o, reload) {
 function objectiveCard(o, open, reload) {
   const card = el("div", { class: "card" });
   card.append(el("div", { class: "view-head" },
-    el("h3", null, el("span", { class: "ref" }, o.ref), " ", o.title),
+    el("h3", null, el("span", { class: "ref" }, o.ref), " ", o.title,
+      typeof signoffCell === "function" ? el("span", { class: "muted small rcm-so" }, " Risk control matrix sign-offs ", signoffCell("rcm", o.id, o.rcm_signoffs, o.audit_id, `${o.ref} risk control matrix`, reload)) : null),
+    el("div", { class: "actions" },
+      typeof editAttributes === "function" ? btn("Attributes", () => editAttributes("objectives", o.id, o.ref, reload, !open), "secondary") : null),
     open ? el("div", { class: "actions" },
       btn("+ Risk", () => riskModal(o, null, reload), "secondary"),
       btn("+ Control", () => controlModal(o, null, reload), "secondary"),
@@ -407,7 +423,8 @@ function objectiveCard(o, open, reload) {
       el("td", { class: "ref" }, r.ref), el("td", null, r.title, r.enterprise_risk ? el("div", { class: "muted small" }, el("i", { class: "bi bi-link-45deg" }), ` ${r.enterprise_risk}`) : null),
       el("td", null, heat(r.inherent_score)), el("td", null, badge(r.residual_rating)),
       el("td", null, r.control_ids.length ? r.control_ids.map((id) => o.controls.find((c) => c.id === id)?.ref || `#${id}`).join(", ") : el("span", { class: "badge badge-risk-high" }, "none")),
-      el("td", null, open ? btn("Edit", () => riskModal(o, r, reload), "secondary") : null))))));
+      el("td", null, el("div", { class: "actions" }, open ? btn("Edit", () => riskModal(o, r, reload), "secondary") : null,
+        typeof editAttributes === "function" ? btn("Attributes", () => editAttributes("risks", r.id, r.ref, reload, !open), "secondary") : null)))))));
 
   card.append(el("h4", null, "Controls"));
   if (!o.controls.length) card.append(el("div", { class: "empty" }, "No controls documented."));
@@ -586,29 +603,22 @@ async function issueForm(f, auditId, canWrite, onSaved) {
   const isNew = !f;
   const respondOnly = !canWrite;
   const ro = respondOnly;
-  // Criteria library (GIAS 13.4): pick a standard criterion; its text fills the Criteria box.
-  const library = canWrite ? (await safeGet("/api/criteria?status=Active", { items: [] })).items : [];
-  const current = f && f.criterion_id ? await safeGet(`/api/criteria/${f.criterion_id}`, null) : null;
-  const cfDefs = customFieldDefs(await safeGet("/api/custom-fields?module=findings", [])).map((x) => ({ ...x, name: x.key, disabled: ro }));
-  if (current && !library.some((c) => c.id === current.id)) library.push(current);
+  const auditType = auditId ? ((await safeGet(`/api/audits/${auditId}`, {})).audit_type || "") : "";
+  const cfDefs = customFieldDefs(await safeGet(`/api/custom-fields?module=findings&audit_type=${encodeURIComponent(auditType)}`, [])).map((x) => ({ ...x, name: x.key, disabled: ro }));
   const issueTypes = canWrite ? await safeGet("/api/findings/issue-types", []) : [];
   if (f && f.issue_type && !issueTypes.includes(f.issue_type)) issueTypes.push(f.issue_type);
   const fields = [
-    { name: "title", label: "Issue title", required: true, maxLength: 255, singleLine: true, disabled: ro },
-    { name: "risk_rating", label: "Severity (risk rating)", type: "select", required: true, options: RISK_RATINGS, disabled: ro },
+    { name: "title", label: "Title/Headline", required: true, maxLength: 255, singleLine: true, disabled: ro },
+    { name: "risk_rating", label: "Severity", type: "select", required: true, options: RISK_RATINGS, disabled: ro },
     ...(canWrite ? [{ name: "issue_type", label: "Issue type", type: "select", emptyLabel: "- not set -", options: issueTypes }] : []),
     { name: "status", label: "Status", type: "select", required: true, options: FINDING_STATUSES, disabled: ro,
       help: f && f.remediation ? `Remediation: ${f.remediation.state}${f.remediation.refs.length ? ` (${f.remediation.refs.join(", ")})` : ""}. A finding closes when its actions are verified as effective.` : "A finding closes when its remediation actions are verified as effective." },
-    { name: "assigned_owner_email", label: "Owner email", type: "email", disabled: ro },
-    { type: "heading", label: "Issue attributes" },
-    ...(canWrite ? [{ name: "criterion_id", label: "Criterion from the library", type: "select", emptyLabel: library.length ? "- none (write below) -" : "- library is empty -",
-      options: library.map((c) => ({ value: c.id, label: `${c.crit_ref} · ${c.title}${c.reference ? ` (${c.reference})` : ""}` })), full: true,
-      help: "Choosing one fills the Criteria box; you can still edit the text" }] : []),
-    { name: "criteria", label: "Criteria - what should be (policy, standard, control design)", type: "textarea", maxLength: 20000, disabled: ro },
-    { name: "condition", label: "Condition - what was found", type: "textarea", maxLength: 20000, disabled: ro },
-    { name: "cause", label: "Cause - why it happened", type: "textarea", maxLength: 20000, disabled: ro },
-    { name: "effect", label: "Effect - risk / impact", type: "textarea", maxLength: 20000, disabled: ro },
+    { name: "assigned_owner_email", label: "Owner", type: "email", disabled: ro, help: "The owner's e-mail; they are notified once the issue is published" },
+    { name: "condition", label: "Description", type: "textarea", maxLength: 20000, disabled: ro, full: true },
     { name: "recommendation", label: "Recommendation", type: "textarea", maxLength: 20000, disabled: ro },
+    { type: "heading", label: "Show more" },
+    { name: "effect", label: "Effect (Risk / Impact)", type: "textarea", maxLength: 20000, disabled: ro },
+    { name: "cause", label: "Cause", type: "textarea", maxLength: 20000, disabled: ro },
     { name: "root_cause_whys", label: "Root cause - 5 Whys", type: "whys", disabled: ro },
     { name: "description", label: "Additional notes", type: "textarea", maxLength: 20000, disabled: ro },
     ...cfDefs,
@@ -677,18 +687,6 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     },
     onDone: () => { toast(isNew ? "Finding created" : "Issue saved"); onSaved(); },
   });
-  const pick = handle.nodes && handle.nodes.criterion_id;
-  const box = handle.nodes && handle.nodes.criteria;
-  if (pick && box) {
-    pick.addEventListener("change", () => {
-      const c = library.find((x) => String(x.id) === pick.value);
-      if (!c) return;
-      const text = `${c.body}${c.reference ? ` (${c.reference})` : ""}`;
-      if (!box.value.trim() || box.value.trim() === text) box.value = text;
-      else box.value = `${box.value.trim()}\n\n${text}`;
-      box.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  }
 }
 
 // ------------------------------------------------------------------ draft resume handlers

@@ -25,6 +25,7 @@ class CustomField(Base):
     options: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # JSON list for "select"
     required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     help: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    audit_type: Mapped[str | None] = mapped_column(String(60), nullable=True)  # None = every audit type
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

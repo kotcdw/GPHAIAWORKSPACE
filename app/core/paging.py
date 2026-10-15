@@ -78,10 +78,11 @@ def paginate_query(db: DBSession, stmt: Select, params: PageParams, sortable: di
 
 
 def paginate_rows(rows: list[dict], params: PageParams, sortable: dict[str, Callable[[dict], Any]],
-                  default: str) -> tuple[list[dict], int, str]:
+                  default: str, first: Callable[[dict], bool] | None = None) -> tuple[list[dict], int, str]:
     """Sort and page rows that were already authorized in Python (records whose access rules are not SQL yet).
 
-    Empty values always sort last; ``id`` breaks ties so pages are deterministic.
+    Empty values always sort last; ``id`` breaks ties so pages are deterministic. ``first`` floats the rows it
+    accepts to the top (keeping the sort within each part), e.g. "Show favorites first".
     """
     key, desc = params.sort_key(list(sortable), default)
     getter = sortable[key]
@@ -98,6 +99,8 @@ def paginate_rows(rows: list[dict], params: PageParams, sortable: dict[str, Call
     present.sort(key=lambda r: (order(r)[1], r.get("id", 0)), reverse=desc)
     missing.sort(key=lambda r: r.get("id", 0))
     ordered = present + missing
+    if first is not None:
+        ordered = [r for r in ordered if first(r)] + [r for r in ordered if not first(r)]
     return ordered[params.offset: params.offset + params.page_size], len(ordered), ("-" if desc else "") + key
 
 
