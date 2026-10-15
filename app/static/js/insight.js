@@ -442,7 +442,7 @@ const HELP = {
   portfolio: { title: "Port portfolio", items: [
     "Audits, open findings and remediation by port. A PIA sees their own port (set 'Where I work' on the profile); the GM Audit sees every port.",
   ] },
-  workspace: { title: "Launchpad", items: ["Every app in one place, grouped by solution like the sidebar (Audit, Resource, Risk and Compliance management; Analytics & reporting; Platform settings), with live counts. Quick actions start the most common work."] },
+  workspace: { title: "All apps", items: ["Every app in one place, grouped by solution like the sidebar (Audit, Resource, Risk and Compliance management; Analytics & reporting; Platform settings), with live counts. Quick actions start the most common work."] },
   plans: { title: "Assurance Plans", items: [
     "The annual risk-based plan (IIA GIAS 9.4). Add engagements from the Audit Universe, then submit for CAE approval.",
     "Follow the annual planning cycle card: preparation, universe review, managers' meeting, draft, internal review (e-sign), submission, Audit Committee decision, approved version, GM distribution, execution.",

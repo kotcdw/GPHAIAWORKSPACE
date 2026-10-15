@@ -18,7 +18,7 @@ from app.core import appconfig
 KEY = "app_customization"
 
 
-# Solution groups (titles and order match the sidebar and the Launchpad).
+# Solution groups (titles and order match the sidebar and the All apps page).
 HOME = "Home"
 AUDIT = "Audit management"
 RESOURCE = "Resource management"
@@ -44,7 +44,7 @@ class App:
 
 APPS: list[App] = [
     # Home
-    App("dashboard", "Launchpad", HOME, "grid-1x2", "Role-based home page with KPIs and work in progress.",
+    App("dashboard", "Workspace", HOME, "grid-1x2", "Role-based home page with KPIs and work in progress.",
         ("dashboard",), (), core=True),
     App("workspace", "All apps", HOME, "grid-3x3-gap", "Launch page for every app, grouped by solution.",
         ("workspace",), (), core=True),
