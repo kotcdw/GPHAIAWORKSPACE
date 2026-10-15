@@ -32,6 +32,7 @@ from app.domains.assurance.universe.models import (
     AraFactor,
     AraScore,
     AssessmentFactor,
+    AuditEntity,
     AuditRiskAssessment,
     EntityOrgUnit,
     EntityProcess,
@@ -169,7 +170,18 @@ def _process_out(p: Process, entity_counts: dict[int, int], parents: dict[int, s
     return {"id": p.id, "ref": p.ref, "name": p.name, "description": p.description, "parent_id": p.parent_id,
             "parent": parents.get(p.parent_id), "owner_email": p.owner_email, "status": p.status,
             "org_units": [{"id": o.id, "name": o.name} for o in p.org_units],
-            "entities": entity_counts.get(p.id, 0), "updated_at": p.updated_at.isoformat()}
+            "entities": entity_counts.get(p.id, 0), "updated_at": p.updated_at.isoformat(),
+            **_link_counts(p)}
+
+
+def _link_counts(p: Process) -> dict:
+    from sqlalchemy.orm import object_session
+
+    from app.domains.grc.links import linked
+
+    rows = linked(object_session(p), "process", p.id)
+    return {"risk_count": sum(1 for r in rows if r["type"] == "risk"),
+            "control_count": sum(1 for r in rows if r["type"] == "control")}
 
 
 def _set_orgs(db: DBSession, p: Process, org_ids: list[int]) -> None:
@@ -253,6 +265,91 @@ def update_process(process_id: int, payload: ProcessUpdate, request: Request, db
     log_action(db, user_id=user.id, action=f"PROCESS_UPDATE {p.ref} [{', '.join(sorted(sent))}]", request=request)
     db.commit()
     return _process_out(p, {}, {})
+
+
+def entity_processes(db: DBSession, e: EntityUnit) -> list[Process]:
+    """The processes an entity covers: those selected with it, or else every active process performed in its
+    org units or below (an org-unit entity covers the processes of that unit)."""
+    if e.processes:
+        return list(e.processes)
+    tree = OrgTree(db)
+    orgs = {o for oid in [x.id for x in e.org_units] if oid in tree.nodes for o in tree.subtree(oid)}
+    if not orgs:
+        return []
+    ids = {pid for (pid,) in db.execute(select(ProcessOrgUnit.process_id).where(ProcessOrgUnit.org_id.in_(orgs)))
+           .all()}
+    return list(db.execute(select(Process).where(Process.id.in_(ids or {0}), Process.status == "Active")
+                           .order_by(Process.name)).scalars())
+
+
+class ProcessLinksIn(BaseModel):
+    risk_ids: list[int] = Field(default_factory=list, max_length=500)
+    control_ids: list[int] = Field(default_factory=list, max_length=500)
+
+
+def _object_links(db: DBSession, kind: str, rec_id: int) -> dict:
+    from app.domains.grc.links import linked
+
+    rows = linked(db, kind, rec_id)
+    return {"risks": [r for r in rows if r["type"] == "risk"], "controls": [r for r in rows if r["type"] == "control"]}
+
+
+@router.get("/api/object-library/options")
+def object_library_options(db: DBSession = Depends(get_db), _: User = Staff) -> dict:
+    """Enterprise risks (Risk Manager) and standard controls (Frameworks & controls) for linking."""
+    from app.domains.audit.frameworks.models import Framework, LibraryControl
+    from app.domains.grc.risk.models import EnterpriseRisk
+
+    fws = {f.id: f.code for f in db.execute(select(Framework)).scalars()}
+    return {
+        "risks": [{"id": r.id, "label": f"{r.ref} {r.title}", "category": r.category}
+                  for r in db.execute(select(EnterpriseRisk).where(EnterpriseRisk.status != "Closed")
+                                      .order_by(EnterpriseRisk.ref)).scalars()],
+        "controls": [{"id": c.id, "label": f"{fws.get(c.framework_id, '')} {c.ref} {c.title}".strip(),
+                      "process_area": c.process_area}
+                     for c in db.execute(select(LibraryControl).where(LibraryControl.active.is_(True))
+                                         .order_by(LibraryControl.framework_id, LibraryControl.ref)).scalars()],
+    }
+
+
+@router.get("/api/processes/{process_id}/links")
+def process_links(process_id: int, db: DBSession = Depends(get_db), _: User = Staff) -> dict:
+    if db.get(Process, process_id) is None:
+        raise _not_found("Process")
+    return _object_links(db, "process", process_id)
+
+
+@router.put("/api/processes/{process_id}/links")
+def set_process_links(process_id: int, payload: ProcessLinksIn, request: Request, db: DBSession = Depends(get_db),
+                      user: User = Staff) -> dict:
+    """Object library: the enterprise risks of a process and the standard controls that address them."""
+    from app.domains.grc.links import set_links
+
+    ensure_perm(user, *LIBRARY)
+    p = db.get(Process, process_id)
+    if p is None:
+        raise _not_found("Process")
+    set_links(db, "process", p.id, "risk", payload.risk_ids, user.id)
+    set_links(db, "process", p.id, "control", payload.control_ids, user.id)
+    log_action(db, user_id=user.id, action=f"PROCESS_LINKS {p.ref} risks={len(payload.risk_ids)} "
+                                          f"controls={len(payload.control_ids)}", request=request)
+    db.commit()
+    return _object_links(db, "process", p.id)
+
+
+@router.put("/api/auditable-entities/{entity_id}/links")
+def set_entity_links(entity_id: int, payload: ProcessLinksIn, request: Request, db: DBSession = Depends(get_db),
+                     user: User = Staff) -> dict:
+    """Risks and controls linked to the entity itself (in addition to those of its processes)."""
+    from app.domains.grc.links import set_links
+
+    ensure_perm(user, *LIBRARY)
+    e = _entity(db, entity_id)
+    set_links(db, "unit", e.id, "risk", payload.risk_ids, user.id)
+    set_links(db, "unit", e.id, "control", payload.control_ids, user.id)
+    log_action(db, user_id=user.id, action=f"ENTITY_LINKS {e.code}", request=request)
+    db.commit()
+    return _object_links(db, "unit", e.id)
 
 
 # ==================================================================== audit universe
@@ -359,15 +456,25 @@ def _links(db: DBSession, ids: list[int]) -> dict:
 
 
 def _planned_and_findings(db: DBSession, ids: list[int]) -> tuple[dict, dict]:
-    from app.domains.audit.audits.models import Audit, Finding
+    from app.domains.audit.audits.models import Finding
 
     planned = dict(db.execute(select(PlanEngagement.entity_unit_id, func.count()).where(
         PlanEngagement.entity_unit_id.in_(ids or [0]), PlanEngagement.status == EngagementStatus.Planned)
         .group_by(PlanEngagement.entity_unit_id)).all())
-    findings = dict(db.execute(select(Audit.entity_unit_id, func.count()).join(Finding, Finding.audit_id == Audit.id)
-                               .where(Audit.entity_unit_id.in_(ids or [0]), Finding.status != FindingStatus.Closed)
-                               .group_by(Audit.entity_unit_id)).all())
+    findings = dict(db.execute(select(AuditEntity.entity_id, func.count()).join(
+        Finding, Finding.audit_id == AuditEntity.audit_id).where(
+        AuditEntity.entity_id.in_(ids or [0]), Finding.status != FindingStatus.Closed)
+        .group_by(AuditEntity.entity_id)).all())
     return planned, findings
+
+
+def _entity_audit_ids(db: DBSession, entity_id: int) -> set[int]:
+    """Audits covering the entity (entity tagging); their issues inherit the entity."""
+    from app.domains.audit.audits.models import Audit
+
+    tagged = {a for (a,) in db.execute(select(AuditEntity.audit_id).where(AuditEntity.entity_id == entity_id)).all()}
+    primary = {a for (a,) in db.execute(select(Audit.id).where(Audit.entity_unit_id == entity_id)).all()}
+    return tagged | primary
 
 
 @router.get("/api/audit-universe")
@@ -562,6 +669,9 @@ def get_entity(entity_id: int, db: DBSession = Depends(get_db), _: User = Staff)
     procs = {p.id: p.name for p in db.execute(select(Process)).scalars()}
     planned, findings = _planned_and_findings(db, [e.id])
     row = _entity_row(e, tree, procs, _links(db, [e.id]), planned, findings)
+    own = _object_links(db, "unit", e.id)
+    via = [{"process": pr.name, **_object_links(db, "process", pr.id)} for pr in entity_processes(db, e)]
+    row["links"] = {"own": own, "processes": via}
     row.update({"created_at": e.created_at.isoformat(),
                 "defined_at": e.defined_at.isoformat() if e.defined_at else None,
                 "risk_likelihood": e.risk_likelihood, "risk_impact": e.risk_impact,
@@ -638,7 +748,8 @@ def entity_audits(entity_id: int, db: DBSession = Depends(get_db), user: User = 
     from app.domains.audit.audits.models import Audit
 
     _entity(db, entity_id)
-    audits = visible(db, user, "audit", list(db.execute(select(Audit).where(Audit.entity_unit_id == entity_id)
+    audits = visible(db, user, "audit", list(db.execute(select(Audit).where(
+        Audit.id.in_(_entity_audit_ids(db, entity_id) or {0}))
                                                         .order_by(Audit.created_at.desc())).scalars()))
     plans = {e.audit_id: e for e in db.execute(select(PlanEngagement).where(
         PlanEngagement.entity_unit_id == entity_id)).scalars()}
@@ -659,7 +770,8 @@ def entity_findings(entity_id: int, db: DBSession = Depends(get_db), user: User 
     from app.domains.issues.capa.closure import remediation_summary
 
     _entity(db, entity_id)
-    stmt = select(Finding, Audit).join(Audit, Audit.id == Finding.audit_id).where(Audit.entity_unit_id == entity_id)
+    stmt = select(Finding, Audit).join(Audit, Audit.id == Finding.audit_id).where(
+        Audit.id.in_(_entity_audit_ids(db, entity_id) or {0}))
     scope = staff_audit_scope(db, user) if user.role == Role.Auditor else None
     if scope is not None:
         stmt = stmt.where(Audit.id.in_(scope or {0}))
@@ -677,9 +789,22 @@ def entity_findings(entity_id: int, db: DBSession = Depends(get_db), user: User 
 # ==================================================================== settings: assessment factors and scale
 
 
+AUTO_SOURCES = {
+    "time_since_audit": "Time since last audit (from the last audit and the entity's audit frequency)",
+    "prior_results": "Prior audit results (open findings and overdue actions on the entity)",
+}
+
+
 class FactorIn(BaseModel):
     name: str = Field(min_length=2, max_length=255)
     description: str = Field("", max_length=5000)
+    auto_source: str | None = None
+
+
+def _check_auto(source: str | None) -> str | None:
+    if source and source not in AUTO_SOURCES:
+        raise field_error("auto_source", f"choose one of: {', '.join(AUTO_SOURCES)}")
+    return source or None
 
 
 @router.get("/api/assessment-factors")
@@ -688,15 +813,16 @@ def list_factors(db: DBSession = Depends(get_db), _: User = Staff) -> dict:
     rows = db.execute(select(AssessmentFactor).where(AssessmentFactor.is_active.is_(True))
                       .order_by(AssessmentFactor.ref)).scalars()
     return {"scale": cfg("audit_risk_scale"), "scales": [{"name": k, "levels": v} for k, v in SCALES.items()],
+            "auto_sources": [{"value": k, "label": v} for k, v in AUTO_SOURCES.items()],
             "items": [{"id": f.id, "ref": f.ref, "name": f.name, "description": f.description,
-                       "used_in": used.get(f.id, 0)} for f in rows]}
+                       "auto_source": f.auto_source, "used_in": used.get(f.id, 0)} for f in rows]}
 
 
 @router.post("/api/assessment-factors", status_code=status.HTTP_201_CREATED)
 def create_factor(payload: FactorIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff) -> dict:
     ensure_perm(user, *PLANNING)
     f = AssessmentFactor(ref=next_reference(db, "AF"), name=payload.name.strip(), description=payload.description,
-                         created_by=user.id)
+                         auto_source=_check_auto(payload.auto_source), created_by=user.id)
     db.add(f)
     db.flush()
     log_action(db, user_id=user.id, action=f"FACTOR_CREATE {f.ref} {f.name}", request=request)
@@ -712,6 +838,7 @@ def update_factor(factor_id: int, payload: FactorIn, request: Request, db: DBSes
     if f is None or not f.is_active:
         raise _not_found("Assessment factor")
     f.name, f.description = payload.name.strip(), payload.description
+    f.auto_source = _check_auto(payload.auto_source)
     log_action(db, user_id=user.id, action=f"FACTOR_UPDATE {f.ref}", request=request)
     db.commit()
     return {"id": f.id, "ref": f.ref, "name": f.name, "description": f.description}
@@ -839,7 +966,8 @@ def _ara_out(db: DBSession, a: AuditRiskAssessment, full: bool = False) -> dict:
                      "note": m.note if m else None, "note_by": note_names.get(m.note_by) if m else None,
                      "note_at": m.note_at.isoformat() if m and m.note_at else None,
                      "last_audited_at": e.last_audited_at.isoformat() if e.last_audited_at else None})
-    out.update({"conclusion": a.conclusion, "factor_list": [{"id": f.id, "ref": f.ref, "name": f.name} for f in facs],
+    out.update({"conclusion": a.conclusion, "factor_list": [{"id": f.id, "ref": f.ref, "name": f.name,
+                                                             "auto": bool(f.auto_source)} for f in facs],
                 "rows": rows})
     return out
 
@@ -875,6 +1003,84 @@ def _set_members(db: DBSession, a: AuditRiskAssessment, entity_ids: list[int] | 
     db.flush()
 
 
+def _auto_fraction(db: DBSession, e: EntityUnit, source: str) -> float:
+    """0 (lowest risk) to 1 (highest) for an automatic factor; mapped onto the assessment's scale."""
+    if source == "time_since_audit":
+        if e.last_audited_at is None:
+            return 1.0
+        months = (utcnow() - e.last_audited_at).days / 30.44
+        cycle = e.audit_frequency_months or _default_frequency(e)
+        return max(0.0, min(1.0, months / cycle if cycle else 1.0))
+    if source == "prior_results":
+        from app.core.enums import CapaStatus
+        from app.domains.audit.audits.models import Finding
+        from app.domains.issues.capa.models import Capa
+
+        audit_ids = _entity_audit_ids(db, e.id)
+        if not audit_ids:
+            return 0.0
+        open_f = list(db.execute(select(Finding).where(Finding.audit_id.in_(audit_ids),
+                                                       Finding.status != FindingStatus.Closed)).scalars())
+        overdue = 0
+        if open_f:
+            overdue = db.execute(select(func.count()).select_from(Capa).where(
+                Capa.source_type == "finding", Capa.source_id.in_([f.id for f in open_f]),
+                Capa.status != CapaStatus.Closed, Capa.due_date < utcnow())).scalar_one()
+        ratings = {f.risk_rating.value for f in open_f}
+        if overdue or "High" in ratings:
+            return 1.0
+        if "Medium" in ratings:
+            return 0.66
+        if "Low" in ratings:
+            return 0.33
+        return 0.0
+    return 0.0
+
+
+def _auto_score(db: DBSession, a: AuditRiskAssessment, user: User, overwrite: bool) -> int:
+    """Fill the cells of automatic factors from GIAW records (only empty cells unless ``overwrite``)."""
+    ents, facs = _members(db, a)
+    autos = [f for f in facs if f.auto_source]
+    if not autos:
+        return 0
+    n = len(SCALES.get(a.scale, [])) or 3
+    have = {(s.entity_id, s.factor_id): s for s in db.execute(select(AraScore).where(AraScore.ara_id == a.id))
+            .scalars()}
+    filled = 0
+    for e in ents:
+        for f in autos:
+            cell = have.get((e.id, f.id))
+            if cell is not None and not overwrite:
+                continue
+            score = 1 + int(_auto_fraction(db, e, f.auto_source) * (n - 1) + 0.5)
+            if cell is None:
+                db.add(AraScore(ara_id=a.id, entity_id=e.id, factor_id=f.id, score=score, scored_by=user.id))
+            else:
+                cell.score, cell.scored_by, cell.scored_at = score, user.id, utcnow()
+            filled += 1
+    if filled and a.status == "Draft":
+        a.status = "In progress"
+    db.flush()
+    return filled
+
+
+class AutoScoreIn(BaseModel):
+    overwrite: bool = False
+
+
+@router.post("/api/audit-risk-assessments/{ara_id}/auto-score")
+def auto_score(ara_id: int, payload: AutoScoreIn, request: Request, db: DBSession = Depends(get_db),
+               user: User = Staff) -> dict:
+    """Score the automatic factors (time since last audit, prior audit results) from the entities' records."""
+    ensure_perm(user, *PLANNING)
+    a = _ara(db, ara_id)
+    _editable(a)
+    filled = _auto_score(db, a, user, payload.overwrite)
+    log_action(db, user_id=user.id, action=f"ARA_AUTOSCORE {a.ref} filled={filled}", request=request)
+    db.commit()
+    return {"filled": filled, **_ara_out(db, a, True)}
+
+
 @router.get("/api/audit-risk-assessments")
 def list_aras(db: DBSession = Depends(get_db), _: User = Staff) -> list[dict]:
     return [_ara_out(db, a) for a in db.execute(select(AuditRiskAssessment)
@@ -897,6 +1103,7 @@ def create_ara(payload: AraIn, request: Request, db: DBSession = Depends(get_db)
     db.add(a)
     db.flush()
     _set_members(db, a, payload.entity_ids, payload.factor_ids)
+    _auto_score(db, a, user, overwrite=False)
     log_action(db, user_id=user.id, action=f"ARA_CREATE {a.ref} {a.name}", request=request)
     db.commit()
     return _ara_out(db, a, True)

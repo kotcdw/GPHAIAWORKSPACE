@@ -79,8 +79,19 @@ class AssessmentFactor(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Scored automatically from GIAW records: "time_since_audit", "prior_results" or None (scored by the auditor).
+    auto_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class AuditEntity(Base):
+    """An auditable entity an audit covers (HighBond entity tagging); the audit's issues inherit it."""
+
+    __tablename__ = "audit_entities"
+
+    audit_id: Mapped[int] = mapped_column(ForeignKey("audits.id", ondelete="CASCADE"), primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entity_units.id", ondelete="CASCADE"), primary_key=True)
 
 
 class AuditRiskAssessment(Base):
@@ -156,5 +167,5 @@ def band(label: str | None) -> str | None:
     return {"Very low": "Low", "Very high": "High"}.get(label, label)
 
 
-__all__ = ["Process", "ProcessOrgUnit", "EntityOrgUnit", "EntityProcess", "AssessmentFactor", "AuditRiskAssessment",
-           "AraEntity", "AraFactor", "AraScore", "SCALES", "scale_label", "band"]
+__all__ = ["AuditEntity", "Process", "ProcessOrgUnit", "EntityOrgUnit", "EntityProcess", "AssessmentFactor",
+           "AuditRiskAssessment", "AraEntity", "AraFactor", "AraScore", "SCALES", "scale_label", "band"]

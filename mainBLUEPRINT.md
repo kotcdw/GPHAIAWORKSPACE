@@ -557,7 +557,7 @@ Use this table in project reviews and update it as work progresses.
 | 4 | Mostly done | GIAW team | TBD | TBD | - | 5 roles, permission matrix, audit trail, port/team scope on audits and their records (Oct 2026); aggregate dashboards still authority-wide |
 | 5 | Mostly done | GIAW team | TBD | TBD | - | Org Structure (one org tree) and Process library, bulk add (Oct 2026); decision 13 settled as in Diligent One: the universe is a list of auditable entities defined on the org tree |
 | 6 | Done | GIAW team | TBD | TBD | - | Define audit universe on org units and processes, coverage, merge/split, redefine, entity page (Oct 2026) |
-| 7 | Mostly done | GIAW team | TBD | TBD | - | Audit risk assessments on configurable assessment factors and two rating scales, conclude, plan generation (Oct 2026); engagement risks not yet linked to enterprise risks |
+| 7 | Mostly done | GIAW team | TBD | TBD | - | Audit risk assessments (configurable and automatic factors, two scales), conclude, plan generation; processes and entities linked to enterprise risks and library controls; detailed scoping into audits (Oct 2026) |
 | 8 | Done | GIAW team | TBD | TBD | - | |
 | 9 | Done | GIAW team | TBD | TBD | - | Committee decision, version lock, change requests, distribution; Entities coverage grid with progress and hours (Oct 2026) |
 | 10 | Partial | GIAW team | TBD | TBD | - | Plan engagement -> audit, engagement teams (Oct 2026); 12-state lifecycle and roll-forward outstanding |

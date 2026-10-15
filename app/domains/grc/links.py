@@ -20,10 +20,11 @@ from app.core.deps import require_active_user
 from app.core.enums import utcnow
 from app.platform.users.models import User
 
-LINK_TYPES = ("objective", "risk", "control", "requirement", "policy", "asset", "unit")
+LINK_TYPES = ("objective", "risk", "control", "requirement", "policy", "asset", "unit", "process")
 # Who may add or remove a link touching this type.
 EDIT_PERMS = {"objective": "grc.risk", "risk": "grc.risk", "control": "grc.compliance",
-              "requirement": "grc.compliance", "policy": "grc.policy", "asset": "grc.assets", "unit": "grc.risk"}
+              "requirement": "grc.compliance", "policy": "grc.policy", "asset": "grc.assets", "unit": "grc.risk",
+              "process": "grc.risk"}
 
 
 class GrcLink(Base):
@@ -58,6 +59,8 @@ def _model(kind: str):  # noqa: ANN202
         from app.domains.grc.assets.models import Asset as M
     elif kind == "unit":
         from app.domains.assurance.planning.models import EntityUnit as M
+    elif kind == "process":
+        from app.domains.assurance.universe.models import Process as M
     else:
         raise HTTPException(status_code=422, detail=f"Unknown link type {kind}")
     return M
@@ -154,6 +157,8 @@ class LinkIn(BaseModel):
 def _can_edit(user: User, *kinds: str) -> bool:
     from app.core.permissions import has_perm
 
+    if has_perm(user, "method.library", "system.reference") and any(k in ("unit", "process") for k in kinds):
+        return True  # the audit object library: auditable entities and processes
     return has_perm(user, "grc.manage") or any(has_perm(user, EDIT_PERMS.get(k, "grc.manage")) for k in kinds)
 
 

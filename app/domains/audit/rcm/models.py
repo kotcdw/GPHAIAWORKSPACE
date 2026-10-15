@@ -61,6 +61,9 @@ class Risk(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     likelihood: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     impact: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    # The enterprise risk (Risk Manager) this engagement risk tests, when it came from the entity's risks.
+    enterprise_risk_id: Mapped[int | None] = mapped_column(ForeignKey("enterprise_risks.id", ondelete="SET NULL"),
+                                                           nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 

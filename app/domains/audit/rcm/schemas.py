@@ -26,6 +26,7 @@ class RiskIn(BaseModel):
     description: str = ""
     likelihood: int = Field(default=3, ge=1, le=5)
     impact: int = Field(default=3, ge=1, le=5)
+    enterprise_risk_id: int | None = None
 
 
 class RiskUpdate(BaseModel):
@@ -33,6 +34,7 @@ class RiskUpdate(BaseModel):
     description: str | None = None
     likelihood: int | None = Field(default=None, ge=1, le=5)
     impact: int | None = Field(default=None, ge=1, le=5)
+    enterprise_risk_id: int | None = None  # 0 clears
 
 
 class ControlIn(BaseModel):
@@ -134,6 +136,8 @@ class RiskOut(ORMModel):
     impact: int
     inherent_score: int
     inherent_rating: str
+    enterprise_risk_id: int | None = None
+    enterprise_risk: str | None = None
     control_ids: list[int] = []
     residual_rating: str = ""
 

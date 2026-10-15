@@ -400,7 +400,7 @@ function objectiveCard(o, open, reload) {
     el("thead", null, el("tr", null, el("th", null, "Ref"), el("th", null, "Risk"), el("th", null, "Inherent"),
       el("th", null, "Residual"), el("th", null, "Controls"), el("th", null, ""))),
     el("tbody", null, ...o.risks.map((r) => el("tr", { class: "no-click" },
-      el("td", { class: "ref" }, r.ref), el("td", null, r.title),
+      el("td", { class: "ref" }, r.ref), el("td", null, r.title, r.enterprise_risk ? el("div", { class: "muted small" }, el("i", { class: "bi bi-link-45deg" }), ` ${r.enterprise_risk}`) : null),
       el("td", null, heat(r.inherent_score)), el("td", null, badge(r.residual_rating)),
       el("td", null, r.control_ids.length ? r.control_ids.map((id) => o.controls.find((c) => c.id === id)?.ref || `#${id}`).join(", ") : el("span", { class: "badge badge-risk-high" }, "none")),
       el("td", null, open ? btn("Edit", () => riskModal(o, r, reload), "secondary") : null))))));
@@ -423,7 +423,7 @@ function objectiveCard(o, open, reload) {
         el("th", null, "Exceptions"), el("th", null, "Status"), el("th", null, "Conclusion"), el("th", null, ""))),
       el("tbody", null, ...c.tests.map((t) => el("tr", { class: "no-click" },
         el("td", { class: "ref" }, t.ref), el("td", null, t.test_type),
-        el("td", null, t.sample_size ? `${t.sample_size} of ${t.population_size}` : "-"),
+        el("td", null, t.sample_size ? (t.population_size ? `${t.sample_size} of ${t.population_size}` : String(t.sample_size)) : "-"),
         el("td", null, String(t.exceptions_found)), el("td", null, badge(t.status)), el("td", null, badge(t.conclusion)),
         el("td", null, el("div", { class: "actions" },
           btn("Open", () => testModal({ ...c, audit_id: o.audit_id }, t, open, reload), "secondary"),
@@ -442,7 +442,8 @@ function objectiveCard(o, open, reload) {
 const LIKELIHOOD = SCORES.map((n) => ({ value: n, label: `${n} - ${["Rare", "Unlikely", "Possible", "Likely", "Almost certain"][n - 1]}` }));
 const IMPACT = SCORES.map((n) => ({ value: n, label: `${n} - ${["Minimal", "Minor", "Moderate", "Major", "Severe"][n - 1]}` }));
 
-function riskModal(o, risk, reload) {
+async function riskModal(o, risk, reload) {
+  const ers = (await safeGet("/api/object-library/options", { risks: [] })).risks;
   openForm({
     title: risk ? `Edit ${risk.ref}` : `New risk under ${o.ref}`,
     key: risk ? `rcm:${o.audit_id}:risk:edit:${risk.id}` : `rcm:${o.audit_id}:risk:new:${o.id}`,
@@ -451,12 +452,14 @@ function riskModal(o, risk, reload) {
       { name: "title", label: "Risk", required: true, maxLength: 255, singleLine: true, placeholder: "What could go wrong?" },
       { name: "likelihood", label: "Likelihood", type: "select", required: true, options: LIKELIHOOD },
       { name: "impact", label: "Impact", type: "select", required: true, options: IMPACT },
+      { name: "enterprise_risk_id", label: "Tests enterprise risk (Risk Manager)", type: "select", emptyLabel: "- none -",
+        options: ers.map((r) => ({ value: r.id, label: r.label })) },
       { name: "description", label: "Description", type: "textarea", maxLength: 20000 },
     ],
     initial: risk || { likelihood: 3, impact: 3 },
     submitLabel: "Save",
     onSubmit: (v) => {
-      const body = { ...v, description: v.description || "" };
+      const body = { ...v, description: v.description || "", enterprise_risk_id: v.enterprise_risk_id ? Number(v.enterprise_risk_id) : (risk ? 0 : null) };
       return risk ? API.patch(`/api/risks/${risk.id}`, body) : API.post(`/api/objectives/${o.id}/risks`, body);
     },
     onDone: (r) => { toast(`Risk saved - inherent ${r.inherent_rating} (${r.inherent_score})`); reload(); },

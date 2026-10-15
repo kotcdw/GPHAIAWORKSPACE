@@ -469,10 +469,13 @@ def close_audit(
     def _on_approve(session: DBSession) -> None:
         audit.status = AuditStatus.Closed
         audit.approval_status = ApprovalStatus.Approved
-        if audit.entity_unit_id is not None:
-            from app.domains.assurance.planning.models import EntityUnit
+        from app.domains.assurance.planning.models import EntityUnit
+        from app.domains.assurance.universe.models import AuditEntity
 
-            unit = session.get(EntityUnit, audit.entity_unit_id)
+        covered = {e for (e,) in session.execute(select(AuditEntity.entity_id).where(
+            AuditEntity.audit_id == audit.id)).all()} | ({audit.entity_unit_id} if audit.entity_unit_id else set())
+        for eid in covered:  # every auditable entity the audit covers
+            unit = session.get(EntityUnit, eid)
             if unit is not None:
                 unit.last_audited_at = utcnow()
 

@@ -182,6 +182,9 @@ async function renderFieldworkTab(pane, audit, canWrite) {
       onclick: () => applyProgramDialog(audit, reload) }, el("i", { class: "bi bi-list-check" }), " Apply audit programme") : null));
 
   const body = el("div", { class: "fw-body" });
+  const entBar = el("div");
+  pane.append(entBar);
+  auditEntitiesBar(entBar, audit, open, reload);
   pane.append(subNav(subs, sub, (k) => { state.fwSub[audit.id] = k; reload(); }, "Fieldwork views"), body);
   const ctx = { audit, open, reload };
   if (sub === "plan") renderProjectPlan(body, ctx);
@@ -589,7 +592,11 @@ async function renderIssueTracker(tab = state.issueTab || "list") {
   viewRoot.append(body);
   let types = [];
   let owners = [];
-  try { const s = await API.get("/api/findings/register/summary"); types = s.issue_types; owners = s.owners; }
+  let entities = [];
+  try {
+    const [s, u] = await Promise.all([API.get("/api/findings/register/summary"), safeGet("/api/audit-universe", { entities: [] })]);
+    types = s.issue_types; owners = s.owners; entities = u.entities.filter((e) => e.status === "Active");
+  }
   catch (err) { body.append(errorState(err, () => renderIssueTracker(tab))); return; }
   if (tab === "kpis") { renderIssueKpis(body); return; }
 
@@ -617,6 +624,7 @@ async function renderIssueTracker(tab = state.issueTab || "list") {
       { key: "issue_type", label: "Issue type", options: [...types, { value: "(none)", label: "Not set" }] },
       { key: "published", label: "Published", options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
       { key: "overdue", label: "Deadline", options: [{ value: "true", label: "Overdue" }] },
+      ...(entities.length ? [{ key: "entity_id", label: "Entity", options: entities.map((e) => ({ value: e.id, label: e.name })) }] : []),
     ],
     columns: [
       { key: "title", label: "Issue", sort: true, render: (r) => el("span", null, el("span", { class: "ref" }, r.ref), " ", el("span", { class: "cell-title" }, r.title)), csv: (r) => `${r.ref} ${r.title}` },
@@ -720,4 +728,62 @@ function renderPlanRisks(pane, cov) {
         el("td", null, u.covered ? el("span", { class: "outcome ok" }, el("i", { class: "bi bi-check-circle" }), " Yes")
           : el("span", { class: `outcome ${u.risk === "High" ? "bad" : ""}` }, el("i", { class: "bi bi-dash-circle" }), " No")))))))
       : emptyState({ icon: "diagram-2", title: "No entities in the Audit Universe" })));
+}
+
+
+// ---- auditable entities covered by the audit, and detailed scoping from them
+
+async function auditEntitiesBar(box, audit, open, reload) {
+  const ents = await safeGet(`/api/audits/${audit.id}/entities`, []);
+  clear(box);
+  box.append(el("div", { class: "fw-strip ent-strip" },
+    el("span", { class: "fw-k" }, "Auditable entities"),
+    ents.length ? el("span", { class: "chips" }, ...ents.map((e) => el("button", { class: "chip-link", type: "button", title: "Open the entity", onclick: () => openEntity(e.id) },
+      el("span", { class: "ref" }, e.code), ` ${e.name}`))) : el("span", { class: "muted small" }, "None - choose the entities this audit covers"),
+    el("span", { class: "grow" }),
+    open ? btn("Choose entities", () => chooseAuditEntities(audit, ents, reload), "secondary") : null,
+    open && ents.length && hasPerm("audit.plan", "audit.fieldwork") ? btn("Scope from entities", () => scopingDialog(audit, reload)) : null));
+}
+
+async function chooseAuditEntities(audit, current, reload) {
+  const uni = await safeGet("/api/audit-universe", { entities: [] });
+  openForm({
+    title: "Auditable entities covered by this audit", draftable: false, width: 680,
+    intro: "The audit's issues inherit these entities. The first one is the primary entity (from the plan).",
+    fields: [{ name: "entity_ids", label: "Auditable entities", type: "checklist", full: true, emptyLabel: "Define the audit universe first.",
+      options: uni.entities.filter((e) => e.status === "Active" || current.some((c) => c.id === e.id)).map((e) => ({ value: e.id, label: `${e.code} ${e.name}` })) }],
+    initial: { entity_ids: current.map((e) => e.id) }, submitLabel: "Save",
+    onSubmit: (v) => API.put(`/api/audits/${audit.id}/entities`, { entity_ids: (v.entity_ids || []).map(Number) }),
+    onDone: () => { toast("Auditable entities saved"); reload(); },
+  });
+}
+
+async function scopingDialog(audit, reload) {
+  let pre;
+  try { pre = await API.get(`/api/audits/${audit.id}/scoping`); } catch (err) { toast(err.message, "error"); return; }
+  const wp = pre.workflow === "Workplan";
+  const fresh = pre.groups.reduce((n, g) => n + g.risks.filter((r) => !r.in_audit).length + g.controls.filter((c) => !c.in_audit).length, 0);
+  const body = el("div", null,
+    el("p", { class: "muted small" }, wp ? "Each objective gets the entity's risks, and a procedure for each standard control (from its test steps)."
+      : "Each objective gets the entity's risks (linked to the enterprise risk) and the standard controls, mapped to the risks, with their test steps as the test plan."),
+    pre.groups.length ? el("div", null, ...pre.groups.map((g) => el("div", { class: "scope-group" },
+      el("h4", null, g.objective),
+      el("div", { class: "table-wrap" }, el("table", { class: "dense" },
+        el("thead", null, el("tr", null, el("th", { scope: "col" }, "Item"), el("th", { scope: "col" }, "Type"), el("th", { scope: "col" }, "In the audit"))),
+        el("tbody", null,
+          ...g.risks.map((r) => el("tr", { class: "no-click" }, el("td", null, el("span", { class: "ref" }, r.ref), ` ${r.title}`), el("td", null, "Risk ", heat(r.likelihood * r.impact)),
+            el("td", null, r.in_audit ? el("span", { class: "outcome ok" }, "Already in") : el("span", { class: "outcome" }, "Will be added")))),
+          ...g.controls.map((c) => el("tr", { class: "no-click" }, el("td", null, el("span", { class: "ref" }, c.ref), ` ${c.title}`), el("td", null, wp ? "Procedure" : "Control"),
+            el("td", null, c.in_audit ? el("span", { class: "outcome ok" }, "Already in") : el("span", { class: "outcome" }, "Will be added"))))))))))
+      : emptyState({ icon: "link-45deg", title: "Nothing linked yet", text: "Link enterprise risks and standard controls to the entity or its processes (Process library > Risks & controls)." }));
+  const m = modal({ title: "Detailed scoping from the auditable entities", width: 820, body,
+    footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", type: "button", onclick: () => m.close() }, "Cancel"),
+      el("button", { class: "btn", type: "button", disabled: fresh ? null : "1", onclick: async () => {
+        try {
+          const r = await API.post(`/api/audits/${audit.id}/scoping`);
+          m.close(true);
+          toast(`Scoped: ${r.objectives} objective(s), ${r.risks} risk(s), ${wp ? `${r.procedures} procedure(s)` : `${r.controls} control(s)`}`);
+          reload();
+        } catch (err) { toast(err.message, "error"); }
+      } }, fresh ? `Add ${fresh} item(s)` : "Nothing new to add")) });
 }

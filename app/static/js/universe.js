@@ -132,16 +132,18 @@ async function renderProcessLibrary() {
     fb.setCount(`${list.length} of ${rows.length}`);
     clear(box);
     box.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
-      el("thead", null, el("tr", null, ...["Reference", "Process", "Parent process", "Org units", "Owner", "Auditable entities", "Status", ""].map((h) => el("th", { scope: "col" }, h)))),
+      el("thead", null, el("tr", null, ...["Reference", "Process", "Parent process", "Org units", "Risks · Controls", "Owner", "Auditable entities", "Status", ""].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...list.map((p) => el("tr", { class: "no-click" },
         el("td", { class: "ref", "data-label": "Reference" }, p.ref),
         el("td", { class: "col-wide", "data-label": "Process" }, el("div", { class: "cell-title" }, p.name), p.description ? el("div", { class: "muted small" }, clip(p.description, 90)) : null),
         el("td", { "data-label": "Parent process" }, p.parent || "-"),
         el("td", { class: "small", "data-label": "Org units" }, p.org_units.length ? p.org_units.map((o) => o.name).join(", ") : el("span", { class: "muted" }, "Not linked")),
+        el("td", { class: "small", "data-label": "Risks · Controls" }, (p.risk_count || p.control_count) ? `${p.risk_count} · ${p.control_count}` : el("span", { class: "muted" }, "Not linked")),
         el("td", { class: "small", "data-label": "Owner" }, p.owner_email || "-"),
         el("td", { class: "num", "data-label": "Auditable entities" }, p.entities ? String(p.entities) : "-"),
         el("td", { "data-label": "Status" }, statusBadge(p.status)),
-        el("td", null, can ? btn("Edit", () => processForm(p, rows), "secondary") : null)))))));
+        el("td", null, can ? el("div", { class: "actions" }, btn("Risks & controls", () => objectLinksForm("process", p, renderProcessLibrary), "secondary"),
+          btn("Edit", () => processForm(p, rows), "secondary")) : null)))))));
   }
   paint();
 }
@@ -426,8 +428,16 @@ async function paintEntityTab(key, pane, e, can) {
         e.org_units.length ? el("ul", { class: "plain-list" }, ...e.org_units.map((o) => el("li", null, o.path || o.name)))
           : el("div", null, el("p", { class: "muted small" }, "Not mapped to the Org Structure."), can ? btn("Map to org unit", () => mapEntityForm(e), "secondary") : null),
         el("h4", null, "Processes"),
-        e.processes.length ? el("ul", { class: "plain-list" }, ...e.processes.map((p) => el("li", null, p.name))) : el("p", { class: "muted small" }, "The whole org unit (no single process)."),
-        el("h4", null, "Entity category"), el("p", null, e.category || "-"))));
+        e.processes.length ? el("ul", { class: "plain-list" }, ...e.processes.map((p) => el("li", null, p.name)))
+          : e.links.processes.length ? el("div", null, el("p", { class: "muted small" }, "The whole org unit, covering the processes performed there:"),
+            el("ul", { class: "plain-list" }, ...e.links.processes.map((p) => el("li", null, p.process))))
+            : el("p", { class: "muted small" }, "The whole org unit (no process linked to it in the Process library)."),
+        el("h4", null, "Entity category"), el("p", null, e.category || "-")),
+      el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Risks and controls"),
+        can ? btn("Edit entity links", () => objectLinksForm("unit", e, () => openEntity(e.id)), "secondary") : null),
+      el("p", { class: "muted small" }, "From the object library. Detailed scoping brings them into audits of this entity."),
+      el("h4", null, "Linked to the entity"), linkList([...e.links.own.risks, ...e.links.own.controls], "None."),
+      ...e.links.processes.flatMap((pr) => [el("h4", null, `Through process: ${pr.process}`), linkList([...pr.risks, ...pr.controls], "None - link them in the Process library.")]))));
   }
   if (key === "assess") {
     const rows = await safeGet(`/api/auditable-entities/${e.id}/assessments`, []);
@@ -525,9 +535,10 @@ async function renderAssessmentSettings(body) {
     fb.setCount(`${list.length} of ${d.items.length}`);
     clear(box);
     box.append(list.length ? el("div", { class: "table-wrap" }, el("table", { class: "dense" },
-      el("thead", null, el("tr", null, ...["ID", "Assessment factor", "Used in", ""].map((h) => el("th", { scope: "col" }, h)))),
+      el("thead", null, el("tr", null, ...["ID", "Assessment factor", "Scoring", "Used in", ""].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...list.map((f) => el("tr", { class: "no-click" },
         el("td", { class: "ref" }, f.ref), el("td", { class: "col-wide" }, el("div", { class: "cell-title" }, f.name), f.description ? el("div", { class: "muted small" }, f.description) : null),
+        el("td", { class: "small" }, f.auto_source ? el("span", { class: "outcome ok" }, el("i", { class: "bi bi-magic" }), " Automatic") : "By the auditor"),
         el("td", { class: "num" }, f.used_in ? `${f.used_in} assessment(s)` : "-"),
         el("td", null, can ? el("div", { class: "actions" }, btn("Edit", () => factorForm(f, reload), "secondary"),
           btn("Delete", async () => {
@@ -550,17 +561,23 @@ async function renderAssessmentSettings(body) {
     isAdmin() ? null : el("p", { class: "muted small" }, "Only administrators change the default scale (Configuration > Audit methodology).")));
 }
 
-function factorForm(f, reload) {
+async function factorForm(f, reload) {
+  const d = await safeGet("/api/assessment-factors", { auto_sources: [] });
   openForm({
     title: f ? `Edit ${f.ref}` : "Add assessment factor", draftable: false, width: 560,
     intro: f ? "Changes apply everywhere this factor is used." : null,
     fields: [
       { name: "name", label: "Name", required: true, maxLength: 255, singleLine: true, full: true },
       { name: "description", label: "Description (what a high score means)", type: "textarea", maxLength: 5000, full: true },
+      { name: "auto_source", label: "Scoring", type: "select", emptyLabel: "Scored by the auditor", full: true,
+        options: d.auto_sources.map((a) => ({ value: a.value, label: `Automatic: ${a.label}` })),
+        help: "Automatic factors are filled from GIAW records when an assessment is added, and can be refreshed or changed by hand." },
     ],
     initial: f || {}, submitLabel: f ? "Save" : "Add assessment factor",
-    onSubmit: (v) => (f ? API.patch(`/api/assessment-factors/${f.id}`, { name: v.name, description: v.description || "" })
-      : API.post("/api/assessment-factors", { name: v.name, description: v.description || "" })),
+    onSubmit: (v) => {
+      const b = { name: v.name, description: v.description || "", auto_source: v.auto_source || null };
+      return f ? API.patch(`/api/assessment-factors/${f.id}`, b) : API.post("/api/assessment-factors", b);
+    },
     onDone: () => { toast("Assessment factor saved"); reload(); },
   });
 }
@@ -661,6 +678,10 @@ function paintScoring(pane, a, open) {
   const setProgress = (scored, cells) => { clear(progress); progress.append(el("span", { class: "muted small" }, `${scored} of ${cells} scores`), progressBar(cells ? (100 * scored) / cells : 0)); };
   setProgress(a.scored, a.cells);
   pane.append(el("div", { class: "fw-strip" }, el("span", { class: "fw-k" }, "Audit risk assessment scoring matrix"), el("span", { class: "grow" }), progress,
+    open ? btn("Refresh automatic scores", async () => {
+      try { const r = await API.post(`/api/audit-risk-assessments/${a.id}/auto-score`, { overwrite: true }); toast(`${r.filled} automatic score(s) refreshed`); openAssessment(a.id, "score"); }
+      catch (err) { toast(err.message, "error"); }
+    }, "secondary") : null,
     open ? btn("Conclude", () => openAssessment(a.id, "conclude")) : null));
   if (!a.rows.length) { pane.append(emptyState({ icon: "grid-3x3", title: "No entities included", text: "Configure the assessment to include auditable entities." })); return; }
   const cellSel = (r, f) => {
@@ -681,7 +702,8 @@ function paintScoring(pane, a, open) {
     return sel;
   };
   pane.append(el("div", { class: "card" }, el("div", { class: "table-wrap" }, el("table", { class: "dense score-matrix" },
-    el("thead", null, el("tr", null, el("th", { scope: "col" }, "Auditable entity"), ...a.factor_list.map((f) => el("th", { scope: "col", title: f.name }, f.name)),
+    el("thead", null, el("tr", null, el("th", { scope: "col" }, "Auditable entity"), ...a.factor_list.map((f) => el("th", { scope: "col", title: f.auto ? `${f.name} (scored automatically)` : f.name },
+      f.name, f.auto ? el("i", { class: "bi bi-magic auto-ico", "aria-label": "scored automatically" }) : null)),
       el("th", { scope: "col", class: "num" }, "Overall score"), el("th", { scope: "col" }, "Risk rating"))),
     el("tbody", null, ...a.rows.map((r) => el("tr", { class: "no-click" },
       el("td", { class: "col-wide", "data-label": "Auditable entity" }, el("div", { class: "cell-title" }, r.name), el("div", { class: "muted small" }, r.org_unit || r.code)),
@@ -801,4 +823,32 @@ async function startPlanningDialog(a) {
     onSubmit: (v) => API.post(`/api/audit-risk-assessments/${a.id}/start-planning`, v.mode === "link" ? { plan_id: Number(v.plan_id) } : { fiscal_year: Number(v.fiscal_year) }),
     onDone: (r) => { toast(`${r.added} engagement(s) added to ${r.plan_ref}`); openPlan(r.plan_id); },
   });
+}
+
+
+// Object library links: the enterprise risks (Risk Manager) of a process or entity and the standard controls
+// (Frameworks & controls) that address them. Detailed scoping brings these into an audit.
+async function objectLinksForm(kind, rec, onDone) {
+  const [opts, current] = await Promise.all([safeGet("/api/object-library/options", { risks: [], controls: [] }),
+    kind === "process" ? safeGet(`/api/processes/${rec.id}/links`, { risks: [], controls: [] }) : Promise.resolve(rec.links.own)]);
+  openForm({
+    title: `Risks and controls: ${rec.name}`, draftable: false, width: 760,
+    intro: "Risks come from the Risk Manager register and controls from Frameworks & controls. Controls linked to a chosen risk there are brought in with it when an audit is scoped.",
+    fields: [
+      { name: "risk_ids", label: "Enterprise risks", type: "checklist", full: true, emptyLabel: "No risks in the Risk Manager register yet.",
+        options: opts.risks.map((r) => ({ value: r.id, label: r.label })) },
+      { name: "control_ids", label: "Standard controls", type: "checklist", full: true, emptyLabel: "No controls in Frameworks & controls yet.",
+        options: opts.controls.map((c) => ({ value: c.id, label: c.label })) },
+    ],
+    initial: { risk_ids: current.risks.map((r) => r.id), control_ids: current.controls.map((c) => c.id) },
+    submitLabel: "Save links",
+    onSubmit: (v) => API.put(kind === "process" ? `/api/processes/${rec.id}/links` : `/api/auditable-entities/${rec.id}/links`,
+      { risk_ids: (v.risk_ids || []).map(Number), control_ids: (v.control_ids || []).map(Number) }),
+    onDone: () => { toast("Links saved"); onDone(); },
+  });
+}
+
+function linkList(items, empty) {
+  return items.length ? el("ul", { class: "plain-list" }, ...items.map((i) => el("li", null, el("span", { class: "ref" }, i.ref), ` ${i.title}`)))
+    : el("p", { class: "muted small" }, empty);
 }

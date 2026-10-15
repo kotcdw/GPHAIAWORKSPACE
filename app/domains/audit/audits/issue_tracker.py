@@ -93,7 +93,7 @@ def _row(f: Finding, audit: Audit, owners: dict[str, str], names: dict[int, str]
 
 def _rows(db: DBSession, user: User, params: PageParams | None, *, status_f: str | None, severity: str | None,
           owner: str | None, issue_type: str | None, audit_id: int | None, published: bool | None,
-          overdue: bool) -> list[dict]:
+          overdue: bool, entity_id: int | None = None) -> list[dict]:
     stmt = select(Finding, Audit).join(Audit, Audit.id == Finding.audit_id)
     scope = staff_audit_scope(db, user) if user.role == Role.Auditor else None
     if scope is not None:
@@ -109,6 +109,11 @@ def _rows(db: DBSession, user: User, params: PageParams | None, *, status_f: str
             stmt.where(Finding.issue_type.is_(None))
     if audit_id:
         stmt = stmt.where(Finding.audit_id == audit_id)
+    if entity_id:  # issues inherit the auditable entities of their audit
+        from app.domains.assurance.universe.models import AuditEntity
+
+        covered = select(AuditEntity.audit_id).where(AuditEntity.entity_id == entity_id)
+        stmt = stmt.where(Finding.audit_id.in_(covered) | (Audit.entity_unit_id == entity_id))
     if published is not None:
         stmt = stmt.where(Finding.published.is_(published))
     pairs = db.execute(stmt).all()
@@ -140,9 +145,10 @@ def issue_filters(
     audit_id: int | None = None,
     published: bool | None = None,
     overdue: bool = False,
+    entity_id: int | None = None,
 ) -> dict:
     return {"status_f": status_f, "severity": severity, "owner": owner, "issue_type": issue_type,
-            "audit_id": audit_id, "published": published, "overdue": overdue}
+            "audit_id": audit_id, "published": published, "overdue": overdue, "entity_id": entity_id}
 
 
 @router.get("/api/findings/register", response_model=Page[dict])

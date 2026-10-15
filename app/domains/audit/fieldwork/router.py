@@ -570,3 +570,204 @@ def ensure_workflow(audit: Audit, wanted: str) -> None:
     if audit.workflow != wanted:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail=f"This audit uses the {audit.workflow} workflow")
+
+
+# ==================================================================== auditable entities covered and detailed scoping
+
+
+class EntitiesIn(BaseModel):
+    entity_ids: list[int] = Field(default_factory=list, max_length=50)
+
+
+def _audit_entities(db: DBSession, audit: Audit) -> list:
+    from app.domains.assurance.planning.models import EntityUnit
+    from app.domains.assurance.universe.models import AuditEntity
+
+    ids = [e for (e,) in db.execute(select(AuditEntity.entity_id).where(AuditEntity.audit_id == audit.id)).all()]
+    if audit.entity_unit_id and audit.entity_unit_id not in ids:
+        ids.insert(0, audit.entity_unit_id)
+    return [db.get(EntityUnit, i) for i in ids if db.get(EntityUnit, i) is not None]
+
+
+def _entity_out(e) -> dict:  # noqa: ANN001
+    return {"id": e.id, "code": e.code, "name": e.name, "status": "Active" if e.is_active else "Archived",
+            "rating": e.assessed_rating, "processes": [p.name for p in e.processes],
+            "org_units": [o.name for o in e.org_units]}
+
+
+@router.get("/api/audits/{audit_id}/entities")
+def audit_entities(audit_id: int, db: DBSession = Depends(get_db), _: User = Staff) -> list[dict]:
+    """The auditable entities the audit covers (the first is the primary one, from the plan)."""
+    return [_entity_out(e) for e in _audit_entities(db, _audit_or_404(db, audit_id))]
+
+
+@router.put("/api/audits/{audit_id}/entities")
+def set_audit_entities(audit_id: int, payload: EntitiesIn, request: Request, db: DBSession = Depends(get_db),
+                       user: User = Staff) -> list[dict]:
+    from app.domains.assurance.planning.models import EntityUnit
+    from app.domains.assurance.universe.models import AuditEntity
+
+    audit = _audit_or_404(db, audit_id)
+    _ensure_open(audit)
+    ids = list(dict.fromkeys(payload.entity_ids))
+    for eid in ids:
+        e = db.get(EntityUnit, eid)
+        if e is None or (not e.is_active and eid not in {x.id for x in _audit_entities(db, audit)}):
+            raise field_error("entity_ids", "choose active auditable entities of the audit universe")
+    db.execute(AuditEntity.__table__.delete().where(AuditEntity.audit_id == audit.id))
+    for eid in ids:
+        db.add(AuditEntity(audit_id=audit.id, entity_id=eid))
+    audit.entity_unit_id = ids[0] if ids else None
+    log_action(db, user_id=user.id, action=f"AUDIT_ENTITIES audit={audit.id} {ids}", request=request)
+    _history(db, audit.id, user, f"AUDITABLE ENTITIES set to {len(ids)} entit{'y' if len(ids) == 1 else 'ies'}",
+             request)
+    db.commit()
+    return [_entity_out(e) for e in _audit_entities(db, audit)]
+
+
+def _scope_plan(db: DBSession, audit: Audit) -> list[dict]:
+    """Detailed scoping: for each covered entity, the enterprise risks and library controls linked to the entity or
+    to its processes (Object library), grouped into one objective per process (or per entity)."""
+    from app.domains.audit.frameworks.models import LibraryControl
+    from app.domains.grc.links import linked_ids
+    from app.domains.grc.risk.models import EnterpriseRisk
+
+    groups: list[dict] = []
+    for e in _audit_entities(db, audit):
+        from app.domains.assurance.universe.router import entity_processes
+
+        sources = [(f"{p.name} - {e.name}", "process", p.id) for p in entity_processes(db, e)]
+        sources.append((e.name, "unit", e.id))
+        for title, kind, rid in sources:
+            risk_ids = linked_ids(db, kind, rid, "risk")
+            ctl_ids = set(linked_ids(db, kind, rid, "control"))
+            risks = []
+            for r_id in risk_ids:
+                er = db.get(EnterpriseRisk, r_id)
+                if er is None or er.status == "Closed":
+                    continue
+                r_ctls = [c for c in linked_ids(db, "risk", r_id, "control")]
+                ctl_ids.update(r_ctls)
+                risks.append({"id": er.id, "ref": er.ref, "title": er.title, "likelihood": er.inherent_likelihood,
+                              "impact": er.inherent_impact, "controls": r_ctls})
+            controls = []
+            for c_id in sorted(ctl_ids):
+                lc = db.get(LibraryControl, c_id)
+                if lc is not None and lc.active:
+                    controls.append({"id": lc.id, "ref": lc.ref, "title": lc.title,
+                                     "test_procedure": lc.test_procedure})
+            if risks or controls:
+                groups.append({"objective": f"{title}"[:255], "source": kind, "risks": risks, "controls": controls})
+    return groups
+
+
+@router.get("/api/audits/{audit_id}/scoping")
+def scoping_preview(audit_id: int, db: DBSession = Depends(get_db), _: User = Staff) -> dict:
+    audit = _audit_or_404(db, audit_id)
+    groups = _scope_plan(db, audit)
+    have_r = {r.enterprise_risk_id for o in db.execute(select(Objective).where(Objective.audit_id == audit_id))
+              .scalars() for r in o.risks if r.enterprise_risk_id}
+    have_c = {c.library_control_id for o in db.execute(select(Objective).where(Objective.audit_id == audit_id))
+              .scalars() for c in o.controls if c.library_control_id}
+    for g in groups:
+        for r in g["risks"]:
+            r["in_audit"] = r["id"] in have_r
+        for c in g["controls"]:
+            c["in_audit"] = c["id"] in have_c
+    return {"workflow": audit.workflow, "entities": [_entity_out(e) for e in _audit_entities(db, audit)],
+            "groups": groups}
+
+
+@router.post("/api/audits/{audit_id}/scoping")
+def apply_scoping(audit_id: int, request: Request, db: DBSession = Depends(get_db), user: User = Staff) -> dict:
+    """Bring the entities' risks and controls into the audit: objectives, risks (linked to the enterprise risk),
+    and controls copied from the library (Internal Control) or procedures from their test steps (Workplan).
+    Items already in the audit are skipped, so scoping can be repeated after the object library changes."""
+    from app.domains.audit.frameworks.models import Framework, LibraryControl
+    from app.domains.audit.rcm.models import RiskControl
+
+    audit = _audit_or_404(db, audit_id)
+    _ensure_open(audit)
+    groups = _scope_plan(db, audit)
+    if not groups:
+        raise _conflict("The audit's entities have no linked risks or controls yet (Process library and Risk "
+                        "Manager links)")
+    objectives = {o.title.lower(): o for o in db.execute(select(Objective).where(Objective.audit_id == audit_id))
+                  .scalars()}
+    all_risks = {r.enterprise_risk_id: r for o in objectives.values() for r in o.risks if r.enterprise_risk_id}
+    all_ctls = {c.library_control_id: c for o in objectives.values() for c in o.controls if c.library_control_id}
+    have_procs = {(p.objective_id, p.title.lower()) for p, _ in _procedures_of(db, audit_id)}
+    counts = {"objectives": 0, "risks": 0, "controls": 0, "procedures": 0}
+    for g in groups:
+        obj = objectives.get(g["objective"].lower())
+        if obj is None:
+            obj = Objective(audit_id=audit.id, ref=next_reference(db, "OBJ"), title=g["objective"],
+                            description=f"Scoped from the auditable entity ({g['source']} links in the object "
+                                        "library).",
+                            created_by=user.id)
+            db.add(obj)
+            db.flush()
+            objectives[g["objective"].lower()] = obj
+            counts["objectives"] += 1
+        risk_rows = {}
+        for r in g["risks"]:
+            row = all_risks.get(r["id"])
+            if row is None:
+                row = Risk(objective_id=obj.id, ref=next_reference(db, "RSK"), title=r["title"][:255],
+                           description=f"From enterprise risk {r['ref']}.", likelihood=r["likelihood"],
+                           impact=r["impact"], enterprise_risk_id=r["id"], created_by=user.id)
+                db.add(row)
+                db.flush()
+                all_risks[r["id"]] = row
+                counts["risks"] += 1
+            risk_rows[r["id"]] = row
+        for c in g["controls"]:
+            lib = db.get(LibraryControl, c["id"])
+            mapped = [risk_rows[rid].id for rid, r in ((r["id"], r) for r in g["risks"]) if c["id"] in r["controls"]] \
+                or [x.id for x in risk_rows.values()]
+            if audit.workflow == WORKPLAN:
+                key = (obj.id, lib.title[:255].lower())
+                if key in have_procs:
+                    continue
+                p = Procedure(objective_id=obj.id, ref=next_reference(db, "PRC"), title=lib.title[:255],
+                              steps=lib.test_procedure or lib.description, status=P_NOT_STARTED, results="",
+                              review_comment="", created_by=user.id)
+                db.add(p)
+                db.flush()
+                for rid in mapped:
+                    db.add(ProcedureRisk(procedure_id=p.id, risk_id=rid))
+                have_procs.add(key)
+                counts["procedures"] += 1
+                continue
+            ctl = all_ctls.get(c["id"])
+            if ctl is None:
+                fw = db.get(Framework, lib.framework_id)
+                ctl = Control(objective_id=obj.id, ref=next_reference(db, "CTL"), title=lib.title[:255],
+                              description=f"{lib.description}\n\nSource: {fw.code if fw else ''} {lib.ref}".strip(),
+                              control_type=lib.control_type, nature=lib.nature, frequency=lib.frequency,
+                              is_key=lib.is_key, library_control_id=lib.id, test_steps=lib.test_procedure or None,
+                              created_by=user.id)
+                db.add(ctl)
+                db.flush()
+                all_ctls[c["id"]] = ctl
+                counts["controls"] += 1
+            for rid in mapped:
+                if db.get(RiskControl, (rid, ctl.id)) is None:
+                    db.add(RiskControl(risk_id=rid, control_id=ctl.id))
+        if audit.workflow == WORKPLAN and not g["controls"]:
+            for r in g["risks"]:  # no control in the library: one procedure per risk
+                title = f"Test the response to: {r['title']}"[:255]
+                if (obj.id, title.lower()) in have_procs:
+                    continue
+                p = Procedure(objective_id=obj.id, ref=next_reference(db, "PRC"), title=title, steps="",
+                              status=P_NOT_STARTED, results="", review_comment="", created_by=user.id)
+                db.add(p)
+                db.flush()
+                db.add(ProcedureRisk(procedure_id=p.id, risk_id=risk_rows[r["id"]].id))
+                have_procs.add((obj.id, title.lower()))
+                counts["procedures"] += 1
+    log_action(db, user_id=user.id, action=f"AUDIT_SCOPING audit={audit.id} {counts}", request=request)
+    _history(db, audit.id, user, "DETAILED SCOPING from the auditable entities: " + ", ".join(
+        f"{v} {k}" for k, v in counts.items() if v), request)
+    db.commit()
+    return counts

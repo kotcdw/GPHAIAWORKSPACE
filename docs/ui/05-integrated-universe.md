@@ -109,3 +109,13 @@ starter assessment factors are added (administrators rename or delete them).
 ## 9. Not included
 
 Diligent platform services (Robots analytics scripts, the AI assistant in the Add workflow) are not reproduced.
+
+## 10. Connections (migration 0031_connected_universe)
+
+| From | To | How |
+|---|---|---|
+| Process / auditable entity | Enterprise risks (Risk Manager) and standard controls (Frameworks & controls) | Object library links: Process library > **Risks & controls**; entity page > **Risks and controls** > Edit entity links. An org-unit entity covers the processes performed in its unit and below. |
+| Auditable entities | Audit | Fieldwork tab > **Auditable entities** strip > **Choose entities** (several per audit; the first is the primary entity from the plan). Issues inherit them; the entity page, the Issue Tracker "Entity" filter and audit close (last audited date) follow them. |
+| Entity's risks and controls | Audit fieldwork | **Scope from entities** (detailed scoping): one objective per process (or per entity); risks linked to their enterprise risk; Internal Control: controls copied from the library, mapped to the risks, with their test steps as the test plan; Workplan: a procedure per control (or per risk when none). Preview first; repeatable without duplicates. |
+| Audit risk | Enterprise risk | Risk form: "Tests enterprise risk (Risk Manager)"; shown under the risk in the matrix. |
+| Audit records | Risk assessment | Automatic factors: **Time since last audit** (months since the last audit against the entity's audit frequency; never audited = highest) and **Prior audit results** (open High finding or overdue action = highest, open Medium = upper middle, open Low = lower middle, none = lowest), mapped onto the assessment's scale. Filled when the assessment is added; **Refresh automatic scores** recomputes; the auditor can still change any cell. |

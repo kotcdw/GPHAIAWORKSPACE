@@ -200,8 +200,23 @@ def recommended_sample(frequency: ControlFrequency, nature: ControlNature, test_
     return size, f"{frequency.value} manual control (Configuration > Audit methodology > default sample sizes)"
 
 
+def _check_enterprise_risk(db: DBSession, risk_id: int | None) -> None:
+    if risk_id:
+        from app.domains.grc.risk.models import EnterpriseRisk
+
+        if db.get(EnterpriseRisk, risk_id) is None:
+            raise field_error("enterprise_risk_id", "is not a risk of the Risk Manager register")
+
+
 def _risk_out(risk: Risk) -> RiskOut:
     out = RiskOut.model_validate(risk)
+    if risk.enterprise_risk_id:
+        from sqlalchemy.orm import object_session
+
+        from app.domains.grc.risk.models import EnterpriseRisk
+
+        er = object_session(risk).get(EnterpriseRisk, risk.enterprise_risk_id)
+        out.enterprise_risk = f"{er.ref} {er.title}" if er else None
     out.control_ids = [c.id for c in risk.controls]
     out.residual_rating = residual_rating(risk)
     return out
@@ -339,6 +354,7 @@ def create_risk(
 ) -> RiskOut:
     obj = _objective(db, objective_id)
     _ensure_open(_audit_of(db, obj))
+    _check_enterprise_risk(db, payload.enterprise_risk_id)
     risk = Risk(objective_id=obj.id, ref=next_reference(db, "RSK"), created_by=user.id, **payload.model_dump())
     db.add(risk)
     db.flush()
@@ -356,6 +372,9 @@ def update_risk(
     risk = _risk(db, risk_id)
     _ensure_open(_audit_of(db, risk.objective))
     changes = payload.model_dump(exclude_none=True)
+    if "enterprise_risk_id" in changes:
+        changes["enterprise_risk_id"] = changes["enterprise_risk_id"] or None
+        _check_enterprise_risk(db, changes["enterprise_risk_id"])
     for key, value in changes.items():
         setattr(risk, key, value)
     log_action(db, user_id=user.id, action=f"RISK_UPDATE id={risk.id} [{', '.join(changes)}]", request=request)

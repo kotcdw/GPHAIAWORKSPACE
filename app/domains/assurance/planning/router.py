@@ -560,6 +560,10 @@ def start_engagement(
     )
     db.add(audit)
     db.flush()
+    if eng.entity_unit_id:
+        from app.domains.assurance.universe.models import AuditEntity
+
+        db.add(AuditEntity(audit_id=audit.id, entity_id=eng.entity_unit_id))
     eng.status = EngagementStatus.Started
     eng.audit_id = audit.id
     from app.domains.audit.audits.models import AuditTeamMember
