@@ -19,7 +19,7 @@ KEY = "app_customization"
 
 
 # Solution groups (titles and order match the sidebar and the All apps page).
-HOME = "Home"
+HOME = "Apps"
 AUDIT = "Audit management"
 RESOURCE = "Resource management"
 RISK = "Risk management"
@@ -44,10 +44,8 @@ class App:
 
 APPS: list[App] = [
     # Home
-    App("dashboard", "Workspace", HOME, "grid-1x2", "Role-based home page with KPIs and work in progress.",
+    App("dashboard", "Workspace", HOME, "grid-3x3-gap", "Home page that hosts every app and feature.",
         ("dashboard",), (), core=True),
-    App("workspace", "All apps", HOME, "grid-3x3-gap", "Launch page for every app, grouped by solution.",
-        ("workspace",), (), core=True),
     App("portal", "Task Manager", HOME, "inboxes", "One page of everything waiting for a person.",
         ("portal",), ("/api/portal",)),
     App("tasks", "Task Tracker", HOME, "check2-square", "Tasks assigned to people, with due dates.",

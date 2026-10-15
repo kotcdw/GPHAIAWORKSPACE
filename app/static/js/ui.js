@@ -440,7 +440,6 @@ function fmtDay(value) {
 // ------------------------------------------------------------------ merged apps (one sidebar entry, tabs on top)
 // Pages that live inside another app: the sidebar shows the host only; the others open as its tabs.
 const HOST_GROUPS = [
-  { host: "dashboard", tabs: [["dashboard", "Overview"], ["analytics", "Analytics"], ["workspace", "All apps"]] },
   { host: "portal", tabs: [["portal", "My tasks"], ["evidence", "Requests"]] },
   { host: "issues", tabs: [["issues", "Issues"], ["capa", "Actions"]] },
   { host: "committee", tabs: [["committee", "Committee pack"], ["governance", "Governance portal"], ["portfolio", "Port portfolio"]] },

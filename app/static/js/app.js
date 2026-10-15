@@ -571,19 +571,17 @@ function navigate(view) {
   }
   if (state.user && !viewAllowed(view)) view = isCommittee() ? "governance" : "dashboard";
   state.view = view;
-  if (typeof recordRecent === "function") recordRecent(view);
   setActiveNav(view);
   navCrumbs(view);
   if (view === "followup") { state.remTab = "followup"; return navigate("capa"); }
   if (view === "capa") return renderRemediation(state.remTab);
   if (MODULES[view]) return renderList(view);
-  if (view === "dashboard") return renderDashboard();
+  if (view === "dashboard" || view === "workspace") return renderWorkspace();
   if (view === "roles") return renderRolesPage();
   if (view === "programs") return renderProgramsPage();
   if (view === "evidence") return renderEvidencePage();
   if (view === "governance") return renderGovernance();
   if (view === "portfolio") return renderPortfolio();
-  if (view === "workspace") return renderWorkspace();
   if (view === "analytics") return renderAnalytics();
   if (view === "qaip") return renderQaipPage();
   if (view === "capacity") return renderCapacity();
@@ -1064,7 +1062,7 @@ function panel(title, body, action = null) {
 // The apps the Workspace hosts, grouped and ordered like the sidebar (Diligent One style solution groups).
 function workspaceGroups() {
   return [
-    { title: "Home", tiles: [
+    { title: "Apps", tiles: [
       { view: "portal", icon: "inboxes", name: "Task Manager", desc: "Your tasks, requests and actions waiting for you" },
       { view: "tasks", icon: "check2-square", name: "Task Tracker", desc: "To-dos assigned to you and your team", count: "tasks" },
     ] },
@@ -1092,6 +1090,7 @@ function workspaceGroups() {
       { view: "policies", icon: "file-earmark-ruled", name: "Policy Manager", desc: "Policies, versions, reviews and attestation" },
     ] },
     { title: "Analytics & reporting", tiles: [
+      { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Headline indicators, heat map, trends and repeat findings", staff: true },
       { view: "results", icon: "table", name: "Results", desc: "Analytic tables with priority, status, assignee and triggers", staff: true },
       { view: "storyboards", icon: "easel", name: "Storyboards", desc: "Charts, metrics and text from Results, shared read-only", staff: true },
       { view: "robots", icon: "robot", name: "Robots", desc: "Scheduled analytic tasks and automation rules", staff: true },
@@ -1125,11 +1124,7 @@ async function renderWorkspace() {
   clear(viewRoot);
   const staff = isStaff();
   const admin = isAdmin();
-  const quick = [];
-  if (staff && hasPerm("audit.create")) quick.push(el("button", { class: "btn secondary", onclick: () => navigate("audits") }, el("i", { class: "bi bi-clipboard-plus" }), " Start an audit"));
-  if (canWriteModule("capa")) quick.push(el("button", { class: "btn secondary", onclick: () => createModal("capa") }, el("i", { class: "bi bi-tools" }), " New remediation"));
-  viewRoot.append(viewHeader("All apps", null, { sub: "Every GIAW app, grouped by solution the same way as the sidebar" }));
-  if (quick.length) viewRoot.append(el("div", { class: "ws-quick" }, ...quick));
+  viewRoot.append(viewHeader("Workspace", null, { sub: "Every GIAW app and feature, grouped by solution" }));
 
   const groupsEl = el("div", { class: "ws-groups" });
   viewRoot.append(groupsEl);
@@ -1150,7 +1145,7 @@ async function renderWorkspace() {
           el("button", { class: "ws-tile", type: "button", onclick: () => navigate(t.view) },
             el("span", { class: "ws-icon" }, el("i", { class: `bi bi-${t.icon}` })),
             el("span", { class: "ws-text" }, el("span", { class: "ws-name" }, t.name), el("span", { class: "ws-desc" }, t.desc), badgeEl)),
-          pinButton(t));
+          null);
       }))));
   });
   // Find an app: filters the tiles as you type.
@@ -1160,8 +1155,7 @@ async function renderWorkspace() {
     groupsEl.querySelectorAll(".ws-cell").forEach((c) => c.classList.toggle("hidden", !!q && !c.dataset.app.includes(q)));
     groupsEl.querySelectorAll(".ws-group").forEach((sec) => sec.classList.toggle("hidden", ![...sec.querySelectorAll(".ws-cell")].some((c) => !c.classList.contains("hidden"))));
   });
-  groupsEl.before(el("div", { class: "ws-tools" }, find, el("span", { class: "muted small" }, el("i", { class: "bi bi-star" }), " Star an app to pin it to your Workspace")));
-  loadWorkspace().then(() => groupsEl.querySelectorAll(".pin-btn").forEach((b) => paintPin(b)));
+  groupsEl.before(el("div", { class: "ws-tools" }, find));
 
   // Live counts (best effort: a tile without a count still works).
   const open = (rows) => (rows.items || rows).filter((x) => x.status !== "Closed").length;
@@ -1188,86 +1182,6 @@ async function renderWorkspace() {
       if (tone) node.classList.add(tone);
     }).catch(() => {});
   });
-}
-
-async function renderDashboard() {
-  clear(viewRoot);
-  const msg = el("div");
-  const staff = state.user.role !== "Auditee";
-  viewRoot.append(viewHeader(`${greeting()}, ${(state.user.full_name || state.user.username).split(" ")[0]}`, null,
-    { sub: new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) }), msg);
-  const launcher = el("div", { class: "ws-launcher" });
-  viewRoot.append(launcher);
-  workspaceLauncher(launcher);
-  try {
-    const [audits, ncs, capa, feedback, tasks, plans, drafts] = await Promise.all([
-      safeGet("/api/audits", []),
-      safeGet("/api/nonconformances", { items: [] }),
-      safeGet("/api/capa", { items: [] }),
-      safeGet("/api/service-feedback", { items: [] }),
-      safeGet("/api/tasks?assigned_to_me=true", { items: [] }),
-      staff ? safeGet("/api/assurance-plans", []) : Promise.resolve([]),
-      safeGet("/api/drafts", []),
-    ]);
-    const ncItems = ncs.items || ncs;
-    const capaItems = capa.items || capa;
-    const fbItems = feedback.items || feedback;
-    const myTasks = (tasks.items || tasks).filter((x) => x.status !== "Closed");
-    const openAudits = audits.filter((x) => x.status !== "Closed");
-    const inReview = audits.filter((x) => x.status === "Review").length;
-    const overdueCapa = capaItems.filter((c) => c.status !== "Closed" && c.due_date && new Date(c.due_date) < new Date()).length;
-
-    viewRoot.append(el("div", { class: "stats" },
-      stat(openAudits.length, "Open audits", `${inReview} in review · ${audits.length} total`),
-      stat(capaItems.filter((c) => c.status !== "Closed").length, "Open remediation", overdueCapa ? `${overdueCapa} overdue` : "None overdue", overdueCapa ? "danger" : ""),
-      stat(fbItems.filter((f) => f.status !== "Closed").length, "Open feedback"),
-      stat(myTasks.length, "My open tasks", null, myTasks.length ? "warn" : ""),
-      stat(drafts.length, "Unfinished drafts", drafts.length ? "Continue in My Drafts" : "All saved"),
-    ));
-
-    const grid = el("div", { class: "dash-grid" });
-    viewRoot.append(grid);
-
-    grid.append(panel("Recent audits", !audits.length ? el("div", { class: "empty" }, "No audits yet.")
-      : el("table", null,
-        el("thead", null, el("tr", null, el("th", null, "Audit"), el("th", null, "Status"), el("th", { class: "num" }, "Updated"))),
-        el("tbody", null, ...audits.slice(0, 6).map((x) => el("tr", { onclick: () => openAudit(x.id) },
-          el("td", null, x.title), el("td", null, badge(x.status)),
-          el("td", { class: "muted num" }, fmtDate(x.updated_at).split(",")[0]))))),
-    el("button", { class: "btn small secondary", onclick: () => navigate("audits") }, "View all")));
-
-    grid.append(panel("My open tasks", !myTasks.length ? el("div", { class: "empty" }, "Nothing assigned to you.")
-      : el("table", null,
-        el("thead", null, el("tr", null, el("th", null, "Task"), el("th", null, "Status"), el("th", { class: "num" }, "Due"))),
-        el("tbody", null, ...myTasks.slice(0, 6).map((x) => el("tr", { onclick: () => navigate("tasks") },
-          el("td", null, x.title), el("td", null, badge(x.status)),
-          el("td", { class: "muted num" }, x.due_date ? fmtDate(x.due_date).split(",")[0] : "-"))))),
-    el("button", { class: "btn small secondary", onclick: () => navigate("tasks") }, "Task Tracker")));
-
-    if (staff) {
-      const plan = plans.find((x) => x.status !== "Closed") || plans[0];
-      let body = el("div", { class: "empty" }, "No Assurance Plan yet.");
-      if (plan) {
-        const detail = await safeGet(`/api/assurance-plans/${plan.id}`, null);
-        if (detail) {
-          const sm = detail.summary;
-          const live = sm.engagements - sm.cancelled;
-          const pct = live ? Math.round((100 * sm.started) / live) : 0;
-          body = el("div", { class: "plan-snap", onclick: () => openPlan(plan.id) },
-            el("div", { class: "plan-snap-head" }, el("strong", null, plan.title), badge(plan.status)),
-            el("div", { class: "progress" }, el("div", { class: "progress-fill", style: `width:${pct}%` })),
-            el("div", { class: "muted small" }, `${sm.started} of ${live} engagements started (${pct}%) · ${sm.coverage_pct}% universe coverage · ${sm.planned_hours}h planned`));
-        }
-      }
-      grid.append(panel("Assurance Plans", body, el("button", { class: "btn small secondary", onclick: () => navigate("plans") }, "Open plans")));
-    }
-    if (drafts.length) {
-      grid.append(panel("Continue where you left off", el("ul", { class: "plain-list" },
-        ...drafts.slice(0, 5).map((d) => el("li", null, el("i", { class: "bi bi-pencil-square muted" }), ` ${d.title || d.form_key}`,
-          el("span", { class: "muted small" }, ` · ${fmtDate(`${d.updated_at}Z`)}`)))),
-      el("button", { class: "btn small secondary", onclick: () => navigate("drafts") }, "My Drafts")));
-    }
-  } catch (err) { notify(msg, err.message, "error"); }
 }
 
 async function renderTasks() {

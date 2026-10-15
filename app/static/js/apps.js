@@ -87,9 +87,4 @@ async function renderAppsPage() {
     });
     viewRoot.append(panel(sec, el("div", { class: "app-list" }, ...rows)));
   });
-  if (hasPerm("system.superadmin") && typeof workspaceDefaultsSection === "function") {
-    const box = el("div");
-    viewRoot.append(box);
-    workspaceDefaultsSection(box);
-  }
 }

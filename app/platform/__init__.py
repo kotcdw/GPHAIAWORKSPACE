@@ -24,7 +24,6 @@ MODULES = {
     "notifications": "In-app notifications",
     "history": "Record history and the audit log",
     "drafts": "Autosaved drafts",
-    "workspace": "Workspace home: favourite and recently opened apps, defaults per role",
     "views": "Saved views and filters",
     "dataio": "Import and export",
     "backups": "Encrypted database backups",
@@ -55,8 +54,7 @@ def routers() -> list:
     from app.platform.tasks.router import router as tasks
     from app.platform.users.router import router as users
     from app.platform.views.router import router as views
-    from app.platform.workspace.router import router as workspace
 
     return [auth, users, history, records_router, organizations, stakeholders, tasks, approvals, backups,
             drafts, notifications, configuration, dataio, views, customfields, roles, architecture, automations,
-            portal, apps, workspace]
+            portal, apps]

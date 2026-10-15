@@ -1495,25 +1495,8 @@ input.switch:disabled { opacity: .5; cursor: default; }
 .who-btn { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
 .who-btn:hover, .who-btn:focus-visible { background: rgba(255, 255, 255, .08); }
 
-/* ---- Workspace: find an app, my apps, recently opened, customize ------------------------------------------- */
-.ws-launcher { margin-bottom: 14px; }
+/* ---- Workspace: find an app ------------------------------------------------------------------------------ */
 .ws-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .ws-find { flex: 1 1 280px; max-width: 460px; }
-.ws-results { margin-bottom: 10px; }
 .ws-cell { position: relative; min-width: 0; }
-.ws-cell .ws-tile { height: 100%; padding-right: 34px; }
-.ws-tile.compact { padding: 8px 34px 8px 10px; }
-.ws-tile.compact .ws-desc { -webkit-line-clamp: 1; }
-.pin-btn { position: absolute; top: 6px; right: 6px; background: none; border: 0; padding: 3px 5px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 14px; }
-.pin-btn:hover, .pin-btn:focus-visible { background: var(--panel-2); color: var(--text); }
-.pin-btn[aria-pressed="true"] { color: #d69e2e; }
-.fav-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; }
-.fav-order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.fav-order li { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
-.fav-order .grow { flex: 1; }
-.fav-pool { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow: auto; }
-.fav-group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.fav-group strong { width: 100%; color: var(--muted); }
-.ws-defaults { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-.ws-defaults > div { display: flex; flex-direction: column; gap: 2px; }
-@media (max-width: 760px) { .fav-editor { grid-template-columns: 1fr; } }
+.ws-cell .ws-tile { height: 100%; }
