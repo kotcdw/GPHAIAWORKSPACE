@@ -81,6 +81,27 @@ def _apply_issue_fields(db: DBSession, finding: Finding, payload, audit_id: int)
     return changed
 
 
+def _issue_type(value: str | None) -> str | None:
+    from app.core.appconfig import cfg
+
+    if value is None or not value.strip():
+        return None
+    types = {t.lower(): t for t in (cfg("finding_issue_types") or [])}
+    if value.strip().lower() not in types:
+        raise field_error("issue_type", f"must be one of: {', '.join(types.values())}")
+    return types[value.strip().lower()]
+
+
+def _signoffs(db: DBSession, findings: list[Finding]) -> None:
+    from app.domains.audit.audits.issue_tracker import signoffs
+
+    ids = {f.created_by for f in findings} - {None}
+    names = {u.id: u.full_name or u.username for u in db.execute(select(User).where(User.id.in_(ids))).scalars()} \
+        if ids else {}
+    for f in findings:
+        f.signoffs = signoffs(f, names)
+
+
 def _get_finding_or_404(db: DBSession, finding_id: int) -> Finding:
     finding = db.get(Finding, finding_id)
     if finding is None:
@@ -100,8 +121,11 @@ def list_findings(
         .scalars()
         .all()
     )
+    if user.role not in (Role.Admin, Role.Auditor):  # auditees see published issues only
+        rows = [f for f in rows if f.published]
     for f in rows:
         f.remediation = remediation_summary(db, f)
+    _signoffs(db, rows)
     return rows
 
 
@@ -128,6 +152,7 @@ def create_finding(
         risk_rating=payload.risk_rating,
         status=payload.status,
         assigned_owner_email=str(payload.assigned_owner_email) if payload.assigned_owner_email else None,
+        issue_type=_issue_type(payload.issue_type),
         custom_fields="{}",
         created_by=user.id,
     )
@@ -168,6 +193,7 @@ def get_finding(
     from app.domains.issues.capa.closure import remediation_summary
 
     finding.remediation = remediation_summary(db, finding)
+    _signoffs(db, [finding])
     return finding
 
 
@@ -206,6 +232,9 @@ def update_finding(
     if payload.assigned_owner_email is not None:
         finding.assigned_owner_email = str(payload.assigned_owner_email)
         changes.append("assigned_owner_email")
+    if "issue_type" in payload.model_fields_set:
+        finding.issue_type = _issue_type(payload.issue_type)
+        changes.append(f"issue_type={finding.issue_type}")
     changes.extend(_apply_issue_fields(db, finding, payload, finding.audit_id))
 
     log_action(db, user_id=user.id, action=f"FINDING_UPDATE id={finding.id} [{', '.join(changes)}]", request=request)

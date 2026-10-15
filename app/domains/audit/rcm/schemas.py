@@ -44,6 +44,9 @@ class ControlIn(BaseModel):
     owner_email: OptEmail = None
     is_key: bool = True
     risk_ids: list[int] = []
+    test_method: str | None = Field(default=None, max_length=60)
+    total_sample_size: int | None = Field(default=None, ge=0, le=100000)
+    test_steps: str | None = Field(default=None, max_length=20000)
 
 
 class ControlUpdate(BaseModel):
@@ -54,6 +57,9 @@ class ControlUpdate(BaseModel):
     frequency: ControlFrequency | None = None
     owner_email: OptEmail = None
     is_key: bool | None = None
+    test_method: str | None = Field(default=None, max_length=60)
+    total_sample_size: int | None = Field(default=None, ge=0, le=100000)
+    test_steps: str | None = Field(default=None, max_length=20000)
 
 
 class RiskMapping(BaseModel):
@@ -63,6 +69,8 @@ class RiskMapping(BaseModel):
 class TestIn(BaseModel):
     test_type: TestType
     procedure: str = ""
+    round_no: int | None = Field(default=None, ge=1, le=4)  # operating-effectiveness tests
+    assigned_to: int | None = None
 
 
 class TestUpdate(BaseModel):
@@ -73,6 +81,8 @@ class TestUpdate(BaseModel):
     results: str | None = None
     status: TestStatus | None = None
     conclusion: TestConclusion | None = None
+    assigned_to: int | None = None  # 0 clears
+    in_scope: bool | None = None  # HighBond: "Are you testing this key control this round?"
 
 
 class SampleRequest(BaseModel):
@@ -108,6 +118,9 @@ class TestOut(ORMModel):
     reviewed_by: int | None
     reviewed_at: datetime | None
     review_comment: str
+    round_no: int | None = None
+    in_scope: bool = True
+    assigned_to: int | None = None
     created_at: datetime
 
 
@@ -137,6 +150,9 @@ class ControlOut(ORMModel):
     owner_email: str | None
     is_key: bool
     library_control_id: int | None = None
+    test_method: str | None = None
+    total_sample_size: int | None = None
+    test_steps: str | None = None
     risk_ids: list[int] = []
     tests: list[TestOut] = []
     effectiveness: str = "Not Tested"

@@ -23,6 +23,7 @@ class AuditCreate(BaseModel):
     audit_type: str | None = Field(default=None, max_length=60)
     port_entity_id: int | None = None
     custom_fields: dict[str, Any] | None = None
+    workflow: str | None = None  # "Workplan" or "Internal Control"; default from the audit type
 
 
 class AuditUpdate(BaseModel):
@@ -48,6 +49,8 @@ class AuditOut(ORMModel):
     entity_unit_id: int | None = None
     audit_type: str | None = None
     port_entity_id: int | None = None
+    workflow: str = "Internal Control"
+    testing_rounds: int = 1
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None
     created_at: datetime
@@ -79,6 +82,7 @@ class FindingCreate(BaseModel):
     root_cause_whys: list[Annotated[str, Field(max_length=1000)]] | None = Field(default=None, max_length=5)
     control_id: int | None = None
     criterion_id: int | None = None
+    issue_type: str | None = Field(default=None, max_length=60)
     custom_fields: dict[str, Any] | None = None
 
 
@@ -96,6 +100,7 @@ class FindingUpdate(BaseModel):
     root_cause_whys: list[Annotated[str, Field(max_length=1000)]] | None = Field(default=None, max_length=5)
     control_id: int | None = None
     criterion_id: int | None = None
+    issue_type: str | None = Field(default=None, max_length=60)
     custom_fields: dict[str, Any] | None = None
 
 
@@ -138,6 +143,13 @@ class FindingOut(ORMModel):
     client_response_at: datetime | None = None
     client_confirmed_at_exit: bool = False
     remediation: dict | None = None  # finding + actions status (registers and the finding form)
+    procedure_id: int | None = None
+    issue_type: str | None = None
+    published: bool = False
+    published_at: datetime | None = None
+    review_stage: str | None = None
+    reviewed_at: datetime | None = None
+    signoffs: list[dict] | None = None
     criterion_id: int | None = None
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None

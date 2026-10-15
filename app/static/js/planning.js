@@ -194,22 +194,23 @@ function editPlanModal(plan) {
 }
 
 async function openPlan(id) {
+  setActiveNav("plans");
   clear(viewRoot);
-  const msg = el("div");
-  viewRoot.append(msg);
+  viewRoot.append(loadingState("Opening the plan…"));
   let plan;
-  try { plan = await API.get(`/api/assurance-plans/${id}`); } catch (err) { notify(msg, err.message, "error"); return; }
+  try { plan = await API.get(`/api/assurance-plans/${id}`); }
+  catch (err) { clear(viewRoot); viewRoot.append(errorState(err, () => openPlan(id))); return; }
+  clear(viewRoot);
   const draft = plan.status === "Draft";
   const approved = plan.status === "Approved";
   const s = plan.summary;
 
-  setActiveNav("plans");
-  setCrumbs(recordCrumbs("plans", plan.plan_ref || `FY${plan.fiscal_year}`));
-  viewRoot.append(viewHeader(plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`, [
+  const actions = [
     draft ? btn("Edit", () => editPlanModal(plan), "secondary") : null,
     hasPerm("plan.amend") && approved ? btn("Revise plan", () => revisePlanDialog(plan), "secondary") : null,
     hasPerm("plan.amend") && plan.status === "Closed" && !plan.archived_at ? btn("Archive", async () => {
-      if (!window.confirm("Archive this plan year? It becomes read-only and leaves the default plan list.")) return;
+      const ok = await confirmDialog({ title: "Archive plan year", text: "The plan becomes read-only and leaves the default plan list.", confirmLabel: "Archive" });
+      if (!ok.ok) return;
       try { await API.post(`/api/assurance-plans/${id}/archive`); toast("Plan archived"); openPlan(id); }
       catch (err) { toast(err.message, "error"); }
     }, "secondary") : null,
@@ -218,17 +219,60 @@ async function openPlan(id) {
       catch (err) { toast(err.message, "error"); }
     }, "secondary") : null,
     iconBtn("printer", "Print", () => window.print()),
-  ], {
+  ].filter(Boolean);
+  // HighBond assurance plan: Overview, Entities (coverage grid), Risks, then the GPHA planning cycle records.
+  const tabs = [
+    { key: "overview", label: "Overview" },
+    { key: "entities", label: "Entities" },
+    { key: "risks", label: "Risks", count: s.uncovered_high_risk.length || null },
+    { key: "cycle", label: "Versions & cycle" },
+    { key: "crs", label: "Change requests" },
+    { key: "activities", label: "Activities" },
+  ];
+  const layout = recordLayout({
+    crumbs: recordCrumbs("plans", plan.plan_ref || `FY${plan.fiscal_year}`),
     back: () => navigate("plans"),
-    meta: [el("span", { class: "ref" }, plan.plan_ref), badge(plan.lifecycle_status),
-      plan.current_version ? el("span", { class: "chip-mini" }, `Version ${plan.current_version}`) : null,
-      el("span", { class: "muted" }, `FY${plan.fiscal_year}`)],
-    sub: plan.approved_at ? `Approved ${fmtDate(plan.approved_at)}` : null,
-  }));
+    title: plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`,
+    ref: plan.plan_ref, status: plan.lifecycle_status,
+    meta: [plan.current_version ? el("span", { class: "chip-mini" }, `Version ${plan.current_version}`) : null,
+      plan.approved_at ? el("span", { class: "muted small" }, `Approved ${fmtDay(plan.approved_at.slice(0, 10))}`) : null].filter(Boolean),
+    actions, tabs, side: null,
+    onTab: (key, pane) => { state.lastPlanTab = { id, key }; paint(key, pane); },
+  });
+  viewRoot.append(layout.root);
 
+  function paint(key, pane) {
+    if (key === "overview") planOverview(pane, plan);
+    if (key === "entities") renderPlanCoverage(pane, plan, "entities");
+    if (key === "risks") renderPlanCoverage(pane, plan, "risks");
+    if (key === "cycle") renderPlanCycleLog(pane, plan);
+    if (key === "crs") renderChangeRequests(pane, plan);
+    if (key === "activities") {
+      const box = el("div");
+      let sub = "changes";
+      const draw = () => {
+        clear(box);
+        box.append(subNav([{ key: "changes", label: "Plan changes" }, { key: "history", label: "History" }, { key: "approvals", label: "Approval cycles" }], sub,
+          (k) => { sub = k; draw(); }, "Activity views"));
+        const inner = el("div");
+        box.append(inner);
+        if (sub === "changes") renderPlanChanges(inner, plan);
+        if (sub === "history") renderHistoryTab(inner, "assurance_plan", id);
+        if (sub === "approvals") renderApprovalsTab(inner, "assurance_plan", id);
+      };
+      draw();
+      pane.append(box);
+    }
+  }
+  const remembered = state.lastPlanTab && state.lastPlanTab.id === id ? state.lastPlanTab.key : null;
+  layout.select(remembered || "overview");
+}
+
+function planOverview(pane, plan) {
+  const s = plan.summary;
   const hoursPct = s.budget_hours ? Math.round((100 * s.planned_hours) / s.budget_hours) : null;
   const maxQ = Math.max(1, ...QUARTERS.map((q) => s.by_quarter[q] || 0));
-  viewRoot.append(el("div", { class: "stats" },
+  pane.append(el("div", { class: "stats" },
     stat(s.engagements - s.cancelled, "Planned engagements", `${s.started} started · ${s.planned} not started`),
     stat(`${s.planned_hours}h`, "Hours planned", s.budget_hours ? `${hoursPct}% of ${s.budget_hours}h budget` : "No budget set",
       hoursPct !== null && hoursPct > 100 ? "danger" : ""),
@@ -241,34 +285,18 @@ async function openPlan(id) {
       s.uncovered_high_risk.length ? "warn" : "ok"),
   ));
   if (s.uncovered_high_risk.length) {
-    viewRoot.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
+    pane.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
       el("div", null, el("strong", null, "High-risk entities not in the plan: "),
         ...s.uncovered_high_risk.flatMap((u, i) => [i ? ", " : "", `${u.location_name} / ${u.name} `, heat(u.risk_score)]))));
   }
-  if (plan.description) viewRoot.append(el("div", { class: "card" }, el("div", { class: "lf-label" }, "Basis of the plan"), el("div", { class: "lf-value" }, plan.description)));
+  if (plan.description) pane.append(el("div", { class: "card" }, el("div", { class: "lf-label" }, "Basis of the plan"), el("div", { class: "lf-value" }, plan.description)));
   const cycleSlot = el("div");
-  viewRoot.append(cycleSlot);
+  pane.append(cycleSlot);
   renderPlanCycle(cycleSlot, plan);
-  if (plan.committee_meeting_date) viewRoot.append(committeeCard(plan));
-
-  const tabs = [{ key: "eng", label: "Engagements" }, { key: "cycle", label: "Planning cycle & versions" }, { key: "crs", label: "Change requests" }, { key: "changes", label: "Plan changes" }, { key: "history", label: "History" },
-    { key: "approvals", label: "Approval cycles" }];
-  let active = "eng";
-  const detail = el("div");
-  viewRoot.append(detail);
-  const paint = () => {
-    clear(detail);
-    detail.append(tabBar(tabs, active, (k) => { active = k; paint(); }));
-    const panel = el("div");
-    detail.append(panel);
-    if (active === "eng") renderEngagements(panel, plan);
-    if (active === "cycle") renderPlanCycleLog(panel, plan);
-    if (active === "crs") renderChangeRequests(panel, plan);
-    if (active === "changes") renderPlanChanges(panel, plan);
-    if (active === "history") renderHistoryTab(panel, "assurance_plan", id);
-    if (active === "approvals") renderApprovalsTab(panel, "assurance_plan", id);
-  };
-  paint();
+  if (plan.committee_meeting_date) pane.append(committeeCard(plan));
+  const eng = el("div");
+  pane.append(eng);
+  renderEngagements(eng, plan);
 }
 
 async function renderEngagements(panel, plan) {
@@ -595,9 +623,12 @@ async function issueForm(f, auditId, canWrite, onSaved) {
   const current = f && f.criterion_id ? await safeGet(`/api/criteria/${f.criterion_id}`, null) : null;
   const cfDefs = customFieldDefs(await safeGet("/api/custom-fields?module=findings", [])).map((x) => ({ ...x, name: x.key, disabled: ro }));
   if (current && !library.some((c) => c.id === current.id)) library.push(current);
+  const issueTypes = canWrite ? await safeGet("/api/findings/issue-types", []) : [];
+  if (f && f.issue_type && !issueTypes.includes(f.issue_type)) issueTypes.push(f.issue_type);
   const fields = [
     { name: "title", label: "Issue title", required: true, maxLength: 255, singleLine: true, disabled: ro },
-    { name: "risk_rating", label: "Risk rating", type: "select", required: true, options: RISK_RATINGS, disabled: ro },
+    { name: "risk_rating", label: "Severity (risk rating)", type: "select", required: true, options: RISK_RATINGS, disabled: ro },
+    ...(canWrite ? [{ name: "issue_type", label: "Issue type", type: "select", emptyLabel: "- not set -", options: issueTypes }] : []),
     { name: "status", label: "Status", type: "select", required: true, options: FINDING_STATUSES, disabled: ro,
       help: f && f.remediation ? `Remediation: ${f.remediation.state}${f.remediation.refs.length ? ` (${f.remediation.refs.join(", ")})` : ""}. A finding closes when its actions are verified as effective.` : "A finding closes when its remediation actions are verified as effective." },
     { name: "assigned_owner_email", label: "Owner email", type: "email", disabled: ro },
@@ -637,7 +668,12 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     fields,
     initial: f ? { ...f, ...Object.fromEntries(Object.entries(f.custom_fields || {}).map(([k, x]) => [`cf_${k}`, x])) } : { risk_rating: "Medium", status: "Open" },
     width: 900,
-    actions: [aiAction, raiseAction].filter(Boolean),
+    actions: [aiAction, raiseAction, ...(typeof issueExtraActions === "function" ? issueExtraActions(f, auditId, canWrite && !isNew, onSaved) : [])].filter(Boolean),
+    intro: f && canWrite ? el("div", { class: "issue-meta" },
+      f.published ? el("span", { class: "outcome ok" }, el("i", { class: "bi bi-eye" }), ` Published${f.published_at ? ` ${fmtDay(f.published_at.slice(0, 10))}` : ""}`)
+        : el("span", { class: "outcome" }, el("i", { class: "bi bi-eye-slash" }), " Not published - the auditee cannot see this issue yet"),
+      f.signoffs ? el("span", { class: "issue-so" }, "Sign-offs ", signoffDots(f.signoffs)) : null,
+      f.procedure_id ? el("span", { class: "muted small" }, "Raised from a Workplan procedure") : null) : null,
     validate: (v) => (v.status === "Closed" && !respondOnly && !(v.recommendation || "").trim() && !(v.condition || "").trim()
       ? { condition: "Document the condition (or recommendation) before closing the issue" } : {}),
     submitLabel: isNew ? "Create" : "Save",
@@ -666,7 +702,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
       const rest = {};
       const custom = {};
       Object.entries(all).forEach(([k, x]) => { if (k.startsWith("cf_")) custom[k.slice(3)] = x === "" ? null : x; else rest[k] = x; });
-      const body = { ...rest, assigned_owner_email: rest.assigned_owner_email || null, ...(cfDefs.length ? { custom_fields: custom } : {}) };
+      const body = { ...rest, assigned_owner_email: rest.assigned_owner_email || null, ...("issue_type" in rest ? { issue_type: rest.issue_type || null } : {}), ...(cfDefs.length ? { custom_fields: custom } : {}) };
       const saved = isNew ? await API.post(`/api/audits/${auditId}/findings`, body) : await API.patch(`/api/findings/${f.id}`, body);
       if (!isNew) await saveResponses();
       return saved;

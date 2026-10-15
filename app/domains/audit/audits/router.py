@@ -249,13 +249,20 @@ def create_audit(
     from app.core.deps import ensure_perm
 
     ensure_perm(user, "audit.create")
+    from app.core.errors import field_error
+    from app.domains.audit.fieldwork.router import WORKFLOWS, default_workflow
+
+    audit_type = _audit_type(payload.audit_type)
+    if payload.workflow is not None and payload.workflow not in WORKFLOWS:
+        raise field_error("workflow", f"must be {' or '.join(WORKFLOWS)}")
     audit = Audit(
         title=payload.title,
         description=payload.description,
         scope=payload.scope,
         status=payload.status,
         organization_id=payload.organization_id,
-        audit_type=_audit_type(payload.audit_type),
+        audit_type=audit_type,
+        workflow=payload.workflow or default_workflow(audit_type),
         port_entity_id=_port(db, payload.port_entity_id) if payload.port_entity_id else _home_port(db, user),
         custom_fields=json.dumps(_custom(db, payload.custom_fields, None)),
         created_by=user.id,

@@ -579,6 +579,7 @@ function navigate(view) {
   if (view === "capacity") return renderCapacity();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
+  if (view === "issues") return renderIssueTracker();
   if (view === "committee") return renderCommittee();
   if (view === "configuration") return renderConfiguration();
   if (view === "plans") return renderPlans();
@@ -1417,9 +1418,9 @@ async function openAudit(id, startTab = null) {
   // Phase tabs straight under the title; supporting views open from the utility links on the right.
   const tabs = [
     { key: "dashboard", label: "Dashboard" },
-    ...(canWrite ? [{ key: "memo", label: "Planning" }, { key: "rcm", label: "Fieldwork (RCM)" }] : []),
+    ...(canWrite ? [{ key: "memo", label: "Planning" }, { key: "fieldwork", label: "Fieldwork" }] : []),
     { key: "papers", label: "Working papers" },
-    { key: "findings", label: "Findings" },
+    { key: "findings", label: "Issues" },
     { key: "evidence", label: "Evidence requests" },
     { key: "report", label: "Report" },
     ...(canWrite ? [{ key: "quality", label: "Quality review" }] : []),
@@ -1441,7 +1442,12 @@ async function openAudit(id, startTab = null) {
     utility: utility.map((u) => ({ ...u, onClick: () => layout.select(u.key) })),
     tabs,
     side,
-    onTab: (key, pane) => { state.lastAuditTab = { id, key }; paintTab(key, pane); },
+    onTab: (key, pane) => {
+      state.lastAuditTab = { id, key };
+      // Work screens (HighBond execution views) use the full width; the summary panel shows on the others.
+      layout.root.querySelector(".rec-grid").classList.toggle("no-side", ["fieldwork", "findings", "evidence", "papers"].includes(key));
+      paintTab(key, pane);
+    },
   });
   viewRoot.append(layout.root);
   renderAuditSide(side, audit, canWrite);
@@ -1449,28 +1455,20 @@ async function openAudit(id, startTab = null) {
   function paintTab(key, pane) {
     if (key === "dashboard") renderAuditDashboard(pane, audit, canWrite, (k) => layout.select(k));
     if (key === "memo") renderMemoTab(pane, audit, canWrite);
-    if (key === "rcm") {
-      if (canWrite && audit.status !== "Closed" && hasPerm("audit.plan", "audit.fieldwork")) {
-        pane.append(el("div", { class: "actions end", style: "margin-bottom:8px" }, el("button", { class: "btn small secondary",
-          onclick: () => applyProgramDialog(audit, () => layout.select("rcm")) }, el("i", { class: "bi bi-list-check" }), " Apply audit programme")));
-      }
-      const rcmPanel = el("div");
-      pane.append(rcmPanel);
-      renderRcm(rcmPanel, id);
-    }
+    if (key === "fieldwork") renderFieldworkTab(pane, audit, canWrite);
     if (key === "evidence") renderEvidenceTab(pane, audit, canWrite);
     if (key === "time") renderAuditTimeTab(pane, audit);
     if (key === "notes") renderReviewNotesTab(pane, audit);
     if (key === "quality") renderQualityTab(pane, audit);
     if (key === "survey") renderSurveyTab(pane, audit);
-    if (key === "findings") renderFindings(pane, id, canWrite);
+    if (key === "findings") renderAuditIssues(pane, audit, canWrite);
     if (key === "report") renderReportTab(pane, id, canWrite);
     if (key === "papers") renderPapers(pane, id, canWrite);
     if (key === "tasks") renderTasksTab(pane, "audit", id);
     if (key === "history") renderHistoryTab(pane, "audit", id);
     if (key === "approvals") renderApprovalsTab(pane, "audit", id);
   }
-  const legacy = {};
+  const legacy = { rcm: "fieldwork" };
   // Reloading the same audit (after a save) keeps the tab the user was on.
   const remembered = state.lastAuditTab && state.lastAuditTab.id === id ? state.lastAuditTab.key : null;
   layout.select(startTab ? (legacy[startTab] || startTab) : (remembered || "dashboard"));
@@ -1631,35 +1629,6 @@ async function renderAuditees(container, auditId) {
     } catch (err) { container.append(el("span", { class: "muted" }, err.message)); }
   }
   paint();
-}
-
-async function renderFindings(panel, id, canWrite) {
-  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Findings"),
-    canWrite ? el("button", { class: "btn small secondary", onclick: () => importDialog({
-      title: "Import findings from Excel", templateKind: "findings", path: `/api/audits/${id}/import/findings`,
-      intro: "Add many findings at once. Required columns: Title and Risk rating (High, Medium or Low). The file is checked first; nothing is added if any row has a problem.",
-      onDone: () => openAudit(id, "findings") }) }, el("i", { class: "bi bi-file-earmark-arrow-up" }), " Import from Excel") : null));
-  panel.append(card);
-  const findings = await API.get(`/api/audits/${id}/findings`);
-  if (!findings.length) card.append(el("div", { class: "empty" }, "No findings recorded."));
-  else card.append(el("table", null,
-    el("thead", null, el("tr", null, el("th", null, "#"), el("th", null, "Issue"), el("th", null, "Risk"), el("th", null, "Status"),
-      el("th", null, "Owner"), el("th", null, "Remediation"), el("th", null, "Responses"))),
-    el("tbody", null, ...findings.map((f) => el("tr", { onclick: () => issueForm(f, id, canWrite, () => openAudit(id)), title: "Open issue" },
-      el("td", { class: "ref" }, `#${f.id}`),
-      el("td", null, f.title, f.control_id ? el("span", { class: "muted" }, " (from control test)") : null),
-      el("td", null, badge(f.risk_rating)),
-      el("td", null, badge(f.status)), el("td", { class: "muted" }, f.assigned_owner_email || "-"),
-      el("td", { class: "small", title: f.remediation && f.remediation.refs.length ? f.remediation.refs.join(", ") : "" },
-        f.remediation ? f.remediation.state : "-"),
-      el("td", null, el("span", { class: "chips" },
-        el("span", { class: `chip-mini ${f.client_response ? "ok" : ""}`, title: f.client_confirmed_at_exit ? "Confirmed at the exit meeting" : "Audit client response" },
-          el("i", { class: `bi ${f.client_confirmed_at_exit ? "bi-check2-all" : f.client_response ? "bi-check2" : "bi-hourglass"}` }), " Client"),
-        el("span", { class: `chip-mini ${f.management_response ? "ok" : ""}`, title: f.management_response ? `${f.responsible_officer || "-"} · ${f.target_date ? fmtDate(f.target_date) : "no date"}` : "Management response awaited" },
-          el("i", { class: `bi ${f.management_response ? "bi-check2" : "bi-hourglass"}` }), " Management"))))))));
-  if (canWrite) {
-    card.append(el("div", { style: "margin-top:12px" }, el("button", { class: "btn", onclick: () => issueForm(null, id, true, () => openAudit(id)) }, "Add finding / issue")));
-  }
 }
 
 // Review progress of a working paper along the review chain, with the next sign-off.

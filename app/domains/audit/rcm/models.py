@@ -98,6 +98,10 @@ class Control(Base):
     # Copied from the standard controls library (Frameworks & controls), when it was.
     library_control_id: Mapped[int | None] = mapped_column(ForeignKey("library_controls.id", ondelete="SET NULL"),
                                                            nullable=True)
+    # Test plan (HighBond: Testing Method, Total Sample Size, Test Steps / Attributes).
+    test_method: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    total_sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    test_steps: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
@@ -129,8 +133,48 @@ class ControlTest(Base):
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     review_comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Testing round (operating-effectiveness tests): 1..testing_rounds of the audit; None for walkthroughs.
+    round_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    in_scope: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+    assigned_to: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
-    control: Mapped[Control] = relationship(back_populates="tests")
+    control: Mapped[Control] = relationship(back_populates="tests", foreign_keys=[control_id])
+
+
+class ProcedureRisk(Base):
+    __tablename__ = "procedure_risks"
+
+    procedure_id: Mapped[int] = mapped_column(ForeignKey("procedures.id", ondelete="CASCADE"), primary_key=True)
+    risk_id: Mapped[int] = mapped_column(ForeignKey("risks.id", ondelete="CASCADE"), primary_key=True)
+
+
+class Procedure(Base):
+    """A Workplan procedure (HighBond: Objectives -> Risks -> Procedures -> Execute Procedures)."""
+
+    __tablename__ = "procedures"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    objective_id: Mapped[int] = mapped_column(ForeignKey("objectives.id", ondelete="CASCADE"), nullable=False,
+                                              index=True)
+    ref: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    steps: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    assigned_to: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="Not Started")
+    # Execute Procedure: results and "Were issues identified?" -> "No Issues" / "Issue(s) noted".
+    results: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    outcome: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    performed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    performed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    review_comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    risks: Mapped[list[Risk]] = relationship(secondary="procedure_risks")

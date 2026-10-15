@@ -288,3 +288,43 @@ def test_small_screens(browser, base_url, width, label):
     _shot(page, f"{label}-audits")
     assert not watch.take()
     ctx.close()
+
+
+def test_workplan_execute_and_issue_tracker(browser, base_url):
+    """HighBond Workplan screens: project plan, execute procedures in the side panel, Issue Tracker donuts."""
+    ctx, page, watch = _signed_in(browser, base_url)
+    audit_id = page.evaluate("""async () => {
+        const a = await API.post('/api/audits', {title: 'UI test - workplan', scope: 'x', workflow: 'Workplan'});
+        const o = await API.post(`/api/audits/${a.id}/objectives`, {title: 'Revenue is banked'});
+        const r = await API.post(`/api/objectives/${o.id}/risks`, {title: 'Cash not banked', likelihood: 4, impact: 5});
+        await API.post(`/api/objectives/${o.id}/procedures`, {title: 'Vouch takings to bank', risk_ids: [r.id]});
+        await API.post(`/api/audits/${a.id}/findings`, {title: 'Takings banked late', risk_rating: 'High'});
+        return a.id;
+    }""")
+    page.evaluate(f"state.fwSub = {{{audit_id}: 'plan'}}; openAudit({audit_id}, 'fieldwork')")
+    page.wait_for_selector(".plan-matrix")
+    assert page.inner_text(".subnav-item.active") == "Project plan"
+    assert "Vouch takings to bank" in page.inner_text(".plan-matrix")
+    assert page.locator(".rec-side").is_hidden()  # work screens use the full width
+    page.click(".subnav-item:has-text('Execute procedures')")
+    page.wait_for_selector("table.dense tbody tr")
+    page.click("table.dense tbody tr")
+    page.wait_for_selector(".side-panel")
+    page.fill(".side-panel textarea", "2 of 25 days banked late")
+    page.check(".side-panel input[value='Issue(s) noted']")
+    page.click(".side-panel button:has-text('Sign off as prepared')")
+    page.wait_for_selector(".side-panel", state="detached")
+    _wait_for(page, "document.querySelector('table.dense tbody') && "
+                    "document.querySelector('table.dense tbody').innerText.includes('Prepared')")
+    _shot(page, "desktop-execute-procedures")
+    page.evaluate("navigate('issues')")
+    page.wait_for_selector(".chart-row .chart-card")
+    page.wait_for_selector(".register thead th")
+    captions = page.locator(".chart-card figcaption").all_inner_texts()
+    assert "By Issue Type" in captions and "By Severity" in captions
+    headers = page.locator(".register thead th").all_inner_texts()
+    for col in ("Issue", "Status", "Severity", "Owner", "Remediation deadline", "Issue type", "Published", "Sign-offs"):
+        assert any(h.strip().startswith(col) for h in headers), (col, headers)
+    _shot(page, "desktop-issue-tracker")
+    assert not watch.take()
+    ctx.close()

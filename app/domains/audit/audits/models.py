@@ -44,6 +44,11 @@ class Audit(Base):
     entity_unit_id: Mapped[int | None] = mapped_column(
         ForeignKey("entity_units.id", ondelete="SET NULL"), nullable=True
     )
+    # HighBond-style project workflow: "Workplan" (procedures) or "Internal Control" (RCM, walkthroughs, tests).
+    workflow: Mapped[str] = mapped_column(String(20), nullable=False, default="Internal Control",
+                                          server_default="Internal Control")
+    # Internal Control testing rounds: 1 (Testing), 2 (Interim, Final) or 4 (Q1-Q4); fixed once testing starts.
+    testing_rounds: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     creator: Mapped[User | None] = relationship(back_populates="audits")
     working_papers: Mapped[list[WorkingPaper]] = relationship(back_populates="audit", cascade="all, delete-orphan")
@@ -103,6 +108,7 @@ class Finding(Base):
     # Issue attributes (IIA "5 Cs") and its place in the risk & control matrix.
     control_id: Mapped[int | None] = mapped_column(ForeignKey("controls.id", ondelete="SET NULL"), nullable=True)
     test_id: Mapped[int | None] = mapped_column(ForeignKey("control_tests.id", ondelete="SET NULL"), nullable=True)
+    procedure_id: Mapped[int | None] = mapped_column(ForeignKey("procedures.id", ondelete="SET NULL"), nullable=True)
     criteria: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     condition: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     cause: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
@@ -122,6 +128,14 @@ class Finding(Base):
     client_response_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     client_confirmed_at_exit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
                                                            server_default="0")
+    # Issue Tracker attributes: issue type (configurable list), publication to the auditee, review sign-offs.
+    issue_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    published_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    review_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    review_trail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     criterion_id: Mapped[int | None] = mapped_column(ForeignKey("criteria.id", ondelete="SET NULL"), nullable=True)
     custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

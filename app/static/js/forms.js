@@ -368,7 +368,7 @@ function mountForm(container, opts) {
     toast(dirty ? "Draft saved - you can finish it later" : "Nothing to save yet");
   } }, "Save draft") : null;
 
-  const body = el("div", { class: "form-body" }, intro ? el("p", { class: "muted" }, intro) : null, banner, grid, extra || null);
+  const body = el("div", { class: "form-body" }, intro ? (intro instanceof Node ? el("div", { class: "form-intro" }, intro) : el("p", { class: "muted" }, intro)) : null, banner, grid, extra || null);
   const footer = el("div", { class: "form-foot" }, statusLine,
     el("div", { class: "actions" }, ...actions, draftBtn, submitBtn));
   container.append(body);

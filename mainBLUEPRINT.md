@@ -559,12 +559,12 @@ Use this table in project reviews and update it as work progresses.
 | 6 | Done | GIAW team | TBD | TBD | - | Entity register, import, coverage; to be attached to the organization tree |
 | 7 | Partial | GIAW team | TBD | TBD | - | Risk Manager, controls library, links done; scoring formula fixed at likelihood x impact (decision 4) |
 | 8 | Done | GIAW team | TBD | TBD | - | |
-| 9 | Done | GIAW team | TBD | TBD | - | Committee decision, version lock, change requests, distribution |
+| 9 | Done | GIAW team | TBD | TBD | - | Committee decision, version lock, change requests, distribution; Entities coverage grid with progress and hours (Oct 2026) |
 | 10 | Partial | GIAW team | TBD | TBD | - | Plan engagement -> audit, engagement teams (Oct 2026); 12-state lifecycle and roll-forward outstanding |
-| 11 | Partial | GIAW team | TBD | TBD | - | Internal Control (RCM) workflow only; Workplan procedures outstanding |
+| 11 | Mostly done | GIAW team | TBD | TBD | - | Both HighBond workflows (Oct 2026): Workplan (project plan, execute procedures, preparer/reviewer sign-off) and Internal Control (RCM, walkthroughs, test plan, 1/2/4 testing rounds) |
 | 12 | Mostly done | GIAW team | TBD | TBD | - | GPHA working-paper template, review chain Unit Head -> Audit Manager -> PIA, review notes |
-| 13 | Partial | GIAW team | TBD | TBD | - | Requests, encrypted storage, SHA-256; malware scanning not configured; links to tests/findings outstanding |
-| 14 | Done | GIAW team | TBD | TBD | - | Client and management responses, actions, validation; finding closes only after verified remediation (Oct 2026) |
+| 13 | Mostly done | GIAW team | TBD | TBD | - | Requests linked to a procedure, test, issue or working paper, CC and Daily/Weekly reminders (Oct 2026); malware scanning not configured |
+| 14 | Done | GIAW team | TBD | TBD | - | Client and management responses, actions, validation; finding closes only after verified remediation; Issue Tracker with issue types, publish gate and review sign-offs (Oct 2026) |
 | 15 | Partial | GIAW team | TBD | TBD | - | Scheduler, capacity, time entries; timesheet submission/approval outstanding |
 | 16 | Not started | GIAW team | TBD | TBD | - | |
 | 17 | Not started | GIAW team | TBD | TBD | - | |
@@ -592,6 +592,9 @@ Use this table in project reviews and update it as work progresses.
 14. Do ad-hoc audits (not in the approved plan) need a plan change request before they start?
 15. Confirm which workplace types have an authority-wide view (default: Head Office) and that staff with no workplace see only their engagement teams.
 16. Confirm whether Low-rated findings may be closed without a remediation action (default: yes).
+17. Confirm which audit types use the Workplan workflow (default: Financial, Operational, Performance / Value for Money, Special investigation, Follow-up; the rest use Internal Control) and the default sample sizes by control frequency (Configuration > Audit methodology).
+18. Approve the issue types (default: Deficiency, Significant Deficiency, Material Weakness, Management Recommendation) and the publish rule: new issues are hidden from the auditee until Internal Audit publishes them; sending the draft report to management or recording the exit meeting publishes the audit's issues.
+19. Approve the engagement progress formula used on the plan coverage grid: not started 0 %, Planned 10 %, In Progress 25 % plus up to 50 % for fieldwork signed off (procedures or key-control tests), Review 85 %, Closed 100 %.
 
 ---
 

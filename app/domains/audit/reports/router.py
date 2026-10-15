@@ -224,6 +224,9 @@ def send_to_management(report_id: int, request: Request, db: DBSession = Depends
     report.draft_sent_at = utcnow()
     report.response_due_at = add_working_days(report.draft_sent_at, int(cfg("draft_report_response_working_days")))
     report.response_received_at = None
+    from app.domains.audit.audits.issue_tracker import publish_audit
+
+    publish_audit(db, report.audit_id, user, request)  # the draft report releases its findings to management
     owners = [user_id_by_email(db, f.assigned_owner_email)
               for f in db.execute(select(Finding).where(Finding.audit_id == report.audit_id)).scalars()]
     notify_many(db, _auditee_ids(db, report.audit_id) + owners, f"Draft audit report for your comments: {report.title}",

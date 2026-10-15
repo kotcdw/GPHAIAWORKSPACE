@@ -18,17 +18,20 @@ MODULES = {
     "reports": "Audit reports and management responses",
     "service_feedback": "Post-audit auditee feedback",
     "proficiency": "Independence and ethics declarations, CPD and certifications",
+    "fieldwork": "Workplan procedures, walkthroughs and testing rounds (HighBond project workflows)",
     "frameworks": "Frameworks and the standard controls library used to build control matrices",
 }
 
 
 def routers() -> list:
     from app.domains.audit.audits.findings import router as findings
+    from app.domains.audit.audits.issue_tracker import router as issue_tracker
     from app.domains.audit.audits.lifecycle import router as lifecycle
     from app.domains.audit.audits.router import router as audits
     from app.domains.audit.audits.working_papers import router as working_papers
     from app.domains.audit.capacity.router import router as capacity
     from app.domains.audit.evidence.router import router as evidence
+    from app.domains.audit.fieldwork.router import router as fieldwork
     from app.domains.audit.frameworks.router import router as frameworks
     from app.domains.audit.memos.router import router as memos
     from app.domains.audit.methodology.router import router as methodology
@@ -40,5 +43,6 @@ def routers() -> list:
     from app.domains.audit.service_feedback.router import router as service_feedback
 
     # report_distribution before reports: /api/reports/register must win over /api/reports/{id}.
-    return [audits, findings, working_papers, service_feedback, rcm, report_distribution, reports, lifecycle, memos,
-            capacity, methodology, programs, evidence, proficiency, frameworks]
+    # issue_tracker before findings: /api/findings/register must win over /api/findings/{id}.
+    return [audits, issue_tracker, findings, working_papers, service_feedback, rcm, fieldwork, report_distribution,
+            reports, lifecycle, memos, capacity, methodology, programs, evidence, proficiency, frameworks]

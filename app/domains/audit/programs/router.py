@@ -19,7 +19,7 @@ from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.domains.audit.audits.models import Audit
 from app.domains.audit.programs.models import AuditProgram
-from app.domains.audit.rcm.models import Control, ControlTest, Objective, Risk, RiskControl
+from app.domains.audit.rcm.models import Control, ControlTest, Objective, Procedure, ProcedureRisk, Risk, RiskControl
 from app.platform.users.models import User
 
 router = APIRouter(tags=["audit programmes"])
@@ -174,7 +174,8 @@ def apply_program(audit_id: int, program_id: int, request: Request, db: DBSessio
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The programme has no steps")
     objectives = {o.title.lower(): o for o in db.execute(select(Objective).where(Objective.audit_id == audit_id))
                   .scalars()}
-    counts = {"objectives": 0, "risks": 0, "controls": 0, "tests": 0}
+    counts = {"objectives": 0, "risks": 0, "controls": 0, "tests": 0, "procedures": 0}
+    workplan = audit.workflow == "Workplan"
     risks: dict[tuple[int, str], Risk] = {}
     controls: dict[tuple[int, str], Control] = {}
     for s in steps:
@@ -193,6 +194,16 @@ def apply_program(audit_id: int, program_id: int, request: Request, db: DBSessio
             db.flush()
             risks[(obj.id, s.risk.lower())] = rk
             counts["risks"] += 1
+        if workplan:  # Workplan audits: each programme step becomes a procedure addressing the risk
+            if s.procedure.strip() or s.control.strip():
+                proc = Procedure(objective_id=obj.id, ref=next_reference(db, "PRC"),
+                                 title=(s.control or s.procedure)[:255], steps=s.procedure, status="Not Started",
+                                 results="", review_comment="", created_by=user.id)
+                db.add(proc)
+                db.flush()
+                db.add(ProcedureRisk(procedure_id=proc.id, risk_id=rk.id))
+                counts["procedures"] += 1
+            continue
         ctl = controls.get((obj.id, s.control.lower()))
         if ctl is None:
             ctl = Control(objective_id=obj.id, ref=next_reference(db, "CTL"), title=s.control,
@@ -207,12 +218,15 @@ def apply_program(audit_id: int, program_id: int, request: Request, db: DBSessio
             db.add(ControlTest(control_id=ctl.id, ref=next_reference(db, "TST"), test_type=TestType(s.test_type),
                                procedure=s.procedure, created_by=user.id))
             counts["tests"] += 1
+    if not workplan:
+        counts.pop("procedures")
     program.times_used += 1
     if not audit.audit_type and program.audit_type:
         audit.audit_type = program.audit_type
     log_action(db, user_id=user.id, action=f"PROGRAM_APPLY {program.prog_ref} audit={audit_id} {counts}",
                request=request)
+    steps = counts.get("procedures") or counts["tests"]
     log_record_history(db, record_type="audit", record_id=audit_id, user_id=user.id,
-                       action=f"PROGRAMME {program.prog_ref} applied ({counts['tests']} test steps)", request=request)
+                       action=f"PROGRAMME {program.prog_ref} applied ({steps} steps)", request=request)
     db.commit()
     return {"program": program.prog_ref, **counts}

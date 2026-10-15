@@ -93,6 +93,8 @@ def test_client_and_management_responses(client, client2, db):
         "criteria": "Daily banking", "condition": "Banked weekly", "cause": "No courier", "effect": "Loss risk",
         "recommendation": "Bank daily"}, headers=ah).json()
     fid = finding["id"]
+    assert finding["published"] is False
+    assert client.post(f"/api/findings/{fid}/publish", headers=ah).status_code == 200
 
     eh = csrf_headers(login(client2, ee.username))
     # The Head of Department responds; only the audit team confirms it at the exit meeting.

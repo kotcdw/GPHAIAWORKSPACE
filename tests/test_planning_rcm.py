@@ -327,6 +327,10 @@ def test_auditee_cannot_read_rcm_but_can_respond(client, client2, db, people):
 
     client2.cookies.clear()
     ee_h = csrf_headers(login(client2, ee.username))
+    # Unpublished issues are hidden from the auditee until Internal Audit publishes them.
+    assert client2.get(f"/api/findings/{finding['id']}").status_code == 404
+    assert client2.get(f"/api/audits/{audit['id']}/findings").json() == []
+    assert client.post(f"/api/findings/{finding['id']}/publish", headers=aud).status_code == 200
     assert client2.get(f"/api/audits/{audit['id']}/rcm").status_code == 403
     assert client2.get("/api/assurance-plans").status_code == 403
     resp = client2.post(

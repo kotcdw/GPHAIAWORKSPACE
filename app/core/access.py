@@ -126,6 +126,8 @@ def can_view(db: DBSession, user: User, record_type: str, record) -> bool:  # no
     if record_type in ("finding", "working_paper"):
         if getattr(record, "is_deleted", False):
             return False
+        if record_type == "finding" and not getattr(record, "published", True):
+            return False  # unpublished issues are visible to audit staff only (Issue Tracker publish gate)
         return record.audit_id in assigned_audit_ids(db, user)
     if record_type == "nonconformance":
         return _same_email(record.owner_email, user.email) or (
@@ -178,12 +180,15 @@ def _resolve_audit(db: DBSession, name: str, value: int) -> int | None:
 
         r = db.get(AuditReport, value)
         return r.audit_id if r else None
-    if name in ("objective_id", "risk_id", "control_id", "test_id"):
-        from app.domains.audit.rcm.models import Control, ControlTest, Objective, Risk
+    if name in ("objective_id", "risk_id", "control_id", "test_id", "procedure_id"):
+        from app.domains.audit.rcm.models import Control, ControlTest, Objective, Procedure, Risk
 
         obj_id = None
         if name == "objective_id":
             obj_id = value
+        elif name == "procedure_id":
+            p = db.get(Procedure, value)
+            obj_id = p.objective_id if p else None
         elif name == "risk_id":
             r = db.get(Risk, value)
             obj_id = r.objective_id if r else None

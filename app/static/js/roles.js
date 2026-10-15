@@ -29,7 +29,7 @@ function viewAllowed(view) {
     apps: ["system.superadmin"],
     risk: GRC_VIEW_PERMS, compliance: GRC_VIEW_PERMS, policies: GRC_VIEW_PERMS, assets: GRC_VIEW_PERMS,
   };
-  if (["programs", "practice", "library", "scheduler"].includes(view)) return state.user.role !== "Auditee";
+  if (["programs", "practice", "library", "scheduler", "issues"].includes(view)) return state.user.role !== "Auditee";
   if (view === "logs" || view === "backups") return isAdmin() && hasPerm("system.technical");
   return rules[view] ? hasPerm(...rules[view]) : true;
 }
@@ -250,12 +250,15 @@ async function applyProgramDialog(audit, onDone) {
   const pick = el("select", { "aria-label": "Programme" }, ...(preferred.length ? preferred : rows).map((r) =>
     el("option", { value: r.id }, `${r.prog_ref} · ${r.name} (${r.step_count} steps${r.audit_type ? ` · ${r.audit_type}` : ""})`)));
   const m = modal({ title: "Apply an audit programme", body: el("div", null,
-    el("p", { class: "muted small" }, "The programme's objectives, risks, controls and test steps are added to this audit's risk & control matrix. Objectives with the same name are reused."),
+    el("p", { class: "muted small" }, audit.workflow === "Workplan"
+      ? "The programme's objectives and risks are added to this audit's Workplan, and each step becomes a procedure addressing its risk. Objectives with the same name are reused."
+      : "The programme's objectives, risks, controls and test steps are added to this audit's risk & control matrix. Objectives with the same name are reused."),
     field("Programme", pick)),
   footer: el("button", { class: "btn", onclick: async () => {
     try {
       const res = await API.post(`/api/audits/${audit.id}/apply-program/${pick.value}`);
-      toast(`Added ${res.objectives} objective(s), ${res.risks} risk(s), ${res.controls} control(s), ${res.tests} test step(s)`);
+      toast(res.procedures !== undefined ? `Added ${res.objectives} objective(s), ${res.risks} risk(s), ${res.procedures} procedure(s)`
+        : `Added ${res.objectives} objective(s), ${res.risks} risk(s), ${res.controls} control(s), ${res.tests} test step(s)`);
       m.close(); if (onDone) onDone();
     } catch (err) { toast(err.message, "error"); }
   } }, "Apply") });
@@ -268,8 +271,9 @@ function evidenceColumns(withAudit) {
     { key: "request_ref", label: "Ref", render: (r) => el("span", { class: "ref" }, r.request_ref) },
     ...(withAudit ? [{ key: "audit_title", label: "Audit" }] : []),
     { key: "title", label: "Evidence requested" },
-    { key: "assignee_name", label: "From", render: (r) => r.assignee_name || "-" },
-    { key: "due_date", label: "Due", render: (r) => (r.due_date ? el("span", { class: r.overdue ? "text-danger" : null }, fmtDate(r.due_date), r.overdue ? " · overdue" : "") : "-") },
+    { key: "target_label", label: "Linked to", render: (r) => (r.target_label ? el("span", { class: "small" }, el("i", { class: "bi bi-link-45deg", "aria-hidden": "true" }), ` ${r.target_label}`) : el("span", { class: "muted" }, "Audit")) },
+    { key: "assignee_name", label: "Owner", render: (r) => r.assignee_name || "-" },
+    { key: "due_date", label: "Due", render: (r) => (r.due_date ? el("span", { class: r.overdue ? "text-danger" : null }, fmtDay(r.due_date.slice(0, 10)), r.overdue ? " · overdue" : "") : "-") },
     { key: "status", label: "Status", render: (r) => badge(r.status) },
     { key: "files", label: "Files", num: true, render: (r) => String(r.files.length), sortValue: (r) => r.files.length },
   ];
@@ -297,30 +301,9 @@ async function renderEvidenceTab(panelEl, audit, canWrite) {
   try { rows = await API.get(`/api/audits/${audit.id}/evidence-requests`); }
   catch (err) { panelEl.append(el("div", { class: "empty" }, err.message)); return; }
   const add = canWrite && hasPerm("audit.evidence") && audit.status !== "Closed"
-    ? el("button", { class: "btn small", onclick: () => newEvidenceRequest(audit, reload) }, el("i", { class: "bi bi-plus-lg" }), " Request evidence") : null;
+    ? el("button", { class: "btn small", onclick: () => requestEvidenceDialog(audit.id, null, reload) }, el("i", { class: "bi bi-plus-lg" }), " Request evidence") : null;
   panelEl.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Evidence requests"), add),
     dataTable(rows, evidenceColumns(false), { onRow: (r) => evidenceDetail(r, reload), emptyText: "No evidence has been requested for this audit." })));
-}
-
-async function newEvidenceRequest(audit, onDone) {
-  let auditees = [];
-  try { auditees = await API.get(`/api/audits/${audit.id}/auditees`); } catch { /* none */ }
-  if (!auditees.length) { toast("Assign an auditee to this audit first (Overview card)", "error"); return; }
-  openForm({
-    title: "Request evidence", draftable: false,
-    fields: [
-      { name: "title", label: "What is needed", required: true, minLength: 3, maxLength: 255, singleLine: true },
-      { name: "description", label: "Details (period, format, sample)", type: "textarea", maxLength: 8000 },
-      { name: "assignee_id", label: "Requested from", type: "select", required: true,
-        options: auditees.map((a) => ({ value: a.user_id, label: a.full_name || a.username })) },
-      { name: "due_date", label: "Due date", type: "date", notPast: true },
-    ],
-    submitLabel: "Send request",
-    onSubmit: (v) => API.post(`/api/audits/${audit.id}/evidence-requests`, {
-      title: v.title, description: v.description || "", assignee_id: Number(v.assignee_id),
-      due_date: v.due_date ? `${v.due_date}T23:59:00` : null }),
-    onDone: () => { toast("Evidence requested - the auditee has been notified"); onDone(); },
-  });
 }
 
 function evidenceDetail(r, onDone) {
@@ -332,7 +315,9 @@ function evidenceDetail(r, onDone) {
     el("dl", { class: "kv two-col" },
       el("dt", null, "Audit"), el("dd", null, r.audit_title || `#${r.audit_id}`),
       el("dt", null, "Requested by"), el("dd", null, `${r.requested_by_name || "-"} · ${fmtDate(r.requested_at)}`),
-      el("dt", null, "From"), el("dd", null, r.assignee_name || "-"),
+      el("dt", null, "Owner"), el("dd", null, r.assignee_name || "-"),
+      el("dt", null, "Linked to"), el("dd", null, r.target_label || "The audit"),
+      r.cc && r.cc.length ? el("dt", null, "CC") : null, r.cc && r.cc.length ? el("dd", null, r.cc.map((c) => c.name).join(", ")) : null,
       el("dt", null, "Due"), el("dd", null, r.due_date ? fmtDate(r.due_date) : "-", r.overdue ? " (overdue)" : ""),
       el("dt", null, "Status"), el("dd", null, badge(r.status))),
     r.description ? el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Details"), el("div", { class: "lf-value" }, r.description)) : null,
@@ -368,8 +353,19 @@ function evidenceDetail(r, onDone) {
     footer = el("div", { class: "actions" }, el("button", { class: "btn secondary", onclick: decide("Returned") }, "Return for more"),
       el("button", { class: "btn", onclick: decide("Accepted") }, "Accept"));
   } else if (isStaff() && hasPerm("audit.evidence") && ["Requested", "Returned"].includes(r.status)) {
+    const rem = el("select", { class: "compact", "aria-label": "Reminder" },
+      ...[["", "No reminder"], ["Daily", "Daily reminder"], ["Weekly", "Weekly reminder"]].map(([v, l]) => el("option", { value: v, selected: (r.reminder || "") === v ? "1" : null }, l)));
+    rem.addEventListener("change", async () => {
+      try { await API.patch(`/api/evidence-requests/${r.id}/reminder`, { reminder: rem.value || null }); toast("Reminder updated"); } catch (err) { toast(err.message, "error"); }
+    });
+    body.append(el("h4", null, "Notification"), el("div", { class: "actions" }, rem,
+      el("button", { class: "btn small secondary", type: "button", onclick: async () => {
+        try { await API.post(`/api/evidence-requests/${r.id}/remind`); toast("Reminder sent"); } catch (err) { toast(err.message, "error"); }
+      } }, el("i", { class: "bi bi-bell" }), " Send reminder now"),
+      r.last_reminded_at ? el("span", { class: "muted small" }, `Last reminded ${fmtDate(r.last_reminded_at)}`) : null));
     footer = el("button", { class: "btn danger-ghost", onclick: async () => {
-      if (!window.confirm("Cancel this evidence request?")) return;
+      const ok = await confirmDialog({ title: "Cancel evidence request", text: `${r.request_ref} will be cancelled and the owner will no longer be asked for it.`, confirmLabel: "Cancel request", danger: true });
+      if (!ok.ok) return;
       try { await API.post(`/api/evidence-requests/${r.id}/cancel`); toast("Request cancelled"); done(); } catch (err) { toast(err.message, "error"); }
     } }, "Cancel request");
   }

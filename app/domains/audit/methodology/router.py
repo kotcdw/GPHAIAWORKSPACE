@@ -735,6 +735,9 @@ def save_exit_meeting(
     report.exit_meeting_date = payload.meeting_date.replace(tzinfo=None)
     report.exit_meeting_attendees = payload.attendees.strip()
     report.exit_meeting_notes = payload.notes.strip()
+    from app.domains.audit.audits.issue_tracker import publish_audit
+
+    publish_audit(db, report.audit_id, user, request)  # findings discussed at the exit meeting are released
     log_record_history(
         db,
         record_type="audit_report",

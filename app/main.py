@@ -108,6 +108,13 @@ async def _escalation_watcher() -> None:
             db.close()
         db = SessionLocal()
         try:
+            from app.domains.audit.evidence.router import send_due_reminders
+
+            send_due_reminders(db)
+        finally:
+            db.close()
+        db = SessionLocal()
+        try:
             from app.platform.automations.engine import run_scheduled
 
             run_scheduled(db)

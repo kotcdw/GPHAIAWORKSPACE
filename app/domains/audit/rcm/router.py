@@ -145,6 +145,17 @@ def _audit_of(db: DBSession, objective: Objective) -> Audit:
     return _audit_or_404(db, objective.audit_id)
 
 
+def _assignee(db: DBSession, audit: Audit, user_id: int | None) -> int | None:
+    """Work is assigned to a member of the engagement team (0 clears the assignment)."""
+    if not user_id:
+        return None
+    from app.domains.audit.audits.models import AuditTeamMember
+
+    if db.get(AuditTeamMember, (audit.id, user_id)) is None:
+        raise field_error("assigned_to", "assign a member of the engagement team (add them on the audit's team card)")
+    return user_id
+
+
 def _history(db: DBSession, audit_id: int, user: User, action: str, request: Request) -> None:
     log_record_history(db, record_type="audit", record_id=audit_id, user_id=user.id, action=action, request=request)
 
@@ -179,16 +190,14 @@ def recommended_sample(frequency: ControlFrequency, nature: ControlNature, test_
         return 1, "Walkthroughs and tests of design examine one instance of the control"
     if nature == ControlNature.Automated:
         return 1, "Automated control: test one instance, relying on effective IT general controls"
-    table = {
-        ControlFrequency.Annual: 1,
-        ControlFrequency.Quarterly: 2,
-        ControlFrequency.Monthly: 3,
-        ControlFrequency.Weekly: 10,
-        ControlFrequency.Daily: 25,
-        ControlFrequency.MultipleDaily: 40,
-        ControlFrequency.AdHoc: 25,
-    }
-    return table[frequency], f"{frequency.value} manual control (common guidance range for tests of controls)"
+    from app.core.appconfig import parse_sample_sizes
+
+    try:
+        table = parse_sample_sizes(cfg("sample_sizes_by_frequency"))
+    except ValueError:
+        table = {}
+    size = table.get(frequency.value, 1)
+    return size, f"{frequency.value} manual control (Configuration > Audit methodology > default sample sizes)"
 
 
 def _risk_out(risk: Risk) -> RiskOut:
@@ -403,7 +412,10 @@ def create_control(
     objective_id: int, payload: ControlIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
 ) -> ControlOut:
     obj = _objective(db, objective_id)
-    _ensure_open(_audit_of(db, obj))
+    audit = _audit_of(db, obj)
+    _ensure_open(audit)
+    if audit.workflow == "Workplan":
+        raise _conflict("This audit uses the Workplan workflow; add procedures instead of controls")
     data = payload.model_dump(exclude={"risk_ids"})
     control = Control(objective_id=obj.id, ref=next_reference(db, "CTL"), created_by=user.id, **data)
     db.add(control)
@@ -471,11 +483,22 @@ def create_test(
 ) -> ControlTest:
     control = _control(db, control_id)
     _ensure_open(_audit_of(db, control.objective))
+    audit = _audit_of(db, control.objective)
+    round_no = None
+    if payload.test_type == TestType.OperatingEffectiveness:
+        round_no = payload.round_no or 1
+        if round_no > audit.testing_rounds:
+            raise field_error("round_no", f"this audit has {audit.testing_rounds} testing round(s)")
+        if any(t.round_no == round_no and t.test_type == TestType.OperatingEffectiveness for t in control.tests):
+            raise _conflict(f"{control.ref} already has a test in round {round_no}")
     test = ControlTest(
         control_id=control.id,
         ref=next_reference(db, "TST"),
         test_type=payload.test_type,
-        procedure=payload.procedure,
+        procedure=payload.procedure or (control.test_steps or ""),
+        round_no=round_no,
+        assigned_to=_assignee(db, audit, payload.assigned_to),
+        sample_size=control.total_sample_size if round_no else None,
         created_by=user.id,
     )
     db.add(test)
@@ -557,6 +580,10 @@ def update_test(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Use the reviewer sign-off to mark a test Reviewed"
         )
     changes = payload.model_dump(exclude_none=True)
+    if "assigned_to" in changes:
+        changes["assigned_to"] = _assignee(db, _audit_of(db, test.control.objective), payload.assigned_to)
+    if changes.get("in_scope") is False and test.status != TestStatus.NotStarted:
+        raise field_error("in_scope", "testing has started; complete the test instead of taking it out of scope")
     for key, value in changes.items():
         if key != "status":
             setattr(test, key, value)

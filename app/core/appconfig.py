@@ -122,6 +122,19 @@ RULES: list[Rule] = [
          "One per line. Used on audits, programmes and in analytics.",
          default=["Financial", "Compliance", "Operational", "Information Technology", "Performance / Value for Money",
                   "Special investigation", "Follow-up"]),
+    Rule("workplan_audit_types", "Audit types that use the Workplan workflow", "Audit methodology", "list",
+         "One per line. New audits of these types run on procedures (Objectives > Risks > Procedures > Execute). "
+         "Other types use the Internal Control workflow (risk & control matrix, walkthroughs, testing rounds). The "
+         "lead can switch an audit's workflow while it has no procedures or controls.",
+         default=["Financial", "Operational", "Performance / Value for Money", "Special investigation", "Follow-up"],
+         allow_empty=True),
+    Rule("sample_sizes_by_frequency", "Default sample size for tests of operating effectiveness, by control frequency",
+         "Audit methodology", "list", "One per line as Frequency=Size, for example Monthly=3. Used as the suggested "
+         "sample in testing rounds and when drawing a sample; the auditor can change it on each test.",
+         default=["Annual=1", "Quarterly=2", "Monthly=3", "Weekly=10", "Daily=25", "Multiple Daily=40", "Ad Hoc=25"]),
+    Rule("finding_issue_types", "Issue types", "Audit methodology", "list",
+         "One per line. Offered on every finding and used by the Issue Tracker charts.",
+         default=["Deficiency", "Significant Deficiency", "Material Weakness", "Management Recommendation"]),
     Rule("risk_high_threshold", "Inherent risk score (likelihood x impact) from which a unit is High risk",
          "Plan configuration", "int", default=15, min=2, max=25),
     Rule("risk_medium_threshold", "Inherent risk score from which a unit is Medium risk", "Plan configuration", "int",
@@ -346,6 +359,22 @@ def cfg(key: str) -> Any:
     return saved[key] if key in saved else rule.default_value()
 
 
+def parse_sample_sizes(entries: list[str]) -> dict[str, int]:
+    """Read "Frequency=Size" lines; raise ValueError naming the first bad line."""
+    from app.core.enums import ControlFrequency
+
+    names = {f.value.lower(): f.value for f in ControlFrequency}
+    sizes: dict[str, int] = {}
+    for entry in entries:
+        name, sep, size = entry.partition("=")
+        key = names.get(name.strip().lower())
+        if not sep or key is None or not size.strip().isdigit() or not 1 <= int(size) <= 1000:
+            raise ValueError(f"'{entry}' must look like Monthly=3 (frequencies: {', '.join(names.values())}; "
+                             "sizes 1 to 1000)")
+        sizes[key] = int(size)
+    return sizes
+
+
 def validate(rule: Rule, value: Any) -> Any:
     """Coerce and check a submitted value; raise ValueError with a plain message."""
     if rule.kind == "bool":
@@ -388,6 +417,8 @@ def validate(rule: Rule, value: Any) -> Any:
                 raise ValueError(f"unknown entr{'y' if len(bad) == 1 else 'ies'}: {', '.join(bad)} "
                                  f"(use {', '.join(rule.options)})")
             clean = sorted((canon[c.lower()] for c in clean), key=rule.options.index)
+        if rule.key == "sample_sizes_by_frequency":
+            parse_sample_sizes(clean)
         if len(clean) > 100:
             raise ValueError("enter at most 100 entries")
         return clean

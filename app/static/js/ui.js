@@ -174,7 +174,8 @@ function filterBar({ search = true, placeholder = "Search list…", filters = []
 // opts: {
 //   url: "/api/audits/register", columns: [{ key, label, render?(row), sort?: true|"key", num?, hidden?, csv?(row) }],
 //   filters: [...filterBar filters], defaultSort: "-updated_at", pageSize: 25, onRow(row), exportName,
-//   storageKey: "audits", emptyTitle, emptyText, emptyAction, params: {fixed query params}
+//   storageKey: "audits", emptyTitle, emptyText, emptyAction, params: {fixed query params},
+//   values: {initial filter values}, onFilter(values) (e.g. to refresh charts that follow the list filters)
 // }
 function serverTable(opts) {
   const { url, columns, filters = [], defaultSort = null, onRow = null, exportName = null, storageKey = url,
@@ -185,7 +186,8 @@ function serverTable(opts) {
   let last = null;
   let seq = 0;
 
-  const fb = filterBar({ filters, onChange: (v) => { q.values = v; q.page = 1; load(); } });
+  const fb = filterBar({ filters, values: opts.values || {}, onChange: (v) => { q.values = v; q.page = 1; load(); if (opts.onFilter) opts.onFilter(v); } });
+  if (opts.values) q.values = { ...opts.values };
   const colsBtn = el("button", { class: "btn small secondary", type: "button", "aria-haspopup": "true", title: "Choose columns",
     onclick: () => openColumnChooser() }, el("i", { class: "bi bi-layout-three-columns" }), " Columns");
   const exportBtns = exportName ? [

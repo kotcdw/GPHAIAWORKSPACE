@@ -29,6 +29,12 @@ class EvidenceRequest(Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # What the request supports (HighBond request target): control_test, procedure, finding or working_paper.
+    target_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cc_user_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of user ids copied in
+    reminder: Mapped[str | None] = mapped_column(String(20), nullable=True)  # None, "Daily", "Weekly"
+    last_reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     files: Mapped[list[EvidenceFile]] = relationship(back_populates="request", order_by="EvidenceFile.id",
                                                      cascade="all, delete-orphan")
