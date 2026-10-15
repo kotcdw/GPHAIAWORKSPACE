@@ -18,11 +18,6 @@ function appEnabledForView(view) {
   return !a || a.enabled;
 }
 
-function appLabel(view, fallback) {
-  const a = APPS.byView[view];
-  return a ? a.label : fallback;
-}
-
 async function applyAppCustomization() {
   await loadAppCustomization();
   document.querySelectorAll("#sidebarNav button[data-view]").forEach((b) => {

@@ -62,6 +62,9 @@ RULES: list[Rule] = [
     Rule("require_findings_actioned_to_close", "Require every finding to have a management response and, for High "
          "and Medium risk, an agreed action before closing", "Audit workflow", "bool",
          default_attr="require_findings_actioned_to_close"),
+    Rule("management_response_requires_owner_and_date", "A management response must name the responsible officer "
+         "and a target date", "Audit workflow", "bool", "As in the GPHA working paper template: Action Plan, "
+         "Responsible Officer and Target Date.", default=True),
     Rule("require_management_response_for_review", "Require a management response on every finding before the "
          "report goes to Audit Manager review", "Audit workflow", "bool", default=True),
     Rule("require_memo_approval_for_fieldwork", "Require an approved planning memo before fieldwork starts",
@@ -75,6 +78,9 @@ RULES: list[Rule] = [
          "In order, one per line: Unit Head, Audit Manager, PIA. A working paper is reviewed when every level has "
          "signed it off. Leave empty to let any reviewer sign it off once.", default_attr="workpaper_review_chain",
          options=["Unit Head", "Audit Manager", "PIA"], allow_empty=True),
+    Rule("working_paper_locations", "Working paper locations", "Audit workflow", "list",
+         "The sites offered in the Location field of the GPHA working paper template, one per line.",
+         default_attr="working_paper_locations"),
     Rule("review_higher_level_may_cover", "A higher review level may sign for an absent lower level", "Audit workflow",
          "bool", "For example a PIA may sign the Unit Head stage when a unit has no Unit Head. Nobody signs two "
          "stages of the same document.", default=True),

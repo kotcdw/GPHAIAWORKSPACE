@@ -115,7 +115,8 @@ def test_report_review_chain_and_exports(client, client2, db):
     assert (
         client2.post(
             f"/api/findings/{finding['id']}/response",
-            json={"management_response": "Leavers removed; HR checklist updated."},
+            json={"management_response": "Leavers removed; HR checklist updated.", "responsible_officer": "HR Manager",
+                  "target_date": "2026-12-31"},
             headers=ah,
         ).status_code
         == 200

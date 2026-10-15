@@ -332,5 +332,11 @@ def test_auditee_cannot_read_rcm_but_can_respond(client, client2, db, people):
     resp = client2.post(
         f"/api/findings/{finding['id']}/response", json={"management_response": "We agree; fix by Q4"}, headers=ee_h
     )
+    assert resp.status_code == 422 and resp.json()["errors"][0]["field"] == "responsible_officer"
+    resp = client2.post(
+        f"/api/findings/{finding['id']}/response",
+        json={"management_response": "We agree; fix by Q4", "responsible_officer": "Head of Finance",
+              "target_date": "2026-12-15"}, headers=ee_h,
+    )
     assert resp.status_code == 200, resp.text
     assert resp.json()["management_response"] == "We agree; fix by Q4"

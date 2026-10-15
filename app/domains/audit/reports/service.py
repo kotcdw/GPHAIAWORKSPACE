@@ -49,7 +49,11 @@ def live_findings(db: DBSession, audit_id: int) -> list[dict]:
                 "cause": f.cause or "",
                 "effect": f.effect or "",
                 "recommendation": f.recommendation or "",
+                "client_response": (f.client_response or "")
+                + (" (confirmed at the exit meeting)" if f.client_response and f.client_confirmed_at_exit else ""),
                 "management_response": f.management_response or "",
+                "responsible_officer": f.responsible_officer or "",
+                "target_date": _fmt(f.target_date) if f.target_date else "",
                 "owner": f.assigned_owner_email or "",
                 "actions": [
                     {"ref": c.capa_ref, "owner": c.owner_email or "", "due": _fmt(c.due_date), "status": c.status.value}
@@ -159,7 +163,10 @@ def to_docx(db: DBSession, report: AuditReport) -> bytes:
             ("Cause", "cause"),
             ("Effect", "effect"),
             ("Recommendation", "recommendation"),
-            ("Management response", "management_response"),
+            ("Audit client response", "client_response"),
+            ("Management response - action plan", "management_response"),
+            ("Responsible officer", "responsible_officer"),
+            ("Target date", "target_date"),
         ):
             p = doc.add_paragraph()
             p.add_run(f"{label}: ").bold = True
@@ -225,7 +232,9 @@ def to_html(db: DBSession, report: AuditReport) -> str:
                 f"<dt>{label}</dt><dd>{e(f[key]) or 'Not provided.'}</dd>"
                 for label, key in (
                     ("Criteria", "criteria"), ("Condition", "condition"), ("Cause", "cause"), ("Effect", "effect"),
-                    ("Recommendation", "recommendation"), ("Management response", "management_response"),
+                    ("Recommendation", "recommendation"), ("Audit client response", "client_response"),
+                    ("Management response - action plan", "management_response"),
+                    ("Responsible officer", "responsible_officer"), ("Target date", "target_date"),
                 )
             )
             + (f"<dt>Agreed actions</dt><dd>{e(actions)}</dd>" if actions else "")

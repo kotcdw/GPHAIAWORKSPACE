@@ -21,12 +21,12 @@ from app.core.access import ensure_can_view
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_active_user, require_module_tier, require_perm
-from app.core.enums import AuditStatus, EngagementStatus, PlanStatus, ReportStatus, ReviewLevel, Role, utcnow
+from app.core.enums import AuditStatus, PlanStatus, ReportStatus, ReviewLevel, Role, utcnow
 from app.core.errors import field_error
 from app.core.history import log_record_history
 from app.core.permissions import has_perm, job_role_of
 from app.core.refs import next_reference
-from app.domains.assurance.planning.models import AssurancePlan, PlanChange, PlanEngagement
+from app.domains.assurance.planning.models import AssurancePlan, PlanChange
 from app.domains.audit.audits.models import Audit, Finding, WorkingPaper
 from app.domains.audit.methodology.models import CRITERIA_SOURCES, Criterion, ReviewNote
 from app.platform.notifications.service import notify
@@ -40,13 +40,6 @@ AdminOnly = Depends(require_perm("plan.amend"))
 def _name(db: DBSession, uid: int | None) -> str | None:
     u = db.get(User, uid) if uid else None
     return (u.full_name or u.username) if u else None
-
-
-def _reason(text: str) -> str:
-    text = (text or "").strip()
-    if len(text) < 10:
-        raise field_error("reason", "explain the change (at least 10 characters)")
-    return text
 
 
 # ==================================================================== plan: committee approval + changes
@@ -165,94 +158,14 @@ def record_committee_approval(
     return {"message": "Audit Committee approval recorded", "committee_reference": plan.committee_reference}
 
 
-class AmendAddIn(BaseModel):
-    title: str = Field(..., min_length=1, max_length=255)
-    entity_unit_id: int | None = None
-    rationale: str = Field("", max_length=5000)
-    planned_quarter: str = Field("Q1", pattern=r"^Q[1-4]$")
-    budget_hours: int = Field(0, ge=0, le=10000)
-    lead_auditor_id: int | None = None
-    reason: str = Field(..., max_length=2000)
+_USE_CHANGE_REQUEST = "Approved plans are changed through a plan change request (reason, impact, review and approval)"
 
 
-@router.post("/api/assurance-plans/{plan_id}/amendments", status_code=status.HTTP_201_CREATED)
-def amend_add(
-    plan_id: int, payload: AmendAddIn, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
-) -> dict:
-    """Superseded by plan change requests (app.domains.assurance.plancycle.changes); answers old clients clearly."""
-    plan = _plan(db, plan_id)
-    if plan.status != PlanStatus.Approved:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Use the normal Add engagement while the plan is a draft"
-        )
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail="Approved plans are changed through a plan change request (reason, impact, review and approval)",
-    )
-    reason = _reason(payload.reason)
-    data = payload.model_dump(exclude={"reason"})
-    eng = PlanEngagement(plan_id=plan.id, created_by=user.id, **data)
-    db.add(eng)
-    db.flush()
-    _log_change(
-        db,
-        plan,
-        user,
-        "Added",
-        f"{eng.title} ({eng.planned_quarter}, {eng.budget_hours}h) added",
-        reason,
-        request,
-        eng.id,
-    )
-    log_action(db, user_id=user.id, action=f"PLAN_AMEND_ADD plan={plan.id} eng={eng.id}", request=request)
-    db.commit()
-    return {"id": eng.id, "message": "Engagement added to the approved plan"}
-
-
-class AmendChangeIn(BaseModel):
-    planned_quarter: str | None = Field(None, pattern=r"^Q[1-4]$")
-    budget_hours: int | None = Field(None, ge=0, le=10000)
-    lead_auditor_id: int | None = None
-    reason: str = Field(..., max_length=2000)
-
-
-@router.post("/api/plan-engagements/{eng_id}/amend")
-def amend_change(
-    eng_id: int, payload: AmendChangeIn, request: Request, db: DBSession = Depends(get_db), user: User = AdminOnly
-) -> dict:
-    """Re-time, re-budget or re-assign an engagement of an approved plan, with a documented reason."""
-    eng = db.get(PlanEngagement, eng_id)
-    if eng is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Engagement not found")
-    plan = _plan(db, eng.plan_id)
-    if plan.status != PlanStatus.Approved:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Edit the engagement directly in a draft plan")
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail="Approved plans are changed through a plan change request (reason, impact, review and approval)",
-    )
-    if eng.status == EngagementStatus.Cancelled:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The engagement is cancelled")
-    reason = _reason(payload.reason)
-    parts = []
-    if payload.planned_quarter and payload.planned_quarter != eng.planned_quarter:
-        parts.append(f"quarter {eng.planned_quarter} -> {payload.planned_quarter}")
-        eng.planned_quarter = payload.planned_quarter
-    if payload.budget_hours is not None and payload.budget_hours != eng.budget_hours:
-        parts.append(f"budget {eng.budget_hours}h -> {payload.budget_hours}h")
-        eng.budget_hours = payload.budget_hours
-    if "lead_auditor_id" in payload.model_fields_set and payload.lead_auditor_id != eng.lead_auditor_id:
-        if payload.lead_auditor_id is not None and db.get(User, payload.lead_auditor_id) is None:
-            raise field_error("lead_auditor_id", "is not a known user")
-        old, new = _name(db, eng.lead_auditor_id) or "none", _name(db, payload.lead_auditor_id) or "none"
-        parts.append(f"lead {old} -> {new}")
-        eng.lead_auditor_id = payload.lead_auditor_id
-    if not parts:
-        raise field_error("form", "nothing changed")
-    _log_change(db, plan, user, "Changed", f"{eng.title}: {', '.join(parts)}", reason, request, eng.id)
-    log_action(db, user_id=user.id, action=f"PLAN_AMEND_CHANGE eng={eng.id}", request=request)
-    db.commit()
-    return {"message": "Engagement changed", "changes": parts}
+@router.post("/api/assurance-plans/{plan_id}/amendments")
+@router.post("/api/plan-engagements/{plan_id}/amend")
+def retired_direct_amendment(plan_id: int, user: User = AdminOnly) -> dict:
+    """Direct edits of an approved plan were replaced by plan change requests (assurance.plancycle.changes)."""
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_USE_CHANGE_REQUEST)
 
 
 @router.get("/api/assurance-plans/{plan_id}/changes", response_model=list[ChangeOut])

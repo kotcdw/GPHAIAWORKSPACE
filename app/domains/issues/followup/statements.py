@@ -94,7 +94,8 @@ def recommendation_rows(db: DBSession, start: datetime, end: datetime) -> list[d
             "management_response": "\n".join(x for x in (
                 finding.management_response if finding else "", c.corrective_action if finding else "",
                 c.progress_note or "") if x),
-            "responsible_officer": c.owner_email or "",
+            "responsible_officer": (finding.responsible_officer if finding and finding.responsible_officer
+                                    else c.owner_email) or "",
             "timeframe": c.timeframe or "", "due_date": _fmt(c.due_date),
             "status": c.implementation_status or "Not Implemented",
             "iau_comment": "\n".join(x for x in (c.followup_comment or "", c.validation_comment or "",

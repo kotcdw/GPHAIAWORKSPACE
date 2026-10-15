@@ -611,7 +611,17 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     { name: "root_cause_whys", label: "Root cause - 5 Whys", type: "whys", disabled: ro },
     { name: "description", label: "Additional notes", type: "textarea", maxLength: 20000, disabled: ro },
     ...cfDefs,
-    ...(isNew ? [] : [{ name: "management_response", label: "Management response (auditee / process owner)", type: "textarea", maxLength: 10000 }]),
+    ...(isNew ? [] : [
+      { type: "heading", label: "Responses (GPHA working paper template)" },
+      { name: "client_response", label: "Audit client response (Head of Department)", type: "textarea", maxLength: 10000, full: true,
+        disabled: !canWrite && f.client_confirmed_at_exit,
+        help: f.client_confirmed_at_exit ? "Confirmed at the exit meeting" : "As captured and confirmed at the exit meeting" },
+      ...(canWrite ? [{ name: "client_confirmed_at_exit", label: "Confirmed at the exit meeting", type: "checkbox" }] : []),
+      { name: "management_response", label: "Management response - action plan", type: "textarea", maxLength: 10000, full: true },
+      { name: "responsible_officer", label: "Responsible officer", maxLength: 255, singleLine: true,
+        help: "Name, or e-mail to make them the owner of the corrective action" },
+      { name: "target_date", label: "Target date", type: "date" },
+    ]),
   ];
   const raiseAction = !isNew && canWrite ? el("button", { class: "btn secondary", type: "button", onclick: async () => {
     try { const c = await API.post(`/api/findings/${f.id}/raise-action`); toast(`Action ${c.capa_ref} raised`); document.querySelector(".modal-backdrop")?.remove(); onSaved(); }
@@ -630,19 +640,33 @@ async function issueForm(f, auditId, canWrite, onSaved) {
       ? { condition: "Document the condition (or recommendation) before closing the issue" } : {}),
     submitLabel: isNew ? "Create" : "Save",
     onSubmit: async (v) => {
+      const { management_response: response, responsible_officer: officer, target_date: target,
+        client_response: clientText, client_confirmed_at_exit: confirmed, ...all } = v;
+      const saveResponses = async () => {
+        const text = (clientText || "").trim();
+        if (text && (text !== (f.client_response || "") || (canWrite && !!confirmed !== !!f.client_confirmed_at_exit))) {
+          await API.post(`/api/findings/${f.id}/client-response`, { client_response: text, confirmed_at_exit: canWrite ? !!confirmed : false });
+        }
+        const plan = (response || "").trim();
+        const changed = plan !== (f.management_response || "") || (officer || "") !== (f.responsible_officer || "")
+          || (target || "") !== (f.target_date || "").slice(0, 10);
+        if (plan && changed) {
+          return API.post(`/api/findings/${f.id}/response`, { management_response: plan, responsible_officer: (officer || "").trim() || null, target_date: target || null });
+        }
+        return null;
+      };
       if (respondOnly) {
-        if (!(v.management_response || "").trim()) throw Object.assign(new Error("Enter a response"), { errors: [{ field: "management_response", message: "Enter your response" }] });
-        return API.post(`/api/findings/${f.id}/response`, { management_response: v.management_response.trim() });
+        if (!(clientText || "").trim() && !(response || "").trim()) {
+          throw Object.assign(new Error("Enter a response"), { errors: [{ field: "client_response", message: "Enter your response or an action plan" }] });
+        }
+        return (await saveResponses()) || f;
       }
-      const { management_response: response, ...all } = v;
       const rest = {};
       const custom = {};
       Object.entries(all).forEach(([k, x]) => { if (k.startsWith("cf_")) custom[k.slice(3)] = x === "" ? null : x; else rest[k] = x; });
       const body = { ...rest, assigned_owner_email: rest.assigned_owner_email || null, ...(cfDefs.length ? { custom_fields: custom } : {}) };
       const saved = isNew ? await API.post(`/api/audits/${auditId}/findings`, body) : await API.patch(`/api/findings/${f.id}`, body);
-      if (!isNew && (response || "").trim() && response !== (f.management_response || "")) {
-        await API.post(`/api/findings/${f.id}/response`, { management_response: response.trim() });
-      }
+      if (!isNew) await saveResponses();
       return saved;
     },
     onDone: () => { toast(isNew ? "Finding created" : "Issue saved"); onSaved(); },

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 from app.core.enums import ApprovalStatus, AuditStatus, FindingStatus, RiskRating
 from app.core.schemas import ORMModel
@@ -100,7 +100,18 @@ class FindingUpdate(BaseModel):
 
 
 class ManagementResponse(BaseModel):
-    management_response: str = Field(min_length=1, max_length=10000)
+    """GPHA Management Response: Action Plan, Responsible Officer and Target Date."""
+
+    management_response: str = Field(min_length=1, max_length=10000)  # the action plan
+    responsible_officer: str | None = Field(default=None, max_length=255)
+    target_date: date | None = None
+
+
+class ClientResponse(BaseModel):
+    """The Audit Client (Head of Department) response, optionally confirmed at the exit meeting."""
+
+    client_response: str = Field(min_length=1, max_length=10000)
+    confirmed_at_exit: bool = False
 
 
 class FindingOut(ORMModel):
@@ -120,6 +131,12 @@ class FindingOut(ORMModel):
     recommendation: str | None = ""
     root_cause_whys: list[str] = []
     management_response: str | None = ""
+    responsible_officer: str | None = None
+    target_date: datetime | None = None
+    management_response_at: datetime | None = None
+    client_response: str | None = None
+    client_response_at: datetime | None = None
+    client_confirmed_at_exit: bool = False
     criterion_id: int | None = None
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None
@@ -169,6 +186,19 @@ class WorkingPaperOut(ORMModel):
     reviewed_at: datetime | None = None
     review_stage: str | None = None
     review_trail: list[dict] = []
+    template: str | None = Field(default=None, exclude=True)
+
+    @computed_field
+    @property
+    def has_file(self) -> bool:
+        return bool(self.file_path)
+
+    @computed_field
+    @property
+    def form_filled(self) -> int:
+        from app.domains.audit.audits import wp_template
+
+        return wp_template.completeness(wp_template.load(self.template))[0]
 
     @field_validator("review_trail", mode="before")
     @classmethod

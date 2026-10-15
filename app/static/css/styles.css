@@ -982,3 +982,16 @@ button.btn.tiny { padding: 2px 8px; font-size: 11.5px; }
 .badge-role-admin { background: #8e4ec61f; color: #c9a6f2; border-color: #8e4ec655; }
 .badge-role-manager, .badge-role-auditor { background: #2f6fed22; color: #9dbcff; border-color: #2f6fed44; }
 .badge-role-audit_client { background: #f5a5241a; color: #f7c35c; border-color: #f5a52444; }
+
+/* GPHA working paper template */
+.wp-doc { font-size: 14px; }
+.wp-doc-head { text-align: center; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px; }
+.wp-doc h4 { margin: 16px 0 6px; }
+.wp-admin { width: 100%; border-collapse: collapse; }
+.wp-admin th { text-align: left; width: 32%; color: var(--muted); font-weight: 500; padding: 4px 8px 4px 0; vertical-align: top; }
+.wp-admin td { padding: 4px 0; }
+.wp-sec { border-top: 1px solid var(--border); padding: 8px 0; }
+.wp-sec h5 { margin: 0 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.wp-val { white-space: pre-wrap; }
+.form-banner.warn { background: #f5a52414; border: 1px solid #f5a52466; }
+#printArea { display: none; }

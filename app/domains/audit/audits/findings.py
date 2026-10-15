@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -12,11 +13,18 @@ from app.core.access import ensure_can_view
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import require_active_user, require_role
-from app.core.enums import AuditStatus, FindingStatus, Role
+from app.core.enums import AuditStatus, CapaStatus, FindingStatus, Role
+from app.core.errors import field_error
 from app.core.history import log_record_history
 from app.core.schemas import MessageOut
 from app.domains.audit.audits.models import Audit, Finding
-from app.domains.audit.audits.schemas import FindingCreate, FindingOut, FindingUpdate, ManagementResponse
+from app.domains.audit.audits.schemas import (
+    ClientResponse,
+    FindingCreate,
+    FindingOut,
+    FindingUpdate,
+    ManagementResponse,
+)
 from app.platform.users.models import User
 
 router = APIRouter(tags=["findings"])
@@ -236,13 +244,25 @@ def respond_to_finding(
     db: DBSession = Depends(get_db),
     user: User = Depends(require_active_user),
 ) -> Finding:
-    """Management response to an issue - typically entered by the auditee."""
+    """GPHA Management Response (action plan, responsible officer, target date) - typically from the auditee."""
+    from app.core.appconfig import cfg
+    from app.core.enums import ReportStatus, utcnow
+    from app.domains.audit.reports.models import AuditReport
+
     finding = db.get(Finding, finding_id)
     ensure_can_view(db, user, "finding", finding)
     _ensure_audit_open(_get_audit_or_404(db, finding.audit_id))
-    finding.management_response = payload.management_response
-    from app.core.enums import ReportStatus, utcnow
-    from app.domains.audit.reports.models import AuditReport
+    officer = (payload.responsible_officer or "").strip() or None
+    if cfg("management_response_requires_owner_and_date"):
+        if not officer:
+            raise field_error("responsible_officer", "name the officer responsible for the action plan")
+        if payload.target_date is None:
+            raise field_error("target_date", "give the date by which the action will be implemented")
+    finding.management_response = payload.management_response.strip()
+    finding.responsible_officer = officer
+    finding.target_date = datetime.combine(payload.target_date, time()) if payload.target_date else None
+    finding.management_response_by, finding.management_response_at = user.id, utcnow()
+    synced = _sync_action(db, finding, user, request)
 
     report = db.execute(select(AuditReport).where(AuditReport.audit_id == finding.audit_id)).scalars().first()
     if report is not None and report.status == ReportStatus.ManagementReview and report.response_received_at is None:
@@ -253,8 +273,65 @@ def respond_to_finding(
         record_type="audit",
         record_id=finding.audit_id,
         user_id=user.id,
-        action=f"MANAGEMENT RESPONSE on finding #{finding.id} by {user.username}",
+        action=f"MANAGEMENT RESPONSE on finding #{finding.id} by {user.username}"
+        + (f" (officer {officer}, target {payload.target_date})" if officer or payload.target_date else "")
+        + (f"; action {synced} updated" if synced else ""),
         request=request,
+    )
+    db.commit()
+    db.refresh(finding)
+    return finding
+
+
+def _sync_action(db: DBSession, finding: Finding, user: User, request: Request) -> str | None:
+    """Carry an updated action plan / officer / target date onto the finding's open corrective action."""
+    from app.domains.issues.capa.models import Capa
+
+    capa = db.execute(
+        select(Capa).where(Capa.source_type == "finding", Capa.source_id == finding.id)
+    ).scalars().first()
+    if capa is None or capa.status == CapaStatus.Closed or capa.implemented_at is not None:
+        return None
+    capa.corrective_action = finding.management_response or capa.corrective_action
+    if finding.target_date:
+        capa.due_date = finding.target_date
+    if finding.responsible_officer and "@" in finding.responsible_officer:
+        capa.owner_email = finding.responsible_officer
+    log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id, request=request,
+                       action=f"UPDATED from the management response on issue #{finding.id}")
+    return capa.capa_ref
+
+
+@router.post("/api/findings/{finding_id}/client-response", response_model=FindingOut)
+def client_response(
+    finding_id: int,
+    payload: ClientResponse,
+    request: Request,
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_active_user),
+) -> Finding:
+    """The Audit Client (Head of Department) response. Audit staff confirm it at the exit meeting; once confirmed,
+    only audit staff can change it (and must confirm it again)."""
+    from app.core.enums import utcnow
+
+    finding = db.get(Finding, finding_id)
+    ensure_can_view(db, user, "finding", finding)
+    _ensure_audit_open(_get_audit_or_404(db, finding.audit_id))
+    staff = user.role in (Role.Admin, Role.Auditor)
+    if finding.client_confirmed_at_exit and not staff:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="This response was confirmed at the exit meeting; ask the audit team to change it")
+    if payload.confirmed_at_exit and not staff:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="The audit team confirms responses at the exit meeting")
+    finding.client_response = payload.client_response.strip()
+    finding.client_response_by, finding.client_response_at = user.id, utcnow()
+    finding.client_confirmed_at_exit = bool(payload.confirmed_at_exit)
+    log_action(db, user_id=user.id, action=f"FINDING_CLIENT_RESPONSE id={finding.id}", request=request)
+    log_record_history(
+        db, record_type="audit", record_id=finding.audit_id, user_id=user.id, request=request,
+        action=f"AUDIT CLIENT RESPONSE on finding #{finding.id} by {user.username}"
+        + (" (confirmed at the exit meeting)" if finding.client_confirmed_at_exit else ""),
     )
     db.commit()
     db.refresh(finding)

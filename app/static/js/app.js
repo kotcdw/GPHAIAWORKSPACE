@@ -93,38 +93,6 @@ function field(labelText, input) {
   return el("div", null, el("label", null, labelText), input);
 }
 
-function inputFor(fieldDef, value) {
-  const attrs = { id: `fld-${fieldDef.key}` };
-  if (fieldDef.type === "textarea") {
-    const t = el("textarea", attrs);
-    t.value = value ?? "";
-    return t;
-  }
-  let node;
-  if (fieldDef.type === "select") {
-    node = el("select", attrs, ...(fieldDef.options || []).map((o) =>
-      el("option", { value: o, selected: o === value ? "1" : null }, o)));
-  } else {
-    node = el("input", { ...attrs, type: fieldDef.type || "text" });
-    if (value !== undefined && value !== null) node.value = value;
-  }
-  return node;
-}
-
-function readForm(fields) {
-  const out = {};
-  fields.forEach((f) => {
-    const node = qs(`#fld-${f.key}`);
-    if (!node) return;
-    let v = node.value;
-    if (typeof v === "string") v = v.trim();
-    if (v === "") v = null;
-    if (f.type === "number" && v !== null) v = Number(v);
-    out[f.key] = v;
-  });
-  return out;
-}
-
 // Electronic-signature modal. Signs via a module endpoint (pathOverride) or the
 // generic /api/approvals/sign endpoint.
 function eSignModal({ title, recordType, recordId, pathOverride, actionLabel = "Sign & Approve", onDone, allowReject = false }) {
@@ -1554,13 +1522,17 @@ async function renderFindings(panel, id, canWrite) {
   if (!findings.length) card.append(el("div", { class: "empty" }, "No findings recorded."));
   else card.append(el("table", null,
     el("thead", null, el("tr", null, el("th", null, "#"), el("th", null, "Issue"), el("th", null, "Risk"), el("th", null, "Status"),
-      el("th", null, "Owner"), el("th", null, "Mgmt response"))),
+      el("th", null, "Owner"), el("th", null, "Responses"))),
     el("tbody", null, ...findings.map((f) => el("tr", { onclick: () => issueForm(f, id, canWrite, () => openAudit(id)), title: "Open issue" },
       el("td", { class: "ref" }, `#${f.id}`),
       el("td", null, f.title, f.control_id ? el("span", { class: "muted" }, " (from control test)") : null),
       el("td", null, badge(f.risk_rating)),
       el("td", null, badge(f.status)), el("td", { class: "muted" }, f.assigned_owner_email || "-"),
-      el("td", null, f.management_response ? badge("Received") : badge("Awaited")))))));
+      el("td", null, el("span", { class: "chips" },
+        el("span", { class: `chip-mini ${f.client_response ? "ok" : ""}`, title: f.client_confirmed_at_exit ? "Confirmed at the exit meeting" : "Audit client response" },
+          el("i", { class: `bi ${f.client_confirmed_at_exit ? "bi-check2-all" : f.client_response ? "bi-check2" : "bi-hourglass"}` }), " Client"),
+        el("span", { class: `chip-mini ${f.management_response ? "ok" : ""}`, title: f.management_response ? `${f.responsible_officer || "-"} · ${f.target_date ? fmtDate(f.target_date) : "no date"}` : "Management response awaited" },
+          el("i", { class: `bi ${f.management_response ? "bi-check2" : "bi-hourglass"}` }), " Management"))))))));
   if (canWrite) {
     card.append(el("div", { style: "margin-top:12px" }, el("button", { class: "btn", onclick: () => issueForm(null, id, true, () => openAudit(id)) }, "Add finding / issue")));
   }
@@ -1581,22 +1553,99 @@ function wpReviewCell(p, canWrite, reload) {
   return el("span", { class: "chips" }, ...steps, btn || badge(p.review_stage ? `Awaiting ${p.review_stage}` : "Not reviewed"));
 }
 
+// Print just one element (e.g. a working paper form) using the print stylesheet.
+function printNode(node, title) {
+  const area = el("div", { id: "printArea" }, el("h2", null, title), node.cloneNode(true));
+  document.body.append(area);
+  document.body.classList.add("printing-area");
+  const done = () => { document.body.classList.remove("printing-area"); area.remove(); window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done);
+  window.print();
+  setTimeout(done, 1000);
+}
+
+// ---- GPHA Working Paper Template: read-only (printable) view and edit form
+const WP_FORM_TOTAL = 17;
+
+async function wpTemplateView(paperId, reload) {
+  let t;
+  try { t = await API.get(`/api/working-papers/${paperId}/template`); } catch (err) { toast(err.message, "error"); return; }
+  const a = t.admin;
+  const val = (k) => t.values[k] || "";
+  const row = (label, value) => el("tr", null, el("th", null, label), el("td", null, value || el("span", { class: "muted" }, "-")));
+  const reviewed = a.reviewed_by.length
+    ? a.reviewed_by.map((r) => `${r.name} (${r.level}${r.acting_as ? `, acting ${r.acting_as}` : ""}) ${fmtDate(r.at)}`).join("; ")
+    : (a.review_stage ? `Awaiting ${a.review_stage}` : "Not yet reviewed");
+  const body = el("div", { class: "wp-doc" },
+    el("div", { class: "wp-doc-head" }, el("strong", null, "GHANA PORTS AND HARBOURS AUTHORITY"), el("div", null, "Internal Audit Department - Working Paper")),
+    el("h4", null, "Administrative details"),
+    el("table", { class: "wp-admin" }, el("tbody", null,
+      row("Audit title", a.audit_title), row("Working paper", `${a.title} (v${a.version})`),
+      row("Audit period", val("audit_period")), row("Location", val("location")), row("Audited unit", val("audited_unit")),
+      row("Audit reference number", a.audit_reference), row("Prepared by", a.prepared_by), row("Date prepared", fmtDate(a.date_prepared)),
+      row("Reviewed by", reviewed), row("Date reviewed", a.date_reviewed ? fmtDate(a.date_reviewed) : ""),
+      a.linked_finding ? row("Supports finding", `#${a.linked_finding.id} ${a.linked_finding.title}`) : null)),
+    ...t.fields.filter((f) => f.section === "body").map((f) => el("section", { class: "wp-sec" },
+      el("h5", null, f.label), el("div", { class: "wp-val" }, f.kind === "date" && val(f.key) ? fmtDate(val(f.key)) : (val(f.key) || el("span", { class: "muted" }, "Not completed"))))),
+    el("h4", null, "Sign-off"),
+    el("table", { class: "wp-admin" }, el("tbody", null,
+      row("Prepared by", `${a.prepared_by || "-"} · ${fmtDate(a.date_prepared)}`),
+      ...a.reviewed_by.map((r) => row(`Reviewed by (${r.level})`, `${r.name}${r.acting_as ? ` (acting ${r.acting_as})` : ""} · ${fmtDate(r.at)}`)))));
+  let instance;
+  const footer = el("div", { class: "actions" },
+    el("span", { class: "muted small" }, `${t.complete}/${t.total} fields completed`),
+    el("button", { class: "btn secondary", onclick: () => printNode(body, `${a.title} v${a.version}`) }, el("i", { class: "bi bi-printer" }), " Print"),
+    t.can_edit ? el("button", { class: "btn", onclick: () => { instance.close(); wpTemplateForm(t, reload); } }, el("i", { class: "bi bi-pencil" }), " Fill in / edit") : null);
+  instance = modal({ title: `Working paper: ${a.title} v${a.version}`, body, footer, width: 900 });
+}
+
+function wpTemplateForm(t, reload) {
+  const fields = [{ type: "heading", label: "Administrative details" }];
+  t.fields.forEach((f) => {
+    if (f.key === "objective") fields.push({ type: "heading", label: "Working paper" });
+    if (f.key === "client_response") fields.push({ type: "heading", label: "Responses" });
+    const base = { name: f.key, label: f.label, help: f.help };
+    if (f.kind === "text") fields.push({ ...base, type: "textarea", maxLength: 20000, full: true });
+    else if (f.kind === "date") fields.push({ ...base, type: "date" });
+    else if (f.kind === "location" && t.locations.length) fields.push({ ...base, type: "select", options: t.locations, emptyLabel: "- choose -" });
+    else fields.push({ ...base, maxLength: 255, singleLine: true });
+  });
+  openForm({
+    title: `GPHA working paper form: ${t.admin.title} v${t.admin.version}`,
+    key: `wp-template:${t.id}`,
+    meta: { title: `Working paper form ${t.admin.title}` },
+    intro: el("div", null,
+      el("p", { class: "muted small" }, `${t.admin.audit_title} · prepared by ${t.admin.prepared_by || "-"} on ${fmtDate(t.admin.date_prepared)}`),
+      t.signed ? el("div", { class: "form-banner warn" }, "This paper has review sign-offs. Saving a change clears them and the review starts again.") : null),
+    fields,
+    initial: t.values,
+    width: 900,
+    submitLabel: "Save form",
+    onSubmit: (v) => API.put(`/api/working-papers/${t.id}/template`, { values: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x ?? ""])) }),
+    onDone: (r) => { toast(r && r.review_restarted ? "Form saved; the review restarts" : "Form saved"); if (reload) reload(); },
+  });
+}
+
 async function renderPapers(panel, id, canWrite) {
   const card = el("div", { class: "card" }, el("h3", null, "Working papers"));
   panel.append(card);
   const papers = await API.get(`/api/audits/${id}/working-papers`);
-  if (!papers.length) card.append(el("div", { class: "empty" }, "No working papers uploaded."));
+  if (!papers.length) card.append(el("div", { class: "empty" }, "No working papers yet. Create one below: the GPHA template form, with or without a file."));
   else card.append(el("div", { class: "table-wrap" }, el("table", null,
     el("thead", null, el("tr", null, el("th", null, "Ref"), el("th", null, "Title"), el("th", null, "Version"), el("th", null, "Supports"),
       el("th", null, "Uploaded"), el("th", null, "Review"), el("th", { class: "hide-sm" }, "SHA-256"), el("th", null, ""))),
     el("tbody", null, ...papers.map((p) => el("tr", { class: "no-click" },
-      el("td", { class: "ref" }, p.wp_ref || "-"), el("td", null, p.title), el("td", null, `v${p.version_number}`),
+      el("td", { class: "ref" }, p.wp_ref || "-"),
+      el("td", null, el("a", { href: "#", onclick: (e) => { e.preventDefault(); wpTemplateView(p.id, () => openAudit(id, "papers")); } }, p.title),
+        el("div", { class: "muted small" }, `Form ${p.form_filled}/${WP_FORM_TOTAL} fields${p.has_file ? "" : " · no file"}`)),
+      el("td", null, `v${p.version_number}`),
       el("td", { class: "muted small" }, [p.test_id ? `Test #${p.test_id}` : null, p.finding_id ? `Finding #${p.finding_id}` : null].filter(Boolean).join(" · ") || "-"),
       el("td", { class: "muted" }, fmtDate(p.uploaded_at)),
       el("td", null, wpReviewCell(p, canWrite, () => openAudit(id, "papers"))),
       el("td", { class: "muted hide-sm", title: p.sha256 || "" }, p.sha256 ? `${p.sha256.slice(0, 12)}\u2026` : "-"),
       el("td", null, el("div", { class: "actions" },
-        el("a", { href: `/api/working-papers/${p.id}/download` }, "Download"),
+        el("button", { class: "btn small secondary", onclick: () => wpTemplateView(p.id, () => openAudit(id, "papers")) }, el("i", { class: "bi bi-file-earmark-text" }), " Form"),
+        p.has_file ? el("a", { href: `/api/working-papers/${p.id}/download` }, "Download") : null,
         canWrite ? el("button", { class: "btn small secondary", onclick: () => workPaperXrefForm(p, id, () => openAudit(id, "papers")) }, "Cross-ref") : null,
         isAdmin() ? el("button", { class: "btn small danger-ghost", onclick: async () => {
           try { await API.del(`/api/working-papers/${p.id}`); toast("Withdrawn (file retained)"); openAudit(id); }
@@ -1607,15 +1656,20 @@ async function renderPapers(panel, id, canWrite) {
     const file = el("input", { type: "file" });
     const msg = el("div");
     card.append(el("hr"),
-      el("div", { class: "row" }, field("Title", t), el("div", null, el("label", null, "File"), file)), msg,
+      el("p", { class: "muted small" }, "Each working paper follows the GPHA Working Paper Template. Attaching a file is optional. Using an existing title creates a new version, which carries the form forward."),
+      el("div", { class: "row" }, field("Title", t), el("div", null, el("label", null, "File (optional)"), file)), msg,
       el("div", { style: "margin-top:12px" }, el("button", { class: "btn", onclick: async () => {
-        if (!t.value.trim() || !file.files.length) { notify(msg, "Title and file required", "error"); return; }
+        if (!t.value.trim()) { notify(msg, "Enter a title", "error"); return; }
         const form = new FormData();
         form.append("title", t.value.trim());
-        form.append("file", file.files[0]);
-        try { await API.upload(`/api/audits/${id}/working-papers`, form); toast("Uploaded"); openAudit(id); }
-        catch (err) { notify(msg, err.message, "error"); }
-      } }, "Upload")));
+        if (file.files.length) form.append("file", file.files[0]);
+        try {
+          const p = await API.upload(`/api/audits/${id}/working-papers`, form);
+          toast(p.version_number > 1 ? `Version ${p.version_number} created` : "Working paper created");
+          openAudit(id, "papers");
+          wpTemplateView(p.id, () => openAudit(id, "papers"));
+        } catch (err) { notify(msg, err.message, "error"); }
+      } }, "Create working paper")));
   }
 }
 
@@ -1678,13 +1732,6 @@ async function renderProfile() {
 }
 
 // ==================================================================== users (admin)
-
-async function renderUsers() {
-  clear(viewRoot);
-  const msg = el("div");
-  viewRoot.append(viewHeader("Users"), msg);
-  await renderUserManagement(viewRoot, msg);
-}
 
 function newUserForm() {
   openForm({

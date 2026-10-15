@@ -84,3 +84,8 @@ textarea {
   color: #111 !important;
   resize: none;
 }
+
+/* Printing a single element (printNode): show only the print area. */
+body.printing-area > *:not(#printArea) { display: none !important; }
+body.printing-area #printArea { display: block !important; color: #111; }
+body.printing-area #printArea .muted { color: #555 !important; }

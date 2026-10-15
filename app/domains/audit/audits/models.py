@@ -80,6 +80,8 @@ class WorkingPaper(Base):
     # Review chain progress: the level now due and who signed each stage (JSON). reviewed_* is set at the end.
     review_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
     review_trail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # GPHA Working Paper Template content (JSON: field key -> text); see wp_template.FIELDS.
+    template: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     audit: Mapped[Audit] = relationship(back_populates="working_papers")
     uploader: Mapped[User | None] = relationship(foreign_keys="WorkingPaper.uploaded_by")
@@ -107,7 +109,19 @@ class Finding(Base):
     effect: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     recommendation: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
     root_cause_whys: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
-    management_response: Mapped[str | None] = mapped_column(Text, nullable=True, default="")
+    management_response: Mapped[str | None] = mapped_column(Text, nullable=True, default="")  # the action plan
+    # GPHA template: Management Response = Action Plan + Responsible Officer + Target Date.
+    responsible_officer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    target_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    management_response_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"),
+                                                               nullable=True)
+    management_response_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # GPHA template: the Audit Client (HOD) response, confirmed at the exit meeting.
+    client_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_response_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    client_response_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    client_confirmed_at_exit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                                           server_default="0")
     criterion_id: Mapped[int | None] = mapped_column(ForeignKey("criteria.id", ondelete="SET NULL"), nullable=True)
     custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -115,7 +129,7 @@ class Finding(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
     audit: Mapped[Audit] = relationship(back_populates="findings")
-    creator: Mapped[User | None] = relationship()
+    creator: Mapped[User | None] = relationship(foreign_keys="Finding.created_by")
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<Finding id={self.id} title={self.title!r} status={self.status.value}>"

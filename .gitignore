@@ -18,18 +18,18 @@ wheels/
 *.sqlite3
 
 # Uploaded working papers
-uploads/
+/uploads/
 
 # Database snapshots
-backups/
+/backups/
 
 # Logs and tool caches
 *.log
 .ruff_cache/
 
 # Decrypted backup files (never commit plaintext snapshots)
-backups/*.json
-backups/*.sql
+/backups/*.json
+/backups/*.sql
 
 # Test / coverage artefacts
 .pytest_cache/

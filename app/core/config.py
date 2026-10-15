@@ -110,6 +110,7 @@ class Settings(BaseSettings):
     # Review chain below the GM Audit (comma-separated: Unit Head, Audit Manager, PIA).
     report_review_chain: str = "Unit Head,Audit Manager,PIA"
     workpaper_review_chain: str = "Unit Head,Audit Manager,PIA"
+    working_paper_locations: str = "Headquarters,Tema Port,Takoradi Port"
 
     # Per-IP throttle on sign-in attempts (in addition to account lockout).
     login_rate_limit_per_minute: int = 10
