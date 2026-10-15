@@ -580,6 +580,9 @@ function navigate(view) {
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "issues") return renderIssueTracker();
+  if (view === "orgstructure") return renderOrgStructure();
+  if (view === "processes") return renderProcessLibrary();
+  if (view === "riskassess") return renderRiskAssessments();
   if (view === "committee") return renderCommittee();
   if (view === "configuration") return renderConfiguration();
   if (view === "plans") return renderPlans();

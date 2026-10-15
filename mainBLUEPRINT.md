@@ -555,9 +555,9 @@ Use this table in project reviews and update it as work progresses.
 | 2 | Partial | GIAW team | TBD | TBD | - | Repository, ruff, pytest (MySQL) and browser tests in place; no CI pipeline yet |
 | 3 | Partial | GIAW team | TBD | TBD | - | FastAPI, MySQL, Alembic, health check done; `/api/v1` prefix and request IDs outstanding |
 | 4 | Mostly done | GIAW team | TBD | TBD | - | 5 roles, permission matrix, audit trail, port/team scope on audits and their records (Oct 2026); aggregate dashboards still authority-wide |
-| 5 | Partial | GIAW team | TBD | TBD | - | Organization tree exists; the Audit Universe still uses a separate locations list (decision 13) |
-| 6 | Done | GIAW team | TBD | TBD | - | Entity register, import, coverage; to be attached to the organization tree |
-| 7 | Partial | GIAW team | TBD | TBD | - | Risk Manager, controls library, links done; scoring formula fixed at likelihood x impact (decision 4) |
+| 5 | Mostly done | GIAW team | TBD | TBD | - | Org Structure (one org tree) and Process library, bulk add (Oct 2026); decision 13 settled as in Diligent One: the universe is a list of auditable entities defined on the org tree |
+| 6 | Done | GIAW team | TBD | TBD | - | Define audit universe on org units and processes, coverage, merge/split, redefine, entity page (Oct 2026) |
+| 7 | Mostly done | GIAW team | TBD | TBD | - | Audit risk assessments on configurable assessment factors and two rating scales, conclude, plan generation (Oct 2026); engagement risks not yet linked to enterprise risks |
 | 8 | Done | GIAW team | TBD | TBD | - | |
 | 9 | Done | GIAW team | TBD | TBD | - | Committee decision, version lock, change requests, distribution; Entities coverage grid with progress and hours (Oct 2026) |
 | 10 | Partial | GIAW team | TBD | TBD | - | Plan engagement -> audit, engagement teams (Oct 2026); 12-state lifecycle and roll-forward outstanding |
@@ -588,13 +588,14 @@ Use this table in project reviews and update it as work progresses.
 10. Approve migration sources and data quality rules.
 11. Approve integrations and any AI use cases/data boundaries.
 12. Name UAT sign-off owners and production support contacts.
-13. Is the Audit Universe the same as the organization tree, or a separate list of auditable areas mapped onto it? (Today the universe uses its own locations list.)
+13. ~~Is the Audit Universe the same as the organization tree?~~ Settled (Oct 2026): as in Diligent One, a separate list of auditable entities defined on the Org Structure and the Process library. GPHA to confirm the Org Structure types and load the official org tree and processes.
 14. Do ad-hoc audits (not in the approved plan) need a plan change request before they start?
 15. Confirm which workplace types have an authority-wide view (default: Head Office) and that staff with no workplace see only their engagement teams.
 16. Confirm whether Low-rated findings may be closed without a remediation action (default: yes).
 17. Confirm which audit types use the Workplan workflow (default: Financial, Operational, Performance / Value for Money, Special investigation, Follow-up; the rest use Internal Control) and the default sample sizes by control frequency (Configuration > Audit methodology).
 18. Approve the issue types (default: Deficiency, Significant Deficiency, Material Weakness, Management Recommendation) and the publish rule: new issues are hidden from the auditee until Internal Audit publishes them; sending the draft report to management or recording the exit meeting publishes the audit's issues.
 19. Approve the engagement progress formula used on the plan coverage grid: not started 0 %, Planned 10 %, In Progress 25 % plus up to 50 % for fieldwork signed off (procedures or key-control tests), Review 85 %, Closed 100 %.
+20. Approve the starter assessment factors (Financial materiality, Fraud and integrity risk, Regulatory and compliance exposure, Operational complexity, Time since last audit, Prior audit results) and the default rating scale (Low- to High-risk).
 
 ---
 

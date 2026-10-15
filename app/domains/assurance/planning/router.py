@@ -26,7 +26,7 @@ from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
 from app.core.deps import ensure_perm, require_perm, require_role
-from app.core.enums import AuditStatus, EngagementStatus, PlanStatus, Role, risk_level, utcnow
+from app.core.enums import AuditStatus, EngagementStatus, PlanStatus, Role, utcnow
 from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.core.schemas import ESignRequest, MessageOut
@@ -78,7 +78,7 @@ def _not_found(what: str) -> HTTPException:
 def _unit_out(unit: EntityUnit) -> EntityUnitOut:
     out = EntityUnitOut.model_validate(unit)
     out.location_name = unit.location.name if unit.location else ""
-    out.risk_rating = risk_level(unit.risk_score)
+    out.risk_rating = unit.effective_rating
     return out
 
 
@@ -172,6 +172,18 @@ def update_entity_unit(
 # ====================================================================== plans
 
 
+def _entity_port(db: DBSession, unit: EntityUnit | None) -> int | None:
+    """The port / office of the auditable entity's org unit (Org Structure)."""
+    if unit is None or not unit.org_unit_id:
+        return None
+    from app.platform.organizations.router import Index
+
+    idx = Index(db)
+    org = idx.rows.get(unit.org_unit_id)
+    port = idx.port_of(org) if org else None
+    return port.id if port else None
+
+
 def _plan_or_404(db: DBSession, plan_id: int) -> AssurancePlan:
     plan = db.get(AssurancePlan, plan_id)
     if plan is None:
@@ -210,10 +222,10 @@ def _summary(db: DBSession, plan: AssurancePlan) -> PlanSummary:
             name=u.name,
             location_name=u.location.name,
             risk_score=u.risk_score,
-            risk_rating=risk_level(u.risk_score),
+            risk_rating=u.effective_rating,
         )
         for u in sorted(units, key=lambda u: -u.risk_score)
-        if u.id not in covered and risk_level(u.risk_score) == "High"
+        if u.id not in covered and u.effective_rating == "High"
     ]
     return PlanSummary(
         engagements=len(plan.engagements),
@@ -544,7 +556,7 @@ def start_engagement(
         created_by=user.id,
         plan_id=eng.plan_id,
         entity_unit_id=eng.entity_unit_id,
-        port_entity_id=eng.site_entity_id or _home_port(db, user),
+        port_entity_id=eng.site_entity_id or _entity_port(db, unit) or _home_port(db, user),
     )
     db.add(audit)
     db.flush()

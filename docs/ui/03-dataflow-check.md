@@ -2,6 +2,9 @@
 
 **Date:** 15 October 2026 · **Commit checked:** 5ffdff9 · **Code changed by this check:** none
 
+> **Update, 15 October 2026 (later):** rows 2 and 4 are fixed by the integrated audit universe (`05-integrated-universe.md`);
+> row 5 now feeds the plan from completed audit risk assessments.
+>
 > **Update, 15 October 2026:** rows 1, 8, 11, 12 and 16 are now fixed (engagement teams, port/team scope, the Workplan
 > workflow, evidence linked to records, finding closure through verified remediation). The original findings are kept
 > below for the record; see section 4 and the screen contracts in `04-screen-contracts.md`.
@@ -71,5 +74,9 @@ Every link below was verified in the models and routers (file references in brac
 
 | 11 | Each audit uses one HighBond workflow, chosen from its type (Configuration > Audit methodology) and switchable while empty. **Workplan:** objectives > risks > procedures (`procedures`, `procedure_risks`), executed with results, "Were issues identified?" (No Issues / Issue(s) noted), preparer sign-off and e-signed reviewer sign-off; an issue raised from a procedure keeps `findings.procedure_id`. **Internal Control:** walkthroughs ("Designed appropriately" / "Design failure"), a test plan per control (method, total sample size, steps) and 1, 2 or 4 testing rounds with one test per key control per round (in scope, assignee from the team, sample from the test plan or the configured default) | `app/domains/audit/fieldwork/router.py` |
 | 12 | Evidence requests point at the procedure, control test, issue or working paper they support (checked to belong to the audit), copy in other people, and send Daily or Weekly reminders until submitted. Accepted files filed as working papers keep the link to the test or issue | `app/domains/audit/evidence/router.py` |
+
+| 2 | One org tree: the Org Structure (organizations of the configured internal types) and the Process library are the building blocks; auditable entities are defined on org units and their processes, with coverage. The old locations list is kept only as the entity category, derived from the org unit's port | `app/domains/assurance/universe/` |
+| 4 | Universe risk is scored in audit risk assessments on configurable assessment factors and one of two rating scales (overall = average of factor scores). Likelihood × impact remains only for entities never assessed | `app/domains/assurance/universe/router.py` |
+| 5 | A completed assessment's prioritised entities generate the plan's engagements (Start planning) | same |
 
 **Still open from the list:** aggregate dashboards (Governance portal, Port portfolio, Analytics, Committee pack) still show authority-wide figures to all audit staff, and rows 2–7 and 9–24 are unchanged.

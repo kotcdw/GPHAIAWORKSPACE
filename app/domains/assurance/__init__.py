@@ -29,6 +29,7 @@ def routers() -> list:
     from app.domains.assurance.planning.router import router as planning
     from app.domains.assurance.qaip.router import router as qaip
     from app.domains.assurance.scheduler.router import router as scheduler
+    from app.domains.assurance.universe.router import router as universe
 
     return [planning, plan_coverage, committee, committee_meetings, qaip, governance, plancycle, plan_changes,
-            conformance, scheduler]
+            conformance, scheduler, universe]

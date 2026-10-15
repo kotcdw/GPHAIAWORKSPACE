@@ -16,7 +16,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
-from app.core.appconfig import cfg
 from app.core.database import get_db
 from app.core.deps import require_role
 from app.core.enums import AuditStatus, EngagementStatus, Role, TestStatus, TestType
@@ -52,14 +51,6 @@ def engagement_progress(db: DBSession, audit: Audit | None) -> int:
     if audit.status == AuditStatus.InProgress:
         return round(25 + 50 * _fieldwork_share(db, audit))
     return _PHASE.get(audit.status, 0)
-
-
-def _rating(score: int) -> str:
-    if score >= int(cfg("risk_high_threshold")):
-        return "High"
-    if score >= int(cfg("risk_medium_threshold")):
-        return "Medium"
-    return "Low"
 
 
 @router.get("/api/assurance-plans/{plan_id}/coverage")
@@ -113,12 +104,12 @@ def plan_coverage(
                   "actual": round(sum(r["actual_hours"] for r in counted), 1),
                   "over": max(0, planned_hours - available) if available else 0},
         "entities": [{"id": u.id, "code": u.code, "name": u.name, "location_id": u.location_id,
-                      "location": u.location.name, "risk_score": u.risk_score, "risk": _rating(u.risk_score),
+                      "location": u.location.name, "risk_score": u.risk_score, "risk": u.effective_rating,
                       "covered": u.id in covered_ids} for u in shown],
         "categories": [{"id": loc.id, "name": loc.name} for loc in
                        db.execute(select(Location).where(Location.is_active.is_(True)).order_by(Location.name))
                        .scalars()],
         "not_covered": len(uncovered),
-        "not_covered_high": sum(1 for u in uncovered if _rating(u.risk_score) == "High"),
+        "not_covered_high": sum(1 for u in uncovered if u.effective_rating == "High"),
         "engagements": rows,
     }

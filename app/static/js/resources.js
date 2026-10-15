@@ -18,7 +18,7 @@ async function renderLibrary(filters = state.libFilters || {}) {
 
   viewRoot.append(viewHeader("Frameworks & controls", canEdit ? [
     el("button", { class: "btn small secondary", onclick: () => frameworkForm(null, fws.types) }, el("i", { class: "bi bi-plus-lg" }), " Framework"),
-    fws.items.length ? el("button", { class: "btn small secondary", onclick: () => importDialog(fws.items) }, el("i", { class: "bi bi-upload" }), " Import CSV") : null,
+    fws.items.length ? el("button", { class: "btn small secondary", onclick: () => controlsImportDialog(fws.items) }, el("i", { class: "bi bi-upload" }), " Import CSV") : null,
     fws.items.length ? el("button", { class: "btn small", onclick: () => libraryControlForm(null, fws.items, lib) }, el("i", { class: "bi bi-plus-lg" }), " Standard control") : null,
   ] : null, { sub: "Frameworks GPHA audits against and their standard controls with suggested tests. Auditors add them to an engagement's risk and control matrix." }), msg);
 
@@ -116,7 +116,7 @@ function libraryControlView(c) {
     footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", onclick: () => m.close() }, "Close")) });
 }
 
-function importDialog(frameworks) {
+function controlsImportDialog(frameworks) {
   const sel = el("select", { id: "imp-fw" }, ...frameworks.map((f) => el("option", { value: f.id }, `${f.code} · ${f.name}`)));
   const file = el("input", { type: "file", id: "imp-file", accept: ".csv,text/csv" });
   const out = el("div");

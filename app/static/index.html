@@ -227,7 +227,9 @@
       <div class="nav-group" data-group="universe">
         <button class="nav-group-head" type="button" aria-expanded="true"><span>Universe, risk &amp; controls</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
-          <button data-view="universe"><i class="bi bi-diagram-3"></i><span>Audit Universe</span></button>
+          <button data-view="orgstructure" data-staff="1"><i class="bi bi-diagram-3"></i><span>Org Structure</span></button>
+          <button data-view="processes" data-staff="1"><i class="bi bi-gear-wide-connected"></i><span>Process library</span></button>
+          <button data-view="universe"><i class="bi bi-bullseye"></i><span>Audit universe</span></button>
           <button data-view="risk" data-perm="1"><i class="bi bi-shield-exclamation"></i><span>Risk Manager</span></button>
           <button data-view="library" data-staff="1"><i class="bi bi-diagram-3-fill"></i><span>Frameworks &amp; controls</span></button>
           <button data-view="criteria" data-staff="1"><i class="bi bi-journal-bookmark"></i><span>Criteria library</span></button>
@@ -239,6 +241,7 @@
       <div class="nav-group" data-group="planning">
         <button class="nav-group-head" type="button" aria-expanded="true"><span>Assurance planning</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
+          <button data-view="riskassess" data-staff="1"><i class="bi bi-clipboard-data"></i><span>Audit risk assessment</span></button>
           <button data-view="plans"><i class="bi bi-calendar3"></i><span>Assurance Plan</span></button>
         </div>
       </div>
@@ -332,6 +335,7 @@
   <script src="/static/js/grc.js"></script>
   <script src="/static/js/apps.js"></script>
   <script src="/static/js/fieldwork.js"></script>
+  <script src="/static/js/universe.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

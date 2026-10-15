@@ -328,3 +328,34 @@ def test_workplan_execute_and_issue_tracker(browser, base_url):
     _shot(page, "desktop-issue-tracker")
     assert not watch.take()
     ctx.close()
+
+
+def test_org_structure_define_universe_and_risk_assessment(browser, base_url):
+    """Org Structure -> Define audit universe (coverage) -> Audit risk assessment scoring matrix."""
+    ctx, page, watch = _signed_in(browser, base_url)
+    ids = page.evaluate("""async () => {
+        const tag = Math.random().toString(36).slice(2, 7);
+        const port = await API.post('/api/organizations', {name: `UI Port ${tag}`, category: 'Port'});
+        const dept = await API.post('/api/organizations',
+            {name: `UI Finance ${tag}`, category: 'Department', parent_id: port.id});
+        await API.post('/api/processes', {name: `UI Revenue ${tag}`, org_ids: [dept.id]});
+        return {port: port.id, dept: dept.id, tag};
+    }""")
+    page.evaluate("navigate('orgstructure')")
+    page.wait_for_selector(".tree-table tbody tr")
+    assert f"UI Finance {ids['tag']}" in page.inner_text(".tree-table")
+    page.evaluate("renderDefineUniverse()")
+    page.wait_for_selector(".define-tree .define-node")
+    page.check(f"#def-{ids['dept']}")
+    _wait_for(page, "document.querySelectorAll('.define-entities li').length > 0")
+    _wait_for(page, "document.querySelector('.cov-meter') !== null")
+    _shot(page, "desktop-define-universe")
+    # Leave the rest of the suite's universe as it was: no Define here, only the scoring matrix of a fresh assessment.
+    page.evaluate("navigate('riskassess')")
+    page.wait_for_selector("#viewRoot h2")
+    page.evaluate("renderRiskAssessments('settings')")
+    page.wait_for_selector("input[name=araScale]")
+    assert page.locator("input[name=araScale]").count() == 2  # Low- to High-risk, Very low- to Very high-risk
+    assert "Assessment factors" in page.inner_text("#viewRoot")
+    assert not watch.take()
+    ctx.close()

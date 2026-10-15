@@ -45,6 +45,19 @@ TEMPLATES: dict[str, list[tuple[str, bool, str]]] = {
         ("Likelihood", True, "Inherent risk likelihood, 1 (rare) to 5 (almost certain)"),
         ("Impact", True, "Inherent risk impact, 1 (minor) to 5 (severe)"),
     ],
+    "orgunits": [
+        ("Name", True, "Org unit name, e.g. Finance Department"),
+        ("Type", True, "One of the Org Structure types (Configuration > Organizations), e.g. Department"),
+        ("Parent", False, "Name or reference of the unit it sits under (an existing unit or one higher in the file)"),
+        ("Address", False, ""),
+    ],
+    "processes": [
+        ("Process", True, "Process name, e.g. Revenue collection"),
+        ("Description", False, ""),
+        ("Parent process", False, "Name of the process it belongs to (existing or higher in the file)"),
+        ("Owner email", False, "Process owner"),
+        ("Org units", False, "Org units that perform it, separated by ; (names or references)"),
+    ],
     "findings": [
         ("Title", True, "Short statement of the issue"),
         ("Risk rating", True, "High, Medium or Low"),
@@ -144,6 +157,10 @@ def template(kind: str, user: User = Staff) -> Response:
                 5,
             ]
         ],
+        "orgunits": [["Finance Department", "Department", "Tema Port", ""],
+                     ["Revenue Unit", "Unit", "Finance Department", ""]],
+        "processes": [["Revenue collection", "Billing and collection of port dues", "", "revenue@gpha.gov.gh",
+                       "Revenue Unit; Finance Department"]],
         "findings": [
             [
                 "Vessel calls not reconciled to invoices",
@@ -320,6 +337,148 @@ async def import_universe(
     log_action(
         db, user_id=user.id, action=f"IMPORT_UNIVERSE created={result.to_create} updated={to_update}", request=request
     )
+    db.commit()
+    result.committed = True
+    return result
+
+
+@router.post("/api/import/orgunits", response_model=ImportResult)
+async def import_org_units(
+    request: Request,
+    file: UploadFile = File(...),
+    commit: bool = Query(False),
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_perm("system.reference", "method.library")),
+) -> ImportResult:
+    """Org Structure bulk add (create and update by name)."""
+    from app.core.appconfig import cfg
+    from app.core.refs import next_reference
+    from app.platform.organizations.models import Organization
+
+    rows, issues = _read_rows(await file.read(), "orgunits")
+    cols = TEMPLATES["orgunits"]
+    types = {t.lower(): t for t in (cfg("org_structure_categories") or [])}
+    existing = list(db.execute(select(Organization)).scalars())
+    by_name = {o.name.strip().lower(): o for o in existing}
+    by_ref = {o.org_ref.upper(): o for o in existing}
+    in_file: set[str] = set()
+    plan: list[tuple[dict, object | None]] = []
+    for rec in rows:
+        _required(rec, cols, issues)
+        r, name = rec["_row"], str(rec.get("Name") or "").strip()
+        if len(name) > 255:
+            issues.append(RowIssue(row=r, field="Name", message="must be 255 characters or fewer"))
+        if rec.get("Type") and str(rec["Type"]).strip().lower() not in types:
+            issues.append(RowIssue(row=r, field="Type", message=f"must be one of: {', '.join(types.values())}"))
+        parent = str(rec.get("Parent") or "").strip()
+        if parent and parent.lower() not in by_name and parent.upper() not in by_ref and parent.lower() not in in_file:
+            issues.append(RowIssue(row=r, field="Parent", message="is not an existing unit or one higher in the file"))
+        if name.lower() in in_file:
+            issues.append(RowIssue(row=r, field="Name", message="appears twice in the file"))
+        in_file.add(name.lower())
+        plan.append((rec, by_name.get(name.lower())))
+    to_update = sum(1 for _, o in plan if o is not None)
+    result = ImportResult(kind="orgunits", committed=False, total_rows=len(rows), to_create=len(plan) - to_update,
+                          to_update=to_update, errors=issues,
+                          preview=[{"row": rec["_row"], "name": rec.get("Name"), "type": rec.get("Type"),
+                                    "parent": rec.get("Parent"), "action": "update" if o else "create"}
+                                   for rec, o in plan[:50]])
+    if not commit or issues:
+        return result
+    from app.core.enums import OrganizationStatus
+
+    for rec, org in plan:
+        name = str(rec["Name"]).strip()
+        if org is None:
+            org = Organization(org_ref=next_reference(db, "ORG"), name=name, status=OrganizationStatus.Approved,
+                               notes="", created_by=user.id)
+            db.add(org)
+        org.category = types[str(rec["Type"]).strip().lower()]
+        parent = str(rec.get("Parent") or "").strip()
+        if parent:
+            p = by_name.get(parent.lower()) or by_ref.get(parent.upper())
+            db.flush()
+            org.parent_id = p.id if p is not None and p is not org else org.parent_id
+        if rec.get("Address"):
+            org.address = str(rec["Address"])
+        db.flush()
+        by_name[name.lower()] = org
+    log_action(db, user_id=user.id, action=f"IMPORT_ORG_UNITS created={result.to_create} updated={to_update}",
+               request=request)
+    db.commit()
+    result.committed = True
+    return result
+
+
+@router.post("/api/import/processes", response_model=ImportResult)
+async def import_processes(
+    request: Request,
+    file: UploadFile = File(...),
+    commit: bool = Query(False),
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_perm("method.library", "system.reference")),
+) -> ImportResult:
+    """Process library bulk add (create and update by name), with the org units that perform each process."""
+    from app.core.refs import next_reference
+    from app.domains.assurance.universe.models import Process, ProcessOrgUnit
+    from app.domains.assurance.universe.router import OrgTree
+
+    rows, issues = _read_rows(await file.read(), "processes")
+    cols = TEMPLATES["processes"]
+    tree = OrgTree(db)
+    org_by = {o.name.strip().lower(): o.id for o in tree.nodes.values()} | {o.org_ref.upper(): o.id
+                                                                             for o in tree.nodes.values()}
+    existing = {p.name.strip().lower(): p for p in db.execute(select(Process)).scalars()}
+    in_file: set[str] = set()
+    plan: list[tuple[dict, object | None, list[int]]] = []
+    for rec in rows:
+        _required(rec, cols, issues)
+        r, name = rec["_row"], str(rec.get("Process") or "").strip()
+        if name.lower() in in_file:
+            issues.append(RowIssue(row=r, field="Process", message="appears twice in the file"))
+        in_file.add(name.lower())
+        parent = str(rec.get("Parent process") or "").strip().lower()
+        if parent and parent not in existing and parent not in in_file:
+            issues.append(RowIssue(row=r, field="Parent process", message="is not a process existing or higher up"))
+        email = rec.get("Owner email")
+        if email and not _EMAIL.match(str(email)):
+            issues.append(RowIssue(row=r, field="Owner email", message="is not a valid e-mail address"))
+        orgs = []
+        for part in [x.strip() for x in str(rec.get("Org units") or "").split(";") if x.strip()]:
+            oid = org_by.get(part.lower()) or org_by.get(part.upper())
+            if oid is None:
+                issues.append(RowIssue(row=r, field="Org units", message=f"'{part}' is not an org unit"))
+            else:
+                orgs.append(oid)
+        plan.append((rec, existing.get(name.lower()), orgs))
+    to_update = sum(1 for _, p, _ in plan if p is not None)
+    result = ImportResult(kind="processes", committed=False, total_rows=len(rows), to_create=len(plan) - to_update,
+                          to_update=to_update, errors=issues,
+                          preview=[{"row": rec["_row"], "process": rec.get("Process"), "org_units": len(orgs),
+                                    "action": "update" if p else "create"} for rec, p, orgs in plan[:50]])
+    if not commit or issues:
+        return result
+    for rec, proc, orgs in plan:
+        name = str(rec["Process"]).strip()
+        if proc is None:
+            proc = Process(ref=next_reference(db, "PROC"), name=name, status="Active", created_by=user.id)
+            db.add(proc)
+        proc.description = str(rec.get("Description") or "")
+        proc.owner_email = str(rec["Owner email"]) if rec.get("Owner email") else None
+        parent = str(rec.get("Parent process") or "").strip().lower()
+        db.flush()
+        if parent and parent in existing and existing[parent] is not proc:
+            proc.parent_id = existing[parent].id
+        if orgs:
+            have = {o for (o,) in db.execute(select(ProcessOrgUnit.org_id).where(
+                ProcessOrgUnit.process_id == proc.id)).all()}
+            for oid in dict.fromkeys(orgs):
+                if oid not in have:
+                    db.add(ProcessOrgUnit(process_id=proc.id, org_id=oid))
+        db.flush()
+        existing[name.lower()] = proc
+    log_action(db, user_id=user.id, action=f"IMPORT_PROCESSES created={result.to_create} updated={to_update}",
+               request=request)
     db.commit()
     result.committed = True
     return result

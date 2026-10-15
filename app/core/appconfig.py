@@ -132,6 +132,9 @@ RULES: list[Rule] = [
          "Audit methodology", "list", "One per line as Frequency=Size, for example Monthly=3. Used as the suggested "
          "sample in testing rounds and when drawing a sample; the auditor can change it on each test.",
          default=["Annual=1", "Quarterly=2", "Monthly=3", "Weekly=10", "Daily=25", "Multiple Daily=40", "Ad Hoc=25"]),
+    Rule("audit_risk_scale", "Default rating scale for audit risk assessments", "Audit methodology", "text",
+         "Used for new audit risk assessments (each assessment keeps the scale it was created with).",
+         default="Low- to High-risk", options=["Low- to High-risk", "Very low- to Very high-risk"]),
     Rule("finding_issue_types", "Issue types", "Audit methodology", "list",
          "One per line. Offered on every finding and used by the Issue Tracker charts.",
          default=["Deficiency", "Significant Deficiency", "Material Weakness", "Management Recommendation"]),
@@ -162,6 +165,10 @@ RULES: list[Rule] = [
          "One per line. Ports, offices, departments and units describe GPHA itself; the rest are external parties.",
          default=["Port", "Head Office", "Department", "Unit", "Section", "Vendor", "Regulator",
                   "Government agency", "Shipping line / Customer", "Other"]),
+    Rule("org_structure_categories", "Entity types that make up the Org Structure", "Organizations", "list",
+         "One per line. Organizations of these types form the org tree used to define the audit universe; the rest "
+         "(vendors, regulators and other external parties) stay out of it.",
+         default=["Port", "Head Office", "Department", "Unit", "Section"]),
     Rule("port_categories", "Entity types that count as a port or site", "Organizations", "list",
          "One per line. Users pick one of these as where they work; every entity is filed under the port it sits in.",
          default=["Port", "Head Office"]),

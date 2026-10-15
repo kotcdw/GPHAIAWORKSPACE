@@ -7,12 +7,17 @@ every audit (project) of that year starts from one of its planned engagements.
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.enums import EngagementStatus, PlanStatus, _enum, utcnow
+
+if TYPE_CHECKING:
+    from app.domains.assurance.universe.models import Process
+    from app.platform.organizations.models import Organization
 
 
 class Location(Base):
@@ -49,14 +54,38 @@ class EntityUnit(Base):
     risk_impact: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     last_audited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Integrated audit universe: the primary org unit, audit frequency, archive and the latest completed audit risk
+    # assessment (overall score = average of factor scores, label on that assessment's scale).
+    org_unit_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"),
+                                                    nullable=True, index=True)
+    audit_frequency_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    defined_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    assessed_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    assessed_rating: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    assessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    assessment_id: Mapped[int | None] = mapped_column(ForeignKey("audit_risk_assessments.id", ondelete="SET NULL"),
+                                                      nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
     location: Mapped[Location] = relationship(back_populates="units")
+    org_units: Mapped[list[Organization]] = relationship(
+        "Organization", secondary="entity_org_units", order_by="Organization.name", viewonly=True)
+    processes: Mapped[list[Process]] = relationship(
+        "Process", secondary="entity_processes", order_by="Process.name", viewonly=True)
 
     @property
     def risk_score(self) -> int:
         return self.risk_likelihood * self.risk_impact
+
+    @property
+    def effective_rating(self) -> str:
+        """Low / Medium / High: from the latest completed audit risk assessment, else likelihood x impact."""
+        from app.core.enums import risk_level
+        from app.domains.assurance.universe.models import band
+
+        return band(self.assessed_rating) or risk_level(self.risk_score)
 
 
 class AssurancePlan(Base):
@@ -144,3 +173,7 @@ class PlanChange(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     changed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+# The integrated audit universe tables (processes, entity links, assessments) are referenced by name above.
+from app.domains.assurance.universe import models as _universe_models  # noqa: E402,F401

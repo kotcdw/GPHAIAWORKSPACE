@@ -38,46 +38,7 @@ function heat(score) {
   return el("span", { class: `badge badge-risk-${level.toLowerCase()}`, title: `Score ${score}` }, `${level} (${score})`);
 }
 
-// ==================================================================== universe
-
-async function renderUniverse() {
-  clear(viewRoot);
-  const msg = el("div");
-  const admin = hasPerm("method.library", "system.reference");
-  viewRoot.append(viewHeader("Audit Universe", admin ? el("button", { class: "btn secondary", onclick: () => importDialog({
-    title: "Import the Audit Universe from Excel", templateKind: "universe", path: "/api/import/universe",
-    intro: "Create or update locations and auditable units with their inherent risk (likelihood and impact, 1-5). Existing units are matched on location code + unit code and updated.",
-    onDone: () => renderUniverse() }) }, el("i", { class: "bi bi-file-earmark-arrow-up" }), " Import from Excel") : null), msg);
-  try {
-    const [locations, units] = await Promise.all([API.get("/api/locations"), API.get("/api/entity-units")]);
-
-    const locCard = el("div", { class: "card" }, el("h3", null, "Locations"));
-    if (!locations.length) locCard.append(el("div", { class: "empty" }, "No locations yet."));
-    else locCard.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "Code"), el("th", null, "Name"), el("th", null, "Units"), el("th", null, "Status"))),
-      el("tbody", null, ...locations.map((l) => el("tr", { class: "no-click" },
-        el("td", { class: "ref" }, l.code), el("td", null, l.name),
-        el("td", null, String(units.filter((u) => u.location_id === l.id).length)),
-        el("td", null, badge(l.is_active ? "Active" : "Inactive")))))));
-    if (admin) locCard.append(el("div", { style: "margin-top:12px" }, btn("Add location", () => locationForm())));
-    viewRoot.append(locCard);
-
-    const unitCard = el("div", { class: "card" }, el("h3", null, "Entity units (auditable entities)"));
-    if (!units.length) unitCard.append(el("div", { class: "empty" }, "No entity units yet."));
-    else unitCard.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "Location"), el("th", null, "Code"), el("th", null, "Entity"),
-        el("th", null, "Inherent risk"), el("th", null, "Last audited"), el("th", null, ""))),
-      el("tbody", null, ...units.sort((a, b) => b.risk_score - a.risk_score).map((u) => el("tr", { class: "no-click" },
-        el("td", null, u.location_name), el("td", { class: "ref" }, u.code), el("td", null, u.name),
-        el("td", null, heat(u.risk_score), el("span", { class: "muted" }, ` L${u.risk_likelihood} x I${u.risk_impact}`)),
-        el("td", { class: "muted" }, fmtDate(u.last_audited_at)),
-        el("td", null, admin ? btn("Edit", () => editUnit(u), "secondary") : null))))));
-    if (admin && locations.length) {
-      unitCard.append(el("div", { style: "margin-top:12px" }, btn("Add entity unit", () => editUnit(null, locations))));
-    }
-    viewRoot.append(unitCard);
-  } catch (err) { notify(msg, err.message, "error"); }
-}
+// ==================================================================== universe (legacy forms; the screens are in universe.js)
 
 const CODE_RULE = { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,19}$", patternMessage: "Use 1-20 letters, digits, '-' or '_' (e.g. TEMA, GJT-01)", maxLength: 20 };
 
