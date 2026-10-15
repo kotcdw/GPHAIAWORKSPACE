@@ -44,7 +44,7 @@ class App:
 
 APPS: list[App] = [
     # Home
-    App("dashboard", "Workspace", HOME, "grid-3x3-gap", "Home page that hosts every app and feature.",
+    App("dashboard", "Workspace Apps", HOME, "grid-3x3-gap", "Home page that hosts every app and feature.",
         ("dashboard",), (), core=True),
     App("drafts", "My Drafts", HOME, "pencil-square", "Autosaved forms waiting to be finished.",
         ("drafts",), (), core=True),

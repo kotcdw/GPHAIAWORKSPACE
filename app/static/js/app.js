@@ -1112,7 +1112,7 @@ async function renderWorkspace() {
   clear(viewRoot);
   const staff = isStaff();
   const admin = isAdmin();
-  viewRoot.append(viewHeader("Workspace"));
+  viewRoot.append(viewHeader("Workspace Apps"));
 
   const groupsEl = el("div", { class: "ws-groups" });
   viewRoot.append(groupsEl);

@@ -18,7 +18,7 @@ Launchpad and Apps & customization:
 
 | Group | Apps |
 |---|---|
-| Home | Workspace (with My Drafts in the top bar) |
+| Home | Workspace Apps (with My Drafts in the top bar) |
 | Audit management | Audit universe, Audit risk assessment, Assurance Plans, Audits, Status Tracker, Project Library, Task Tracker (Priorities, To-dos, Requests), Issue Tracker (Issues, Actions) |
 | Resource management | Scheduler, Timesheets & capacity, Professional practice |
 | Risk management | Risk Manager, Process library, Asset Inventory |
