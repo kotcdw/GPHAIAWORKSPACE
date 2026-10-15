@@ -519,8 +519,10 @@ function showApp() {
     if (b) b.classList.toggle("hidden", state.user.role === "Auditee");
   });
   document.querySelectorAll("#sidebarNav [data-staff]").forEach((n) => n.classList.toggle("hidden", state.user.role === "Auditee"));
+  initNavGroups();
   applyNavPermissions();
   applyAppCustomization().then(applyNavPermissions);
+  initScopeChip();
   // Two-step verification is mandatory for this role and not set up yet: only the set-up screen is
   // available (every other request would be refused), so show it alone instead of a page of errors.
   document.body.classList.toggle("mfa-gate", !!state.mfaSetupRequired);
@@ -541,12 +543,14 @@ function showApp() {
 }
 
 // ------------------------------------------------------------------ nav
-document.querySelectorAll("#sidebarNav button").forEach((btn) => {
+document.querySelectorAll("#sidebarNav button[data-view]").forEach((btn) => {
   btn.addEventListener("click", () => { navigate(btn.dataset.view); viewRoot.focus({ preventScroll: true }); });
 });
+const brandHome = qs("#brandHome");
+if (brandHome) brandHome.addEventListener("click", (e) => { e.preventDefault(); navigate(isCommittee() ? "governance" : state.user && state.user.role === "Auditee" ? "portal" : "dashboard"); });
 
 function setActiveNav(view) {
-  document.querySelectorAll("#sidebarNav button").forEach((b) => {
+  document.querySelectorAll("#sidebarNav button[data-view]").forEach((b) => {
     b.classList.toggle("active", b.dataset.view === view);
     if (b.dataset.view === view) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
   });
@@ -559,6 +563,7 @@ function navigate(view) {
   if (state.user && !viewAllowed(view)) view = isCommittee() ? "governance" : "dashboard";
   state.view = view;
   setActiveNav(view);
+  navCrumbs(view);
   if (view === "followup") { state.remTab = "followup"; return navigate("capa"); }
   if (view === "capa") return renderRemediation(state.remTab);
   if (MODULES[view]) return renderList(view);
@@ -1285,22 +1290,43 @@ function newTaskModal() {
 
 async function renderAudits() {
   clear(viewRoot);
-  const msg = el("div");
   viewRoot.append(viewHeader("Audits",
-    canWriteModule("audits") && hasPerm("audit.create") ? el("button", { class: "btn", onclick: newAuditModal }, "New audit") : null), msg);
-  try {
-    const audits = await API.get("/api/audits");
-    const card = el("div", { class: "card" });
-    if (!audits.length) card.append(el("div", { class: "empty" }, "No audits yet."));
-    else card.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "Ref"), el("th", null, "Title"), el("th", { class: "hide-sm" }, "Scope"), el("th", null, "Status"), el("th", { class: "hide-sm" }, "Approval"))),
-      el("tbody", null, ...audits.map((a) => el("tr", { onclick: () => openAudit(a.id) },
-        el("td", { class: "ref" }, `AUD-${String(a.id).padStart(4, "0")}`),
-        el("td", null, a.title), el("td", { class: "muted hide-sm" }, (a.scope || "-").replace(/\s+/g, " ")),
-        el("td", null, badge(a.status)),
-        el("td", { class: "hide-sm" }, a.approval_status ? badge(a.approval_status) : "-"))))));
-    viewRoot.append(card);
-  } catch (err) { notify(msg, err.message, "error"); }
+    canWriteModule("audits") && hasPerm("audit.create") ? el("button", { class: "btn", onclick: newAuditModal }, el("i", { class: "bi bi-plus-lg" }), " New audit") : null,
+    { sub: "Engagements you can see, with plan, lead, location and progress. Search, filter, sort and export work on the server." }));
+  let types = []; let ports = [];
+  try { const c = await loadEntityConfig(); types = c.types.audit_types || []; ports = c.entities.filter((e) => e.is_port); } catch { /* filters are optional */ }
+  const card = el("div", { class: "card" });
+  viewRoot.append(card);
+  const t = serverTable({
+    url: "/api/audits/register",
+    storageKey: "audits",
+    defaultSort: "-updated_at",
+    exportName: "Audits register",
+    onRow: (a) => openAudit(a.id),
+    filters: [
+      { key: "status", label: "Status", options: ["Planned", "In Progress", "Review", "Closed"] },
+      ...(types.length ? [{ key: "audit_type", label: "Stream", options: types }] : []),
+      ...(ports.length ? [{ key: "port_id", label: "Port", options: ports.map((p) => ({ value: p.id, label: p.name })) }] : []),
+      ...(state.user.work_entity_id ? [{ key: "mine", label: "Scope", options: [{ value: "true", label: "My port" }] }] : []),
+    ],
+    emptyTitle: "No audits yet",
+    emptyText: "Audits are started from an approved plan engagement or created here.",
+    columns: [
+      { key: "ref", label: "Ref", sort: true, render: (a) => el("span", { class: "ref" }, a.ref) },
+      { key: "title", label: "Audit", sort: true, render: (a) => el("a", { href: "#", onclick: (e) => { e.preventDefault(); e.stopPropagation(); openAudit(a.id); } }, a.title) },
+      { key: "audit_type", label: "Stream", sort: true },
+      { key: "port", label: "Port", sort: true },
+      { key: "plan", label: "Plan", sort: true, hidden: true },
+      { key: "lead", label: "Lead", sort: true },
+      { key: "planned_start", label: "Planned", sort: true, render: (a) => a.planned_start ? `${fmtDay(a.planned_start)} – ${a.planned_end ? fmtDay(a.planned_end) : "?"}` : (a.planned_quarter || "-"), csv: (a) => a.planned_start || a.planned_quarter || "" },
+      { key: "status", label: "Status", sort: true, render: (a) => statusBadge(a.status), csv: (a) => a.status },
+      { key: "open_findings", label: "Open findings", sort: true, num: true, render: (a) => a.findings ? `${a.open_findings} / ${a.findings}` : "0", csv: (a) => a.open_findings },
+      { key: "working_papers", label: "Working papers", num: true, hidden: true },
+      { key: "report_status", label: "Report", render: (a) => a.report_status ? statusBadge(a.report_status) : "-", csv: (a) => a.report_status || "" },
+      { key: "updated_at", label: "Updated", sort: true, render: (a) => fmtDay(a.updated_at), csv: (a) => a.updated_at },
+    ],
+  });
+  card.append(t.root);
 }
 
 const AUDIT_FIELDS = [
@@ -1363,118 +1389,178 @@ async function editAuditModal(audit) {
 async function openAudit(id, startTab = null) {
   setActiveNav("audits");
   clear(viewRoot);
-  const msg = el("div");
-  viewRoot.append(msg);
+  viewRoot.append(loadingState("Opening the audit…"));
   let audit;
   try { audit = await API.get(`/api/audits/${id}`); }
-  catch (err) { notify(msg, err.message, "error"); return; }
+  catch (err) { clear(viewRoot); viewRoot.append(errorState(err, () => openAudit(id, startTab))); return; }
+  clear(viewRoot);
   const canWrite = canWriteModule("audits");
+  const ref = `AUD-${String(id).padStart(4, "0")}`;
 
-  viewRoot.append(viewHeader(audit.title,
-    [
-      canWrite && audit.status === "Review" && audit.approval_status !== "In Approval"
-        ? el("button", { class: "btn small secondary", onclick: async () => {
-          try { await API.post(`/api/audits/${id}/in-approval`); toast("Submitted for approval"); openAudit(id); }
-          catch (err) { toast(err.message, "error"); }
-        } }, "Submit for approval") : null,
-      isAdmin() && audit.status === "Review" ? el("button", { class: "btn small", onclick: () => eSignModal({
-        title: "Close audit (e-sign)", recordType: "audit", recordId: id,
-        pathOverride: `/api/audits/${id}/close`, actionLabel: "Sign & Close",
-        onDone: () => openAudit(id) }) }, el("i", { class: "bi bi-pen" }), " Close (e-sign)") : null,
-      canWrite && audit.status !== "Closed" ? el("button", { class: "btn secondary small", onclick: () => editAuditModal(audit) },
-        el("i", { class: "bi bi-pencil" }), " Edit") : null,
-      canWrite ? el("a", { class: "btn secondary small", href: `/api/audits/${id}/engagement-letter.docx`, title: "Engagement letter to the auditee (Word)" },
-        el("i", { class: "bi bi-envelope-paper" }), " Engagement letter") : null,
-      iconBtn("printer", "Print", () => window.print()),
-    ],
-    {
-      back: () => navigate("audits"),
-      meta: [el("span", { class: "ref" }, `AUD-${String(id).padStart(4, "0")}`), badge(audit.status),
-        audit.approval_status ? badge(audit.approval_status) : null],
-    }));
+  const actions = [
+    canWrite && audit.status === "Review" && audit.approval_status !== "In Approval"
+      ? el("button", { class: "btn small secondary", onclick: async () => {
+        try { await API.post(`/api/audits/${id}/in-approval`); toast("Submitted for approval"); openAudit(id); }
+        catch (err) { toast(err.message, "error"); }
+      } }, "Submit for approval") : null,
+    isAdmin() && audit.status === "Review" ? el("button", { class: "btn small", onclick: () => eSignModal({
+      title: "Close audit (e-sign)", recordType: "audit", recordId: id,
+      pathOverride: `/api/audits/${id}/close`, actionLabel: "Sign & Close",
+      onDone: () => openAudit(id) }) }, el("i", { class: "bi bi-pen" }), " Close (e-sign)") : null,
+    canWrite && audit.status !== "Closed" ? el("button", { class: "btn secondary small", onclick: () => editAuditModal(audit) },
+      el("i", { class: "bi bi-pencil" }), " Edit") : null,
+    canWrite ? el("a", { class: "btn secondary small", href: `/api/audits/${id}/engagement-letter.docx`, title: "Engagement letter to the auditee (Word)" },
+      el("i", { class: "bi bi-envelope-paper" }), " Engagement letter") : null,
+    iconBtn("printer", "Print", () => window.print()),
+  ].filter(Boolean);
 
-  const control = canWrite && audit.status !== "Closed"
-    ? statusControl(audit.status, AUDIT_STATUSES.filter((x) => x !== "Closed"), async (v) => {
-      await API.patch(`/api/audits/${id}`, { status: v });
-      toast("Status updated"); openAudit(id);
-    }) : null;
-  const info = el("div", { class: "card" },
-    el("div", { class: "card-head" }, el("h3", null, "Overview"), control),
-    el("dl", { class: "kv two-col" },
-      el("dt", null, "Assurance Plan"), el("dd", null, audit.plan_id
-        ? (() => {
-          const a = el("a", { href: "#", onclick: (e) => { e.preventDefault(); openPlan(audit.plan_id); } }, `Plan #${audit.plan_id}`);
-          API.get(`/api/assurance-plans/${audit.plan_id}`).then((p) => { a.textContent = `FY${p.fiscal_year} · ${p.title}`; }).catch(() => {});
-          return a;
-        })()
-        : el("span", { class: "muted" }, "Not linked")),
-      el("dt", null, "Audit type"), el("dd", null, audit.audit_type || el("span", { class: "muted" }, "Not set")),
-      el("dt", null, "Port"), el("dd", null, (() => {
-        if (!audit.port_entity_id) return el("span", { class: "muted" }, "Not set");
-        const s = el("span", null, `#${audit.port_entity_id}`);
-        loadEntityConfig().then((c) => { const p = c.entities.find((e) => e.id === audit.port_entity_id); if (p) s.textContent = p.name; }).catch(() => {});
-        return s;
-      })()),
-      el("dt", null, "Created"), el("dd", null, fmtDate(audit.created_at)),
-      el("dt", null, "Last updated"), el("dd", null, fmtDate(audit.updated_at))),
-    el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Scope"),
-      el("div", { class: `lf-value ${audit.scope ? "" : "muted"}`.trim() }, audit.scope || "Not recorded")),
-    audit.description ? el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Description"),
-      el("div", { class: "lf-value" }, audit.description)) : null);
-  if (canWrite) info.append(el("div", { class: "auditee-strip" }));
-  viewRoot.append(info);
-  if (canWrite) renderAuditees(info.querySelector(".auditee-strip"), id);
-  if (isStaff()) { const dslot = el("div"); viewRoot.append(dslot); renderDeclarationCard(dslot, audit); }
-  if (canWrite && ["In Progress", "Review"].includes(audit.status)) {
-    const slot = el("div");
-    viewRoot.append(slot);
-    renderClosureCard(slot, audit, isAdmin());
-  }
-
+  // Phase tabs straight under the title; supporting views open from the utility links on the right.
   const tabs = [
-    ...(canWrite ? [{ key: "memo", label: "Planning Memo" }, { key: "rcm", label: "Risk & Control Matrix" }] : []),
-    { key: "findings", label: "Findings / Issues" },
-    { key: "report", label: "Audit Report" },
-    { key: "papers", label: "Working Papers" },
-    { key: "evidence", label: "Evidence Requests" },
-    ...(canWrite ? [{ key: "notes", label: "Review Notes" }, { key: "time", label: "Time" }, { key: "quality", label: "Quality Review" }] : []),
+    { key: "dashboard", label: "Dashboard" },
+    ...(canWrite ? [{ key: "memo", label: "Planning" }, { key: "rcm", label: "Fieldwork (RCM)" }] : []),
+    { key: "papers", label: "Working papers" },
+    { key: "findings", label: "Findings" },
+    { key: "evidence", label: "Evidence requests" },
+    { key: "report", label: "Report" },
+    ...(canWrite ? [{ key: "quality", label: "Quality review" }] : []),
     { key: "survey", label: "Survey" },
-    { key: "tasks", label: "Tasks" },
-    { key: "history", label: "History" },
-    { key: "approvals", label: "Approval Cycles" },
   ];
-  let active = startTab || (canWrite ? (audit.status === "Planned" ? "memo" : "rcm") : "findings");
-  const detail = el("div");
-  viewRoot.append(detail);
+  const utility = [
+    ...(canWrite ? [{ label: "Review notes", icon: "chat-square-text", key: "notes" }, { label: "Time", icon: "clock", key: "time" }] : []),
+    { label: "Tasks", icon: "check2-square", key: "tasks" },
+    { label: "History", icon: "clock-history", key: "history" },
+    { label: "Approvals", icon: "pen", key: "approvals" },
+  ];
+  const side = el("div");
+  const layout = recordLayout({
+    crumbs: recordCrumbs("audits", ref),
+    back: () => navigate("audits"),
+    title: audit.title, ref, status: audit.status,
+    meta: audit.approval_status ? [statusBadge(audit.approval_status)] : [],
+    actions,
+    utility: utility.map((u) => ({ ...u, onClick: () => layout.select(u.key) })),
+    tabs,
+    side,
+    onTab: (key, pane) => { state.lastAuditTab = { id, key }; paintTab(key, pane); },
+  });
+  viewRoot.append(layout.root);
+  renderAuditSide(side, audit, canWrite);
 
-  function paint() {
-    clear(detail);
-    detail.append(tabBar(tabs, active, (k) => { active = k; paint(); }));
-    const panel = el("div");
-    detail.append(panel);
-    if (active === "memo") renderMemoTab(panel, audit, canWrite);
-    if (active === "rcm") {
+  function paintTab(key, pane) {
+    if (key === "dashboard") renderAuditDashboard(pane, audit, canWrite, (k) => layout.select(k));
+    if (key === "memo") renderMemoTab(pane, audit, canWrite);
+    if (key === "rcm") {
       if (canWrite && audit.status !== "Closed" && hasPerm("audit.plan", "audit.fieldwork")) {
-        panel.append(el("div", { class: "actions end", style: "margin-bottom:8px" }, el("button", { class: "btn small secondary",
-          onclick: () => applyProgramDialog(audit, () => paint()) }, el("i", { class: "bi bi-list-check" }), " Apply audit programme")));
+        pane.append(el("div", { class: "actions end", style: "margin-bottom:8px" }, el("button", { class: "btn small secondary",
+          onclick: () => applyProgramDialog(audit, () => layout.select("rcm")) }, el("i", { class: "bi bi-list-check" }), " Apply audit programme")));
       }
       const rcmPanel = el("div");
-      panel.append(rcmPanel);
+      pane.append(rcmPanel);
       renderRcm(rcmPanel, id);
     }
-    if (active === "evidence") renderEvidenceTab(panel, audit, canWrite);
-    if (active === "time") renderAuditTimeTab(panel, audit);
-    if (active === "notes") renderReviewNotesTab(panel, audit);
-    if (active === "quality") renderQualityTab(panel, audit);
-    if (active === "survey") renderSurveyTab(panel, audit);
-    if (active === "findings") renderFindings(panel, id, canWrite);
-    if (active === "report") renderReportTab(panel, id, canWrite);
-    if (active === "papers") renderPapers(panel, id, canWrite);
-    if (active === "tasks") renderTasksTab(panel, "audit", id);
-    if (active === "history") renderHistoryTab(panel, "audit", id);
-    if (active === "approvals") renderApprovalsTab(panel, "audit", id);
+    if (key === "evidence") renderEvidenceTab(pane, audit, canWrite);
+    if (key === "time") renderAuditTimeTab(pane, audit);
+    if (key === "notes") renderReviewNotesTab(pane, audit);
+    if (key === "quality") renderQualityTab(pane, audit);
+    if (key === "survey") renderSurveyTab(pane, audit);
+    if (key === "findings") renderFindings(pane, id, canWrite);
+    if (key === "report") renderReportTab(pane, id, canWrite);
+    if (key === "papers") renderPapers(pane, id, canWrite);
+    if (key === "tasks") renderTasksTab(pane, "audit", id);
+    if (key === "history") renderHistoryTab(pane, "audit", id);
+    if (key === "approvals") renderApprovalsTab(pane, "audit", id);
   }
-  paint();
+  const legacy = {};
+  // Reloading the same audit (after a save) keeps the tab the user was on.
+  const remembered = state.lastAuditTab && state.lastAuditTab.id === id ? state.lastAuditTab.key : null;
+  layout.select(startTab ? (legacy[startTab] || startTab) : (remembered || "dashboard"));
+}
+
+// Right-hand summary of an audit: key facts, status control and close-out readiness.
+function renderAuditSide(side, audit, canWrite) {
+  const control = canWrite && audit.status !== "Closed"
+    ? statusControl(audit.status, AUDIT_STATUSES.filter((x) => x !== "Closed"), async (v) => {
+      await API.patch(`/api/audits/${audit.id}`, { status: v });
+      toast("Status updated"); openAudit(audit.id);
+    }) : null;
+  const plan = audit.plan_id ? (() => {
+    const a = el("a", { href: "#", onclick: (e) => { e.preventDefault(); openPlan(audit.plan_id); } }, `Plan #${audit.plan_id}`);
+    API.get(`/api/assurance-plans/${audit.plan_id}`).then((p) => { a.textContent = `FY${p.fiscal_year} · ${p.plan_ref}`; }).catch(() => {});
+    return a;
+  })() : el("span", { class: "muted" }, "Not linked");
+  const port = (() => {
+    if (!audit.port_entity_id) return el("span", { class: "muted" }, "Not set");
+    const s = el("span", null, `#${audit.port_entity_id}`);
+    loadEntityConfig().then((c) => { const p = c.entities.find((e) => e.id === audit.port_entity_id); if (p) s.textContent = p.name; }).catch(() => {});
+    return s;
+  })();
+  side.append(el("div", { class: "card" }, el("h3", null, "Engagement"),
+    el("dl", { class: "kv" },
+      el("dt", null, "Plan"), el("dd", null, plan),
+      el("dt", null, "Stream"), el("dd", null, audit.audit_type || el("span", { class: "muted" }, "Not set")),
+      el("dt", null, "Port"), el("dd", null, port),
+      el("dt", null, "Created"), el("dd", null, fmtDay(audit.created_at)),
+      el("dt", null, "Updated"), el("dd", null, fmtDay(audit.updated_at))),
+    control ? el("div", { style: "margin-top:10px" }, control) : null));
+  if (canWrite && ["In Progress", "Review"].includes(audit.status)) renderClosureCard(side, audit, isAdmin());
+}
+
+// Audit Dashboard tab: scope, auditees, independence, review status of working papers and the findings summary.
+async function renderAuditDashboard(pane, audit, canWrite, goTo) {
+  const id = audit.id;
+  const info = el("div", { class: "card" },
+    el("div", { class: "card-head" }, el("h3", null, "Scope")),
+    el("div", { class: `lf-value ${audit.scope ? "" : "muted"}`.trim() }, audit.scope || "Not recorded"),
+    audit.description ? el("div", { class: "long-field" }, el("div", { class: "lf-label" }, "Description"), el("div", { class: "lf-value" }, audit.description)) : null);
+  if (canWrite) info.append(el("div", { class: "auditee-strip" }));
+  pane.append(info);
+  if (canWrite) renderAuditees(info.querySelector(".auditee-strip"), id);
+
+  const review = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Working paper review status"),
+    el("button", { class: "link-btn", type: "button", onclick: () => goTo("papers") }, "Open working papers")));
+  const fsum = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Findings"),
+    el("button", { class: "link-btn", type: "button", onclick: () => goTo("findings") }, "Open findings")));
+  pane.append(review, fsum);
+  if (isStaff()) { const dslot = el("div"); pane.append(dslot); renderDeclarationCard(dslot, audit); }
+
+  const [papers, findings] = await Promise.all([
+    safeGet(`/api/audits/${id}/working-papers`, []), safeGet(`/api/audits/${id}/findings`, [])]);
+  // Latest version of each paper; columns follow the GPHA chain levels seen on this audit's papers.
+  const latest = Object.values(papers.reduce((acc, p) => { if (!acc[p.title] || acc[p.title].version_number < p.version_number) acc[p.title] = p; return acc; }, {}));
+  if (!latest.length) review.append(emptyState({ icon: "file-earmark-text", title: "No working papers yet", text: "Create one on the Working papers tab." }));
+  else {
+    const order = ["Unit Head", "Audit Manager", "PIA", "GM Audit (CAE)"];
+    const seen = new Set();
+    latest.forEach((p) => { (p.review_trail || []).forEach((t) => seen.add(t.level)); if (p.review_stage) seen.add(p.review_stage); });
+    const levels = order.filter((l) => seen.has(l));
+    const cols = levels.length ? levels : ["Reviewed"];
+    const signedAt = (p, level) => (level === "Reviewed" ? !!p.reviewed_at : (p.review_trail || []).some((t) => t.level === level));
+    const chip = (n, total) => el("span", { class: `count-chip ${n === total ? "done" : n ? "part" : "none"}` }, n === total ? "✓" : `${n}/${total}`);
+    const total = latest.length;
+    review.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
+      el("thead", null, el("tr", null, el("th", null, "Working paper"), el("th", null, "Prepared"), ...cols.map((c) => el("th", null, c)), el("th", null, "Sign-offs"))),
+      el("tbody", null,
+        el("tr", { class: "no-click" }, el("td", null, el("strong", null, `All papers (${total})`)), el("td", null, chip(total, total)),
+          ...cols.map((c) => el("td", null, chip(latest.filter((p) => signedAt(p, c)).length, total))), el("td", null, "")),
+        ...latest.slice(0, 10).map((p) => el("tr", { class: "no-click" },
+          el("td", null, el("a", { href: "#", onclick: (e) => { e.preventDefault(); wpTemplateView(p.id, () => goTo("dashboard")); } }, p.wp_ref ? `${p.wp_ref} ${p.title}` : p.title)),
+          el("td", null, chip(1, 1)), ...cols.map((c) => el("td", null, chip(signedAt(p, c) ? 1 : 0, 1))),
+          el("td", null, el("span", { class: "signoff-dots", title: p.reviewed_at ? "Reviewed" : (p.review_stage ? `Awaiting ${p.review_stage}` : "Not reviewed") },
+            el("i", { class: "on" }), ...cols.map((c) => el("i", { class: signedAt(p, c) ? "on" : "" }))))))))));
+    if (latest.length > 10) review.append(el("p", { class: "muted small" }, `Showing 10 of ${latest.length}.`));
+  }
+  if (!findings.length) fsum.append(emptyState({ icon: "flag", title: "No findings recorded" }));
+  else {
+    const by = (r) => findings.filter((f) => f.risk_rating === r).length;
+    const resp = findings.filter((f) => f.management_response).length;
+    const client = findings.filter((f) => f.client_response).length;
+    const open = findings.filter((f) => f.status !== "Closed").length;
+    fsum.append(el("div", { class: "stats" },
+      ...[["Open", open, open ? "warn" : "ok"], ["High", by("High"), by("High") ? "danger" : ""], ["Medium", by("Medium"), ""], ["Low", by("Low"), ""],
+        ["Client responses", `${client}/${findings.length}`, client === findings.length ? "ok" : "warn"],
+        ["Management responses", `${resp}/${findings.length}`, resp === findings.length ? "ok" : "warn"]]
+        .map(([l, n, k]) => el("div", { class: `stat ${k}` }, el("div", { class: "l" }, l), el("div", { class: "n" }, String(n))))));
+  }
 }
 
 // Auditee access, shown as removable chips inside the audit overview card.
@@ -1801,19 +1887,27 @@ async function renderUserManagement(container, msg) {
 
 async function renderLogs() {
   clear(viewRoot);
-  const msg = el("div");
-  viewRoot.append(viewHeader("Audit log"), msg);
-  try {
-    const logs = await API.get("/api/audit-logs?limit=200");
-    const card = el("div", { class: "card" }, el("h3", null, "Immutable activity trail"));
-    if (!logs.length) card.append(el("div", { class: "empty" }, "No activity recorded."));
-    else card.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "When"), el("th", null, "User"), el("th", null, "IP"), el("th", null, "Action"))),
-      el("tbody", null, ...logs.map((l) => el("tr", { class: "no-click" },
-        el("td", { class: "muted" }, fmtDate(l.timestamp)), el("td", null, l.user_id ?? "-"),
-        el("td", { class: "muted" }, l.ip_address || "-"), el("td", null, l.action_performed))))));
-    viewRoot.append(card);
-  } catch (err) { notify(msg, err.message, "error"); }
+  viewRoot.append(viewHeader("Audit log", null, { sub: "Immutable activity trail. Search the action text, filter by date; paging and export run on the server." }));
+  const card = el("div", { class: "card" });
+  viewRoot.append(card);
+  const today = new Date();
+  const ago = (d) => { const x = new Date(today); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+  const t = serverTable({
+    url: "/api/audit-logs/register",
+    storageKey: "audit-log",
+    defaultSort: "-timestamp",
+    pageSize: 50,
+    exportName: "Audit log",
+    filters: [{ key: "date_from", label: "Period", options: [{ value: ago(1), label: "Last 24 hours" }, { value: ago(7), label: "Last 7 days" }, { value: ago(30), label: "Last 30 days" }] }],
+    emptyTitle: "No activity recorded",
+    columns: [
+      { key: "timestamp", label: "When", sort: true, render: (l) => fmtDate(l.timestamp), csv: (l) => l.timestamp },
+      { key: "user", label: "User", sort: true, render: (l) => l.user || (l.user_id ? `#${l.user_id}` : "System"), csv: (l) => l.user || "" },
+      { key: "ip_address", label: "IP", hidden: true },
+      { key: "action_performed", label: "Action", render: (l) => el("span", { class: "log-action" }, l.action_performed) },
+    ],
+  });
+  card.append(t.root);
 }
 
 // ==================================================================== backups (admin)

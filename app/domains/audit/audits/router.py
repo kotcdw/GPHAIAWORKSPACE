@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
@@ -15,6 +17,7 @@ from app.core.database import get_db
 from app.core.deps import require_active_user, require_module_tier, require_perm, require_role
 from app.core.enums import ApprovalStatus, AuditStatus, Role, TestStatus, utcnow
 from app.core.history import log_record_history
+from app.core.paging import Page, PageParams, matches, page_params, paginate_rows
 from app.core.schemas import ESignRequest, MessageOut
 from app.domains.audit.audits.models import Audit, AuditAuditee, Finding, WorkingPaper
 from app.domains.audit.audits.schemas import AuditCreate, AuditeeAssign, AuditeeOut, AuditOut, AuditUpdate
@@ -72,6 +75,118 @@ def list_audits(db: DBSession = Depends(get_db), user: User = Depends(require_ac
         stmt = stmt.where(Audit.port_entity_id == port_id)
     audits = list(db.execute(stmt).scalars().all())
     return visible(db, user, "audit", audits)
+
+
+class AuditRow(BaseModel):
+    id: int
+    ref: str
+    title: str
+    audit_type: str | None
+    status: str
+    approval_status: str | None
+    port: str | None
+    port_id: int | None
+    plan: str | None
+    plan_id: int | None
+    lead: str | None
+    planned_quarter: str | None
+    planned_start: date | None
+    planned_end: date | None
+    budget_hours: int | None
+    open_findings: int
+    findings: int
+    working_papers: int
+    report_status: str | None
+    updated_at: datetime
+
+
+_AUDIT_SORT = {
+    "ref": lambda r: r["id"], "title": lambda r: r["title"], "status": lambda r: r["status"],
+    "audit_type": lambda r: r["audit_type"], "port": lambda r: r["port"], "plan": lambda r: r["plan"],
+    "lead": lambda r: r["lead"], "planned_start": lambda r: r["planned_start"],
+    "open_findings": lambda r: r["open_findings"], "updated_at": lambda r: r["updated_at"],
+}
+
+
+@router.get("/register", response_model=Page[AuditRow])
+def audit_register(
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_active_user),
+    params: PageParams = Depends(page_params),
+    status_filter: AuditStatus | None = Query(None, alias="status"),
+    audit_type: str | None = Query(None, max_length=60),
+    port_id: int | None = None,
+    plan_id: int | None = None,
+    mine: bool = False,
+) -> Page[AuditRow]:
+    """The engagement register: one row per audit the user may read, with plan, lead, port and progress counts.
+
+    Rows are authorized first, then searched, sorted and paged on the server.
+    """
+    from app.domains.assurance.planning.models import AssurancePlan, PlanEngagement
+    from app.domains.audit.reports.models import AuditReport
+    from app.platform.organizations.models import Organization
+
+    stmt = select(Audit)
+    if status_filter is not None:
+        stmt = stmt.where(Audit.status == status_filter)
+    if audit_type:
+        stmt = stmt.where(Audit.audit_type == audit_type)
+    if plan_id is not None:
+        stmt = stmt.where(Audit.plan_id == plan_id)
+    if mine:
+        from app.platform.organizations.router import Index
+
+        idx = Index(db)
+        home = idx.rows.get(user.work_entity_id) if user.work_entity_id else None
+        port = idx.port_of(home) if home else None
+        port_id = port.id if port else -1
+    if port_id is not None:
+        stmt = stmt.where(Audit.port_entity_id == port_id)
+    audits = visible(db, user, "audit", list(db.execute(stmt).scalars().all()))
+    ids = [a.id for a in audits] or [0]
+
+    counts: dict[int, list[int]] = {}
+    for aid, st in db.execute(select(Finding.audit_id, Finding.status).where(Finding.audit_id.in_(ids))).all():
+        c = counts.setdefault(aid, [0, 0])
+        c[0] += 1
+        c[1] += 0 if st.value == "Closed" else 1
+    papers = dict(db.execute(
+        select(WorkingPaper.audit_id, func.count()).where(WorkingPaper.audit_id.in_(ids),
+                                                          WorkingPaper.is_deleted.is_(False))
+        .group_by(WorkingPaper.audit_id)).all())
+    reports = {r.audit_id: r.status.value for r in
+               db.execute(select(AuditReport).where(AuditReport.audit_id.in_(ids))).scalars()}
+    engagements = {e.audit_id: e for e in
+                   db.execute(select(PlanEngagement).where(PlanEngagement.audit_id.in_(ids))).scalars()}
+    plans = {p.id: p for p in db.execute(select(AssurancePlan)).scalars()}
+    port_ids = {a.port_entity_id for a in audits if a.port_entity_id}
+    ports = {o.id: o.name for o in
+             db.execute(select(Organization).where(Organization.id.in_(port_ids or {0}))).scalars()}
+    lead_ids = {e.lead_auditor_id for e in engagements.values() if e.lead_auditor_id}
+    leads = {u.id: (u.full_name or u.username) for u in
+             db.execute(select(User).where(User.id.in_(lead_ids or {0}))).scalars()}
+
+    rows = []
+    for a in audits:
+        e = engagements.get(a.id)
+        p = plans.get(a.plan_id) if a.plan_id else None
+        f_total, f_open = counts.get(a.id, [0, 0])
+        rows.append({
+            "id": a.id, "ref": f"AUD-{a.id:04d}", "title": a.title, "audit_type": a.audit_type,
+            "status": a.status.value, "approval_status": a.approval_status.value if a.approval_status else None,
+            "port": ports.get(a.port_entity_id), "port_id": a.port_entity_id,
+            "plan": f"FY{p.fiscal_year} · {p.plan_ref}" if p else None, "plan_id": a.plan_id,
+            "lead": leads.get(e.lead_auditor_id) if e and e.lead_auditor_id else None,
+            "planned_quarter": e.planned_quarter if e else None, "planned_start": e.planned_start if e else None,
+            "planned_end": e.planned_end if e else None, "budget_hours": e.budget_hours if e else None,
+            "open_findings": f_open, "findings": f_total, "working_papers": papers.get(a.id, 0),
+            "report_status": reports.get(a.id), "updated_at": a.updated_at,
+        })
+    rows = [r for r in rows if matches(params.q, r["ref"], r["title"], r["port"], r["lead"], r["audit_type"],
+                                       r["plan"])]
+    page, total, sort = paginate_rows(rows, params, _AUDIT_SORT, "-updated_at")
+    return Page[AuditRow](items=page, total=total, page=params.page, page_size=params.page_size, sort=sort)
 
 
 def _audit_type(value: str | None) -> str | None:

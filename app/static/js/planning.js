@@ -204,6 +204,7 @@ async function openPlan(id) {
   const s = plan.summary;
 
   setActiveNav("plans");
+  setCrumbs(recordCrumbs("plans", plan.plan_ref || `FY${plan.fiscal_year}`));
   viewRoot.append(viewHeader(plan.title.includes(String(plan.fiscal_year)) ? plan.title : `${plan.title} (FY${plan.fiscal_year})`, [
     draft ? btn("Edit", () => editPlanModal(plan), "secondary") : null,
     hasPerm("plan.amend") && approved ? btn("Revise plan", () => revisePlanDialog(plan), "secondary") : null,

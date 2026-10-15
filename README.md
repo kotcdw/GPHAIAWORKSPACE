@@ -395,6 +395,18 @@ uv run pytest
 uv run ruff check .
 ```
 
+Browser tests (`tests/ui`) open every screen in Chromium and check the shell, the shared table, the record page
+and phone/tablet layouts. They are skipped until Playwright is installed:
+
+```powershell
+uv sync --group ui
+uv run --group ui playwright install chromium
+uv run --group ui pytest tests/ui
+```
+
+Set `GPHA_UI_SHOTS=C:\temp\shots` to save a screenshot of every screen. The design system and shared UI
+components are described in `docs/ui/02-design-system.md`.
+
 ## Backups
 
 Backups are written to `GPHA_BACKUP_DIR` (default `./backups`). The module

@@ -40,10 +40,9 @@ function applyNavPermissions() {
     else if (b.dataset.perm !== undefined || isCommittee()) b.classList.remove("hidden");
   });
   // Section headings with nothing visible under them are hidden too.
-  document.querySelectorAll("#sidebarNav .nav-section").forEach((h) => {
-    let n = h.nextElementSibling; let any = false;
-    while (n && !n.classList.contains("nav-section")) { if (!n.classList.contains("hidden")) any = true; n = n.nextElementSibling; }
-    h.classList.toggle("hidden", !any);
+  // A module group with no visible pages disappears.
+  document.querySelectorAll("#sidebarNav .nav-group").forEach((g) => {
+    g.classList.toggle("hidden", ![...g.querySelectorAll("button[data-view]")].some((b) => !b.classList.contains("hidden")));
   });
 }
 
