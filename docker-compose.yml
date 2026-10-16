@@ -19,7 +19,9 @@ services:
       - --log-bin-trust-function-creators=1
     ports:
       # 3306 is taken by a local XAMPP MySQL; expose Docker MySQL on 3307.
-      - "3307:3306"
+      # Bound to 127.0.0.1 so the database is never reachable from the network,
+      # even when the app is shared with colleagues (.\run-lan.ps1).
+      - "127.0.0.1:3307:3306"
     volumes:
       - gpha_mysql_data:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d:ro

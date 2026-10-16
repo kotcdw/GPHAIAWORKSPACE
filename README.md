@@ -287,6 +287,20 @@ account and have an administrator approve it.
 > remediation, or organization) cannot sign it off. Create a second Admin account for
 > sign-off before running a full audit cycle.
 
+### Team test on the office network
+
+```powershell
+.\run-lan.ps1          # same as .\run.ps1 -Lan
+```
+
+Starts the database and the app like `run.ps1`, but colleagues on the office
+network can open it at `http://<this PC's IPv4 address>:8001` (the script prints the
+link). The first run asks Windows for administrator approval to allow TCP 8001
+through the firewall (Domain and Private networks only). The link is plain HTTP:
+use demo or test data only. The MySQL container stays bound to 127.0.0.1, so the
+database itself is never reachable from the network. For the formal pilot use the
+Laragon HTTPS setup in `deploy/PRODUCTION.md`.
+
 ### Production checklist
 
 Set `GPHA_ENVIRONMENT=production`; the app then refuses to start until:
