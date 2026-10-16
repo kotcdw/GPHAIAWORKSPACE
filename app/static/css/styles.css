@@ -203,6 +203,7 @@ button.btn.icon, a.btn.icon { padding: 5px 8px; }
 .row > * { flex: 1; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .actions.end { justify-content: flex-end; }
+.actions.nowrap { flex-wrap: nowrap; white-space: nowrap; }
 .status-control { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 
 /* Badges ------------------------------------------------------------------ */

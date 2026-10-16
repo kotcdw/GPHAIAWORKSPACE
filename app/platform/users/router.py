@@ -13,6 +13,7 @@ from app.core.deps import require_role
 from app.core.enums import Role
 from app.core.schemas import MessageOut
 from app.core.security import hash_password
+from app.core.validators import password_problems
 from app.platform.auth.service import revoke_sessions
 from app.platform.roles import service as role_service
 from app.platform.users.models import User
@@ -93,12 +94,24 @@ def update_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+    # Editing an administrator's details, password or two-step setup is a Super Administrator task.
+    touched = {"email", "full_name", "first_name", "last_name", "company", "password", "reset_mfa",
+               "work_entity_id"} & payload.model_fields_set
+    if touched and user.id != admin.id:
+        role_service.check_can_manage(admin, user, None)
+    if payload.password is not None:
+        problem = password_problems(payload.password, user.username)
+        if problem:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Password {problem}")
+    if payload.full_name is not None and not payload.full_name.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Full name cannot be blank")
+
     changes: list[str] = []
     if payload.email is not None:
         user.email = str(payload.email)
         changes.append("email")
     if payload.full_name is not None:
-        user.full_name = payload.full_name
+        user.full_name = payload.full_name.strip()
         changes.append("full_name")
     if payload.first_name is not None:
         user.first_name = payload.first_name
@@ -187,6 +200,8 @@ def delete_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user.id == admin.id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account")
+    role_service.check_can_manage(admin, user, None)
+    role_service.guard_last_super_admin(db, user, deactivating=True)
     if _has_activity(db, user.id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

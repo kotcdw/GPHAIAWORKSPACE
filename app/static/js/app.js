@@ -1800,6 +1800,54 @@ function newUserForm() {
   });
 }
 
+function editUserForm(u) {
+  openForm({
+    title: `Edit user: ${u.full_name || u.username}`,
+    key: `user:edit:${u.id}`,
+    meta: { title: `Edit user ${u.username}`, record_type: "user", record_id: u.id },
+    width: 560,
+    fields: [
+      { name: "full_name", label: "Full name", required: true, maxLength: 255, singleLine: true },
+      { name: "email", label: "Email", type: "email", required: true },
+      { name: "company", label: "Department / unit", maxLength: 255, singleLine: true },
+    ],
+    initial: { full_name: u.full_name || "", email: u.email || "", company: u.company || "" },
+    submitLabel: "Save changes",
+    onSubmit: (v) => API.patch(`/api/users/${u.id}`, { full_name: v.full_name, email: v.email, company: v.company || "" }),
+    onDone: () => { toast("User updated"); renderProfile(); },
+  });
+}
+
+function resetPasswordForm(u) {
+  openForm({
+    title: `Reset password: ${u.full_name || u.username}`,
+    key: `user:password:${u.id}`,
+    draftable: false,
+    width: 520,
+    fields: [
+      { name: "password", label: "New password", type: "password", required: true, minLength: 8, maxLength: 128,
+        help: "At least 8 characters, not only numbers, and not containing the username. Give it to the user in person." },
+      { name: "confirm", label: "Repeat new password", type: "password", required: true, minLength: 8, maxLength: 128 },
+    ],
+    validate: (v) => (v.password && v.confirm && v.password !== v.confirm ? { confirm: "The two passwords do not match" } : null),
+    submitLabel: "Reset password",
+    onSubmit: (v) => API.patch(`/api/users/${u.id}`, { password: v.password }),
+    onDone: () => { toast("Password reset. The user was signed out everywhere and any lock was cleared."); renderProfile(); },
+  });
+}
+
+async function deleteUser(u) {
+  const res = await confirmDialog({
+    title: "Delete user account?",
+    text: `${u.full_name || u.username} (${u.username}) will be removed permanently. Accounts with recorded audit work `
+      + "cannot be deleted; deactivate them instead so the audit trail stays complete.",
+    confirmLabel: "Delete account", danger: true,
+  });
+  if (!res.ok) return;
+  try { await API.del(`/api/users/${u.id}`); toast("User deleted"); renderProfile(); }
+  catch (err) { toast(err.message, "error"); }
+}
+
 async function renderUserManagement(container, msg) {
   try {
     const users = await API.get("/api/users");
@@ -1815,7 +1863,14 @@ async function renderUserManagement(container, msg) {
         const self = u.id === state.user.id;
         const jobSelect = await jobRoleSelect(u, () => renderProfile());
         const locked = u.locked_until && new Date(`${u.locked_until}Z`) > new Date();
-        const actions = el("div", { class: "actions end" },
+        const isAdminRow = ["super_admin", "admin"].includes(u.job_role);
+        const canManage = self || !isAdminRow || Boolean(ROLE_CATALOGUE && ROLE_CATALOGUE.can_appoint_admins);
+        const iconBtn = (icon, label, onclick, cls = "secondary") => el("button", {
+          class: `btn small icon ${cls}`, type: "button", title: label, "aria-label": `${label}: ${u.username}`, onclick,
+        }, el("i", { class: `bi bi-${icon}` }));
+        const actions = el("div", { class: "actions end nowrap" },
+          canManage ? iconBtn("pencil", "Edit", () => editUserForm(u)) : null,
+          canManage && !self ? iconBtn("key", "Reset password", () => resetPasswordForm(u)) : null,
           u.mfa_enabled && !self ? el("button", { class: "btn small secondary", title: "Use when the user lost their phone",
             onclick: async () => {
               try { await API.patch(`/api/users/${u.id}`, { reset_mfa: true }); toast("Two-step verification reset"); renderProfile(); }
@@ -1828,7 +1883,8 @@ async function renderUserManagement(container, msg) {
           self ? null : el("button", { class: `btn small ${u.is_active ? "danger-ghost" : ""}`.trim(), onclick: async () => {
             try { await API.patch(`/api/users/${u.id}`, { is_active: !u.is_active }); toast(u.is_active ? "Account deactivated" : "Account approved"); renderProfile(); }
             catch (err) { toast(err.message, "error"); }
-          } }, u.is_active ? "Deactivate" : "Approve"));
+          } }, u.is_active ? "Deactivate" : "Approve"),
+          canManage && !self ? iconBtn("trash", "Delete", () => deleteUser(u), "danger-ghost") : null);
         return el("tr", { class: "no-click" },
           el("td", null, el("div", { class: "cell-title" }, u.full_name || u.username),
             el("div", { class: "muted small" }, `${u.username} · ${u.email}`)),

@@ -329,7 +329,7 @@ function mountForm(container, opts) {
     if (Object.keys(problems).length) {
       await saveDraft(true);
       const loose = Object.entries(problems).filter(([n]) => !nodes[n]).map(([, m]) => m);
-      setBanner(`Please correct ${Object.keys(problems).length} field(s) highlighted below. ${loose.join(" ")} Your entries are saved as a draft.`, "error");
+      setBanner(`Please correct ${Object.keys(problems).length} field(s) highlighted below. ${loose.join(" ")}${draftable && key ? " Your entries are saved as a draft." : ""}`, "error");
       const first = Object.keys(problems).find((n) => nodes[n]);
       if (first && nodes[first].focus) nodes[first].focus();
       return false;
