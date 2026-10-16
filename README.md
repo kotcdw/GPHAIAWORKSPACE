@@ -301,6 +301,35 @@ use demo or test data only. The MySQL container stays bound to 127.0.0.1, so the
 database itself is never reachable from the network. For the formal pilot use the
 Laragon HTTPS setup in `deploy/PRODUCTION.md`.
 
+### Testers outside the office
+
+```powershell
+.\run-external.ps1                    # Cloudflare quick tunnel (testers need only a browser)
+.\run-external.ps1 -Mode Tailscale    # private: only people invited to your Tailscale network
+```
+
+Starts the database and the app like `run.ps1`, then shares it over an encrypted HTTPS
+tunnel. The app itself listens on 127.0.0.1 only, so no firewall or router change is needed.
+The script prints the link; Ctrl+C (or closing the window) stops sharing.
+
+- **Safety check first:** sharing is refused while any active account still uses a published
+  password (`Admin@12345`, the demo password, or `GPHA_ADMIN_PASSWORD` from `.env`);
+  `uv run python -m scripts.share_check` lists them. While shared, secure cookies are on and
+  the API documentation (`/docs`) is switched off (`GPHA_API_DOCS=false`).
+- **Cloudflare (default):** installs `cloudflared` with winget if missing (asks first). No
+  account needed; the `https://....trycloudflare.com` link changes every run. Anyone with the
+  link reaches the sign-in page, so every tester needs their own account.
+- **Fixed Cloudflare address (optional):** with a free Cloudflare account and a domain, run once
+  `cloudflared tunnel login`, `cloudflared tunnel create giaw`,
+  `cloudflared tunnel route dns giaw giaw-test.example.com`, then
+  `.\run-external.ps1 -TunnelName giaw -Hostname giaw-test.example.com`. Cloudflare Access
+  (Zero Trust) can additionally limit the link to named e-mail addresses.
+- **Tailscale:** installs Tailscale with winget if missing and signs you in. In the admin console
+  (login.tailscale.com > DNS) turn on MagicDNS and HTTPS Certificates once. Invite testers under
+  Users > Invite users; they install Tailscale, sign in, and open `https://<pc-name>.<tailnet>.ts.net`.
+
+Use demo or test data only: this runs on a PC, not on the approved GPHA server (see MAINPLAN).
+
 ### Production checklist
 
 Set `GPHA_ENVIRONMENT=production`; the app then refuses to start until:

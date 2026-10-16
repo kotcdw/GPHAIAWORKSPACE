@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-change-me"
     session_ttl_hours: int = 12
     cookie_secure: bool = False
+    # Interactive API documentation (/docs, /redoc, /openapi.json). Always off in production;
+    # run-external.ps1 also switches it off while the app is shared outside the office.
+    api_docs: bool = True
 
     # Apply pending database migrations automatically at start-up.
     auto_migrate: bool = True

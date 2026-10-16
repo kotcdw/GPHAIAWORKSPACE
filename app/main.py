@@ -147,15 +147,16 @@ async def _schema_watcher() -> None:
 
 
 _PROD = settings.environment.lower() == "production"
+_DOCS = settings.api_docs and not _PROD
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     lifespan=lifespan,
     dependencies=[Depends(csrf_protect)],
     # The API map is for developers: not published on a production server.
-    docs_url=None if _PROD else "/docs",
-    redoc_url=None if _PROD else "/redoc",
-    openapi_url=None if _PROD else "/openapi.json",
+    docs_url="/docs" if _DOCS else None,
+    redoc_url="/redoc" if _DOCS else None,
+    openapi_url="/openapi.json" if _DOCS else None,
 )
 
 _FRIENDLY = {

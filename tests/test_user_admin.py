@@ -80,3 +80,28 @@ def test_only_super_admin_edits_resets_or_deletes_administrators(client, client2
     rh = csrf_headers(login(client, root.username))
     assert client.patch(f"/api/users/{other_admin.id}", json={"full_name": "Kofi Admin"}, headers=rh).status_code == 200
     assert client.delete(f"/api/users/{other_admin.id}", headers=rh).status_code == 200
+
+
+def test_share_check_flags_published_passwords(db):
+    from scripts.share_check import weak_accounts
+
+    weak = make_user(db, f"uashare_{uuid.uuid4().hex[:6]}", Role.Admin, password="Admin@12345")
+    strong = make_user(db, f"uastrong_{uuid.uuid4().hex[:6]}", Role.Auditor, password=NEW_PASSWORD)
+    off = make_user(db, f"uaoff_{uuid.uuid4().hex[:6]}", Role.Auditor, password="DemoPass!123", active=False)
+    names = weak_accounts(db)
+    assert weak.username in names and strong.username not in names and off.username not in names
+
+
+def test_api_docs_setting(monkeypatch):
+    import importlib
+
+    import app.main as main_module
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "api_docs", False)
+    try:
+        reloaded = importlib.reload(main_module)
+        assert reloaded.app.docs_url is None and reloaded.app.openapi_url is None
+    finally:
+        monkeypatch.setattr(settings, "api_docs", True)
+        importlib.reload(main_module)
