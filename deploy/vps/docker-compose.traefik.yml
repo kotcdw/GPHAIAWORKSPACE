@@ -1,28 +1,15 @@
 # Use an existing Traefik (for example the one Hostinger's Docker Manager installs) for HTTPS.
-# Added by deploy/vps/install.sh when Traefik already owns ports 80/443.
-# Traefik on Hostinger: network "traefik-proxy", entrypoint "websecure", certificate resolver "letsencrypt".
+# Added by deploy/vps/install.sh when a Traefik container is running.
+# Hostinger's Traefik: entrypoint "websecure", certificate resolver "letsencrypt", and it already
+# redirects http:// to https:// for every site.
 services:
   app:
-    networks:
-      - default
-      - traefik-proxy
     labels:
       - traefik.enable=true
-      - traefik.docker.network=traefik-proxy
+      - traefik.docker.network=${GIAW_TRAEFIK_NETWORK:-giaw_default}
       - traefik.http.routers.giaw.rule=Host(`${GIAW_DOMAIN}`) || Host(`www.${GIAW_DOMAIN}`)
-      - traefik.http.routers.giaw.entrypoints=websecure
+      - traefik.http.routers.giaw.entrypoints=${GIAW_TRAEFIK_ENTRYPOINT:-websecure}
       - traefik.http.routers.giaw.tls=true
       - traefik.http.routers.giaw.tls.certresolver=${GIAW_TRAEFIK_RESOLVER:-letsencrypt}
       - traefik.http.routers.giaw.service=giaw
       - traefik.http.services.giaw.loadbalancer.server.port=8001
-      # Plain http:// visits are sent to https://
-      - traefik.http.routers.giaw-http.rule=Host(`${GIAW_DOMAIN}`) || Host(`www.${GIAW_DOMAIN}`)
-      - traefik.http.routers.giaw-http.entrypoints=web
-      - traefik.http.routers.giaw-http.middlewares=giaw-https
-      - traefik.http.routers.giaw-http.service=giaw
-      - traefik.http.middlewares.giaw-https.redirectscheme.scheme=https
-      - traefik.http.middlewares.giaw-https.redirectscheme.permanent=true
-
-networks:
-  traefik-proxy:
-    external: true

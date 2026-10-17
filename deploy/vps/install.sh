@@ -113,19 +113,25 @@ if command -v ufw >/dev/null 2>&1; then
 fi
 
 # --------------------------------------------------------------------------- 4. HTTPS front door
-# Hostinger's Docker Manager installs Traefik on ports 80/443. If Traefik (or anything else that is not
-# ours) already owns port 443, hand GIAW to that Traefik; otherwise start our own Caddy.
-OWNER_443="$(docker ps --filter publish=443 --format '{{.Names}} {{.Image}}' | grep -v '^giaw-caddy' | head -1 || true)"
-if [ -n "$OWNER_443" ]; then
-  if echo "$OWNER_443" | grep -qi traefik; then
-    say "Traefik already serves ports 80/443 ($OWNER_443) - GIAW will use it for HTTPS"
-    docker network inspect traefik-proxy >/dev/null 2>&1 || die "Traefik is running but the 'traefik-proxy' network was not found. Check Traefik in Docker Manager."
-    COMPOSE+=(-f "$ROOT/deploy/vps/docker-compose.traefik.yml")
-    docker rm -f giaw-caddy-1 >/dev/null 2>&1 || true
+# Hostinger's Docker Manager runs Traefik on ports 80/443 (often on the host network). If a Traefik
+# container is running, GIAW is handed to it; otherwise GIAW starts its own Caddy on 80/443.
+TRAEFIK="$(docker ps --format '{{.Names}} {{.Image}}' | awk 'tolower($2) ~ /traefik/ {print $1; exit}')"
+if [ -n "$TRAEFIK" ]; then
+  say "Traefik is running ($TRAEFIK) - GIAW will use it for HTTPS"
+  COMPOSE+=(-f "$ROOT/deploy/vps/docker-compose.traefik.yml")
+  if [ "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$TRAEFIK")" != "host" ] \
+     && docker network inspect traefik-proxy >/dev/null 2>&1; then
+    COMPOSE+=(-f "$ROOT/deploy/vps/docker-compose.traefik-net.yml")
+    export GIAW_TRAEFIK_NETWORK=traefik-proxy
   else
-    die "Port 443 is already used by: $OWNER_443. Stop it (or put it behind the same proxy) and run again."
+    export GIAW_TRAEFIK_NETWORK=giaw_default
   fi
+  docker rm -f giaw-caddy-1 >/dev/null 2>&1 || true
 else
+  BUSY="$( (ss -ltnp 2>/dev/null || true) | awk '$4 ~ /:(80|443)$/' | head -2)"
+  [ -z "$BUSY" ] || die "Ports 80/443 are already in use by another program:
+$BUSY
+Stop it, or run it behind Traefik, then run this again."
   say "Using Caddy for HTTPS (ports 80/443)"
   COMPOSE+=(--profile caddy)
 fi

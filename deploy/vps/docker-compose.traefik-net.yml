@@ -1,0 +1,11 @@
+# Added by deploy/vps/install.sh when Traefik runs on a shared "traefik-proxy" Docker network
+# (instead of the host network), so Traefik can reach the app.
+services:
+  app:
+    networks:
+      - default
+      - traefik-proxy
+
+networks:
+  traefik-proxy:
+    external: true
