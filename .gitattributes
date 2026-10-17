@@ -1,0 +1,4 @@
+# Shell scripts and container files must keep Unix line endings (they run on Linux servers).
+*.sh text eol=lf
+Dockerfile text eol=lf
+deploy/vps/Caddyfile text eol=lf

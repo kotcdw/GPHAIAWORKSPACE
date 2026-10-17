@@ -1,0 +1,23 @@
+.git
+.venv
+.env
+.env.*
+**/__pycache__
+*.py[oc]
+uploads/
+backups/
+docs/
+tests/
+deploy/
+*.docx
+*.pptx
+*.md
+!README.md
+.ruff_cache
+.pytest_cache
+.coverage
+Claude outputs/
+USERDOCS/
+*.png
+*.cmd
+*.ps1

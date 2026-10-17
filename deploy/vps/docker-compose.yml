@@ -1,0 +1,71 @@
+# GIAW on a Linux VPS: MySQL + the app + Caddy (automatic HTTPS for your domain).
+# Used by deploy/vps/install.sh. Run from the repository root:
+#   docker compose -f deploy/vps/docker-compose.yml --env-file .env.production up -d --build
+# Only Caddy publishes ports (80 and 443). MySQL and the app are reachable only inside Docker.
+
+name: giaw
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${GPHA_MYSQL_DATABASE:-gpha_workspace}
+      MYSQL_USER: ${GPHA_MYSQL_USER:-gpha}
+      MYSQL_PASSWORD: ${GPHA_MYSQL_PASSWORD:?set GPHA_MYSQL_PASSWORD in .env.production}
+      MYSQL_ROOT_PASSWORD: ${GPHA_MYSQL_ROOT_PASSWORD:?set GPHA_MYSQL_ROOT_PASSWORD in .env.production}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # Lets the app user create the append-only audit-trail triggers.
+      - --log-bin-trust-function-creators=1
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: giaw-app:latest
+    restart: unless-stopped
+    env_file: ../../.env.production
+    environment:
+      GPHA_MYSQL_HOST: mysql
+      GPHA_MYSQL_PORT: "3306"
+      GPHA_UPLOAD_DIR: /data/uploads
+      GPHA_BACKUP_DIR: /data/backups
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - uploads:/data/uploads
+      - backups:/data/backups
+
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      GIAW_DOMAIN: ${GIAW_DOMAIN:?set GIAW_DOMAIN in .env.production}
+      GIAW_ACME_EMAIL: ${GIAW_ACME_EMAIL:?set GIAW_ACME_EMAIL in .env.production}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  mysql_data:
+  uploads:
+  backups:
+  caddy_data:
+  caddy_config:
