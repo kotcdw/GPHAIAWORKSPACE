@@ -17,6 +17,7 @@ from app.core.history import log_record_history
 from app.domains.issues.capa.models import Capa
 from app.domains.issues.capa.schemas import CapaOut
 from app.domains.issues.capa.status import FULLY, NOT_IMPLEMENTED, PARTIALLY
+from app.domains.issues.capa.timeline import add_event
 from app.domains.issues.followup.service import LEVEL_NAMES, overdue_actions, run_escalations
 from app.platform.automations.engine import capa_context, emit
 from app.platform.notifications.service import notify, notify_many, user_id_by_email
@@ -98,6 +99,7 @@ def record_implementation(
     capa.validated_by = None
     capa.validated_at = None
     capa.status = CapaStatus.Review
+    add_event(db, capa, "implementation", user_id=user.id, text=payload.evidence, request=request)
     log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
                        action="IMPLEMENTED evidence recorded", request=request)
     log_action(db, user_id=user.id, action=f"REMEDIATION_IMPLEMENTED id={capa.id}", request=request)
@@ -154,6 +156,9 @@ def validate_implementation(
         notify_many(db, [owner, capa.created_by], f"Action validated: {capa.capa_ref}",
                     "The auditor confirmed the action is effective. It can now be closed with an e-signature.",
                     link_type="capa", link_id=capa.id)
+    add_event(db, capa, "validation", user_id=user.id, request=request,
+              text=f"{payload.result.value}. " + (f"Testing: {procedures}. " if procedures else "")
+              + (payload.comment or ""))
     log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
                        action=f"VALIDATED {payload.result.value}", request=request)
     log_action(db, user_id=user.id, action=f"REMEDIATION_VALIDATED id={capa.id} result={payload.result.value}",
@@ -177,9 +182,11 @@ def list_overdue(db: DBSession = Depends(get_db), user: User = Staff) -> list[Ov
 
 
 @router.post("/api/followup/run-escalations")
-def trigger_escalations(db: DBSession = Depends(get_db),
+def trigger_escalations(request: Request, db: DBSession = Depends(get_db),
                         user: User = Depends(require_perm("followup.manage"))) -> dict:
-    return {"escalated": run_escalations(db)}
+    moved = run_escalations(db)
+    log_action(db, user_id=user.id, action=f"ESCALATION_RUN manual escalated={moved}", request=request, commit=True)
+    return {"escalated": moved}
 
 
 class ProgressIn(BaseModel):
@@ -209,6 +216,8 @@ def record_progress(capa_id: int, payload: ProgressIn, request: Request, db: DBS
     capa.progress_note = f"{utcnow():%d %b %Y}: {payload.note.strip()}"
     if capa.status == CapaStatus.Open and payload.status == PARTIALLY:
         capa.status = CapaStatus.InProgress
+    add_event(db, capa, "progress", user_id=user.id, text=f"{payload.status}: {payload.note.strip()}",
+              request=request)
     log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
                        action=f"PROGRESS {payload.status}", request=request)
     log_action(db, user_id=user.id, action=f"REMEDIATION_PROGRESS id={capa.id} {payload.status}", request=request)
@@ -232,6 +241,8 @@ def propose_withdrawal(capa_id: int, payload: WithdrawalIn, request: Request, db
     capa.withdrawal_reason = payload.reason.strip()
     capa.withdrawal_proposed_by = user.id
     capa.withdrawal_proposed_at = utcnow()
+    add_event(db, capa, "withdrawal", user_id=user.id, request=request,
+              text=f"Withdrawal proposed to the Audit Committee: {capa.withdrawal_reason}")
     log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
                        action="WITHDRAWAL PROPOSED to the Audit Committee", request=request)
     log_action(db, user_id=user.id, action=f"REMEDIATION_WITHDRAWAL_PROPOSED id={capa.id}", request=request)

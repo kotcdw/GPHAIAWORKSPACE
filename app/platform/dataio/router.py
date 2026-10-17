@@ -136,6 +136,21 @@ def export_xlsx(
     return _xlsx_response(content, f"{payload.title}-{date.today().isoformat()}.xlsx")
 
 
+class ExportNoteIn(BaseModel):
+    title: str = Field("Export", max_length=100)
+    rows: int = Field(0, ge=0, le=10_000_000)
+    format: str = Field("csv", pattern="^(csv|print)$")
+
+
+@router.post("/api/export.log", status_code=204)
+def export_logged(payload: ExportNoteIn, request: Request, db: DBSession = Depends(get_db),
+                  user: User = Depends(require_active_user)) -> Response:
+    """Record a CSV export made in the browser (the rows never leave the user's screen otherwise)."""
+    log_action(db, user_id=user.id, request=request, commit=True,
+               action=f"EXPORT_{payload.format.upper()} {payload.title[:60]} rows={payload.rows}")
+    return Response(status_code=204)
+
+
 # ------------------------------------------------------------------ import
 
 

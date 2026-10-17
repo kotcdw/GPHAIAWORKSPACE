@@ -335,7 +335,11 @@ def _sync_action(db: DBSession, finding: Finding, user: User, request: Request) 
         return None
     capa.corrective_action = finding.management_response or capa.corrective_action
     if finding.target_date:
-        capa.due_date = finding.target_date
+        from app.domains.issues.capa.timeline import change_due_date
+
+        change_due_date(db, capa, finding.target_date, user_id=user.id, request=request,
+                        reason=f"Management response on issue #{finding.id} revised",
+                        source="Agreed action plan")
     if finding.responsible_officer and "@" in finding.responsible_officer:
         capa.owner_email = finding.responsible_officer
     log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id, request=request,

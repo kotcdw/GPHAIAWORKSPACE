@@ -126,11 +126,12 @@ def create_collection(payload: CollectionIn, request: Request, db: DBSession = D
 
 
 @router.patch("/api/results/collections/{collection_id}")
-def update_collection(collection_id: int, payload: CollectionPatch, db: DBSession = Depends(get_db),
-                      _: User = Builder) -> dict:
+def update_collection(collection_id: int, payload: CollectionPatch, request: Request, db: DBSession = Depends(get_db),
+                      user: User = Builder) -> dict:
     c = _get(db, ResultsCollection, collection_id, "Collection")
     for key, value in payload.model_dump(exclude_none=True).items():
         setattr(c, key, value.strip() if isinstance(value, str) else value)
+    log_action(db, user_id=user.id, action=f"RESULTS_COLLECTION_UPDATE id={collection_id}", request=request)
     db.commit()
     return {"id": c.id, "name": c.name, "archived": c.archived}
 
@@ -146,18 +147,21 @@ def delete_collection(collection_id: int, request: Request, db: DBSession = Depe
 
 
 @router.post("/api/results/collections/{collection_id}/tables", status_code=status.HTTP_201_CREATED)
-def create_table(collection_id: int, payload: TableIn, db: DBSession = Depends(get_db), user: User = Builder) -> dict:
+def create_table(collection_id: int, payload: TableIn, request: Request,
+                 db: DBSession = Depends(get_db), user: User = Builder) -> dict:
     _get(db, ResultsCollection, collection_id, "Collection")
     t = ResultsTable(collection_id=collection_id, name=payload.name.strip(), description=payload.description.strip(),
                      created_by=user.id)
     db.add(t)
+    log_action(db, user_id=user.id, action=f"RESULTS_TABLE_CREATE collection={collection_id}", request=request)
     db.commit()
     return {"id": t.id, "name": t.name}
 
 
 @router.delete("/api/results/tables/{table_id}", response_model=MessageOut)
-def delete_table(table_id: int, db: DBSession = Depends(get_db), _: User = Builder) -> MessageOut:
+def delete_table(table_id: int, request: Request, db: DBSession = Depends(get_db), user: User = Builder) -> MessageOut:
     db.delete(_get(db, ResultsTable, table_id, "Table"))
+    log_action(db, user_id=user.id, action=f"RESULTS_TABLE_DELETE id={table_id}", request=request)
     db.commit()
     return MessageOut(message="Table deleted")
 
@@ -266,20 +270,23 @@ class InterpretationIn(BaseModel):
 
 
 @router.post("/api/results/tables/{table_id}/interpretations", status_code=status.HTTP_201_CREATED)
-def create_interpretation(table_id: int, payload: InterpretationIn, db: DBSession = Depends(get_db),
+def create_interpretation(table_id: int, payload: InterpretationIn, request: Request, db: DBSession = Depends(get_db),
                           user: User = Builder) -> dict:
     _get(db, ResultsTable, table_id, "Table")
     i = ResultsInterpretation(table_id=table_id, name=payload.name.strip(), created_by=user.id,
                               config=json.dumps({"filters": payload.filters, "chart": payload.chart,
                                                  "group_by": payload.group_by}))
     db.add(i)
+    log_action(db, user_id=user.id, action=f"RESULTS_INTERPRETATION_CREATE table={table_id}", request=request)
     db.commit()
     return {"id": i.id, "name": i.name}
 
 
 @router.delete("/api/results/interpretations/{interpretation_id}", response_model=MessageOut)
-def delete_interpretation(interpretation_id: int, db: DBSession = Depends(get_db), _: User = Builder) -> MessageOut:
+def delete_interpretation(interpretation_id: int, request: Request,
+                          db: DBSession = Depends(get_db), user: User = Builder) -> MessageOut:
     db.delete(_get(db, ResultsInterpretation, interpretation_id, "Interpretation"))
+    log_action(db, user_id=user.id, action=f"RESULTS_INTERPRETATION_DELETE id={interpretation_id}", request=request)
     db.commit()
     return MessageOut(message="Interpretation deleted")
 
@@ -351,20 +358,24 @@ def _check_trigger(db: DBSession, p: TriggerIn) -> None:
 
 
 @router.post("/api/results/tables/{table_id}/triggers", status_code=status.HTTP_201_CREATED)
-def create_trigger(table_id: int, payload: TriggerIn, db: DBSession = Depends(get_db), user: User = Builder) -> dict:
+def create_trigger(table_id: int, payload: TriggerIn, request: Request,
+                   db: DBSession = Depends(get_db), user: User = Builder) -> dict:
     _get(db, ResultsTable, table_id, "Table")
     _check_trigger(db, payload)
     g = ResultsTrigger(table_id=table_id, name=payload.name.strip(), enabled=payload.enabled, created_by=user.id,
                        config=json.dumps({"match": payload.match, "conditions": payload.conditions,
                                           "actions": payload.actions, "only_new": payload.only_new}))
     db.add(g)
+    log_action(db, user_id=user.id, action=f"RESULTS_TRIGGER_CREATE table={table_id}", request=request)
     db.commit()
     return {"id": g.id, "name": g.name}
 
 
 @router.delete("/api/results/triggers/{trigger_id}", response_model=MessageOut)
-def delete_trigger(trigger_id: int, db: DBSession = Depends(get_db), _: User = Builder) -> MessageOut:
+def delete_trigger(trigger_id: int, request: Request,
+                   db: DBSession = Depends(get_db), user: User = Builder) -> MessageOut:
     db.delete(_get(db, ResultsTrigger, trigger_id, "Trigger"))
+    log_action(db, user_id=user.id, action=f"RESULTS_TRIGGER_DELETE id={trigger_id}", request=request)
     db.commit()
     return MessageOut(message="Trigger deleted")
 
@@ -377,10 +388,11 @@ def _matches(cfg: dict, r: ResultsRecord) -> bool:
 
 
 @router.post("/api/results/triggers/{trigger_id}/run")
-def run_trigger(trigger_id: int, db: DBSession = Depends(get_db), _: User = Builder) -> dict:
+def run_trigger(trigger_id: int, request: Request, db: DBSession = Depends(get_db), user: User = Builder) -> dict:
     g = _get(db, ResultsTrigger, trigger_id, "Trigger")
     records = _filtered(db, g.table_id, None)
     hits = apply_triggers_one(db, g, records)
+    log_action(db, user_id=user.id, action=f"RESULTS_TRIGGER_RUN id={trigger_id}", request=request)
     db.commit()
     return {"matched": hits}
 
@@ -535,7 +547,8 @@ class TaskPatch(BaseModel):
 
 
 @router.patch("/api/robot-tasks/{task_id}")
-def update_task(task_id: int, payload: TaskPatch, db: DBSession = Depends(get_db), _: User = RobotAdmin) -> dict:
+def update_task(task_id: int, payload: TaskPatch, request: Request,
+                db: DBSession = Depends(get_db), user: User = RobotAdmin) -> dict:
     t = _get(db, RobotTask, task_id, "Task")
     sent = payload.model_dump(exclude_unset=True)
     if "frequency" in sent:
@@ -549,13 +562,15 @@ def update_task(task_id: int, payload: TaskPatch, db: DBSession = Depends(get_db
     if sent.get("enabled") is not None:
         t.enabled = sent["enabled"]
     t.next_run_at = next_run(t.frequency, t.starting_at, t.beginning_on) if t.enabled else None
+    log_action(db, user_id=user.id, action=f"ROBOT_TASK_UPDATE id={task_id}", request=request)
     db.commit()
     return _task_out(db, t)
 
 
 @router.delete("/api/robot-tasks/{task_id}", response_model=MessageOut)
-def delete_task(task_id: int, db: DBSession = Depends(get_db), _: User = RobotAdmin) -> MessageOut:
+def delete_task(task_id: int, request: Request, db: DBSession = Depends(get_db), user: User = RobotAdmin) -> MessageOut:
     db.delete(_get(db, RobotTask, task_id, "Task"))
+    log_action(db, user_id=user.id, action=f"ROBOT_TASK_DELETE id={task_id}", request=request)
     db.commit()
     return MessageOut(message="Task deleted")
 
@@ -694,10 +709,12 @@ def list_storyboards(db: DBSession = Depends(get_db), user: User = Depends(requi
 
 
 @router.post("/api/storyboards", status_code=status.HTTP_201_CREATED)
-def create_storyboard(payload: StoryboardIn, db: DBSession = Depends(get_db), user: User = Builder) -> dict:
+def create_storyboard(payload: StoryboardIn, request: Request,
+                      db: DBSession = Depends(get_db), user: User = Builder) -> dict:
     sb = Storyboard(name=payload.name.strip(), blocks=json.dumps(_check_blocks(db, payload.blocks)),
                     shared_with="{}", created_by=user.id, updated_at=utcnow())
     db.add(sb)
+    log_action(db, user_id=user.id, action="STORYBOARD_CREATE", request=request)
     db.commit()
     return _sb_out(db, sb, user)
 
@@ -721,26 +738,30 @@ def get_storyboard(storyboard_id: int, db: DBSession = Depends(get_db),
 
 
 @router.put("/api/storyboards/{storyboard_id}")
-def save_storyboard(storyboard_id: int, payload: StoryboardIn, db: DBSession = Depends(get_db),
+def save_storyboard(storyboard_id: int, payload: StoryboardIn, request: Request, db: DBSession = Depends(get_db),
                     user: User = Builder) -> dict:
     sb = _own(db, storyboard_id, user)
     sb.name, sb.blocks, sb.updated_at = payload.name.strip(), json.dumps(_check_blocks(db, payload.blocks)), utcnow()
+    log_action(db, user_id=user.id, action=f"STORYBOARD_UPDATE id={storyboard_id}", request=request)
     db.commit()
     return _sb_out(db, sb, user, data=True)
 
 
 @router.put("/api/storyboards/{storyboard_id}/share")
-def share_storyboard(storyboard_id: int, payload: ShareIn, db: DBSession = Depends(get_db),
+def share_storyboard(storyboard_id: int, payload: ShareIn, request: Request, db: DBSession = Depends(get_db),
                      user: User = Builder) -> dict:
     sb = _own(db, storyboard_id, user)
     ids = [u.id for u in db.execute(select(User).where(User.id.in_(payload.user_ids or [0]))).scalars()]
     sb.shared_with = json.dumps({"user_ids": ids, "all_staff": payload.all_staff})
+    log_action(db, user_id=user.id, action=f"STORYBOARD_SHARE id={storyboard_id}", request=request)
     db.commit()
     return _sb_out(db, sb, user)
 
 
 @router.delete("/api/storyboards/{storyboard_id}", response_model=MessageOut)
-def delete_storyboard(storyboard_id: int, db: DBSession = Depends(get_db), user: User = Builder) -> MessageOut:
+def delete_storyboard(storyboard_id: int, request: Request,
+                      db: DBSession = Depends(get_db), user: User = Builder) -> MessageOut:
     db.delete(_own(db, storyboard_id, user))
+    log_action(db, user_id=user.id, action=f"STORYBOARD_DELETE id={storyboard_id}", request=request)
     db.commit()
     return MessageOut(message="Storyboard deleted")

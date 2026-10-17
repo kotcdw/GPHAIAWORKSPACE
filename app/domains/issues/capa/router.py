@@ -25,6 +25,7 @@ from app.domains.audit.audits.lifecycle import default_due_date
 from app.domains.issues.capa.models import Capa
 from app.domains.issues.capa.schemas import CapaCreate, CapaLink, CapaList, CapaOut, CapaUpdate
 from app.domains.issues.capa.status import FULLY, IMPLEMENTATION_STATUSES, is_internal
+from app.domains.issues.capa.timeline import add_event, change_due_date
 from app.domains.issues.nonconformances.models import Nonconformance
 from app.platform.users.models import User
 
@@ -114,11 +115,13 @@ def create_capa(
         owner_email=payload.owner_email,
         due_date=payload.due_date or default_due_date(payload.severity),
         linked_nc_id=payload.linked_nc_id,
+        extension_count=0,
         custom_fields="{}",
         source_year=utcnow().year,
         created_by=user.id,
     )
     _apply_followup_fields(db, capa, payload, [])
+    capa.original_due_date = capa.due_date
     if not capa.source_body:
         capa.source_body = (cfg("recommendation_sources") or ["Internal Audit"])[0]
     db.add(capa)
@@ -131,6 +134,8 @@ def create_capa(
         if nc is not None:
             nc.linked_capa_id = capa.id
     auto_task_for_record(db, record_type="capa", record=capa, action="Action remediation", assignor_id=user.id)
+    add_event(db, capa, "created", user_id=user.id, request=request,
+              text=f"Action raised; target date {capa.due_date:%d %b %Y}" if capa.due_date else "Action raised")
     log_action(db, user_id=user.id, action=f"REMEDIATION_CREATE id={capa.id} ref={capa.capa_ref}", request=request)
     log_record_history(
         db, record_type="capa", record_id=capa.id, user_id=user.id, action="CREATED", request=request
@@ -157,9 +162,21 @@ def update_capa(
 ) -> Capa:
     capa = _get_or_404(db, capa_id)
     if capa.status == CapaStatus.Closed:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A closed remediation cannot be edited")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="A closed remediation cannot be edited; reopen it first")
     if payload.status == CapaStatus.Closed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_CLOSE_VIA_ESIGN)
+    # The follow-up workflow owns Review and Closed: implementation is recorded (-> Review), an auditor validates
+    # it (-> In Progress if not effective) and an e-signature or Committee decision closes it.
+    if payload.status is not None and payload.status != capa.status:
+        if payload.status == CapaStatus.Review:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="An action goes to Review when its implementation is recorded "
+                                       "(Record implementation), not by changing the status")
+        if capa.status == CapaStatus.Review:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="The action is awaiting validation; an auditor validates it as Effective "
+                                       "or Not effective")
     changes: list[str] = []
     for field in (
         "title",
@@ -172,13 +189,21 @@ def update_capa(
         "disposition",
         "status",
         "owner_email",
-        "due_date",
         "linked_nc_id",
     ):
         value = getattr(payload, field)
-        if value is not None:
+        if value is not None and value != getattr(capa, field):
             setattr(capa, field, value)
             changes.append(field)
+    if payload.due_date is not None and (capa.due_date is None or payload.due_date.date() != capa.due_date.date()):
+        # Revising an agreed target date is an extension: it needs the follow-up manager and a reason.
+        from app.core.deps import ensure_perm
+
+        if capa.due_date is not None:
+            ensure_perm(user, "followup.manage")
+        if change_due_date(db, capa, payload.due_date, reason=payload.due_date_reason or "", user_id=user.id,
+                           request=request):
+            changes.append("due_date")
     _apply_followup_fields(db, capa, payload, changes)
     log_action(db, user_id=user.id, action=f"REMEDIATION_UPDATE id={capa.id} [{', '.join(changes)}]", request=request)
     log_record_history(
@@ -284,8 +309,12 @@ def close_capa(
     payload: ESignRequest,
     request: Request,
     db: DBSession = Depends(get_db),
-    user: User = AdminCapa,
+    user: User = WriteCapa,
 ) -> Capa:
+    from app.core.deps import ensure_perm
+
+    # Closing is an audit sign-off: the follow-up manager (Audit Manager / CAE), not the system administrator.
+    ensure_perm(user, "followup.manage")
     capa = _get_or_404(db, capa_id)
     if capa.status != CapaStatus.Review:
         raise HTTPException(
@@ -311,6 +340,8 @@ def close_capa(
         capa.implementation_status = FULLY
         capa.closed_by = user.id
         capa.closed_at = datetime.now(UTC).replace(tzinfo=None)
+        add_event(session, capa, "closed", user_id=user.id, request=request,
+                  text="Closed with an e-signature" + (f": {payload.comment}" if payload.comment else ""))
         if capa.linked_nc_id is not None:
             nc = db.get(Nonconformance, capa.linked_nc_id)
             if nc is not None:

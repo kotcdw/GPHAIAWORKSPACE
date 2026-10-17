@@ -16,8 +16,9 @@ MODULES = {
 
 def routers() -> list:
     from app.domains.issues.capa.router import router as capa
+    from app.domains.issues.followup.actions import router as followup_actions
     from app.domains.issues.followup.router import router as followup
     from app.domains.issues.followup.statements import router as followup_statements
     from app.domains.issues.nonconformances.router import router as nonconformances
 
-    return [nonconformances, capa, followup, followup_statements]
+    return [nonconformances, capa, followup, followup_actions, followup_statements]

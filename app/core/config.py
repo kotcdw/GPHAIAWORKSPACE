@@ -14,6 +14,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
+# Passwords published in the documentation and demo data; never acceptable in production.
+PUBLISHED_PASSWORDS = frozenset({"Admin@12345", "DemoPass!123", "dev-secret-change-me"})
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(BASE_DIR / ".env"),
@@ -28,7 +32,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
 
     # Security
-    secret_key: str = "dev-secret-change-me"
+    secret_key: str = ""
     session_ttl_hours: int = 12
     cookie_secure: bool = False
     # Interactive API documentation (/docs, /redoc, /openapi.json). Always off in production;
@@ -51,7 +55,7 @@ class Settings(BaseSettings):
     mysql_host: str = "127.0.0.1"
     mysql_port: int = 3307
     mysql_user: str = "gpha"
-    mysql_password: str = "gpha_dev_pass"
+    mysql_password: str = ""
     mysql_database: str = "gpha_workspace"
 
     # MySQL drops idle connections after wait_timeout; recycle keeps the pool fresh.
@@ -132,7 +136,7 @@ class Settings(BaseSettings):
 
     # Bootstrap administrator (created by scripts/init_db.py if missing)
     admin_username: str = "admin"
-    admin_password: str = "Admin@12345"
+    admin_password: str = ""
     admin_email: str = "admin@gpha.local"
     admin_full_name: str = "GPHA Administrator"
 
@@ -154,8 +158,12 @@ class Settings(BaseSettings):
         problems: list[str] = []
         if self.secret_key in ("", "dev-secret-change-me") or len(self.secret_key) < 32:
             problems.append("GPHA_SECRET_KEY must be a random value of at least 32 characters")
-        if self.admin_password == "Admin@12345":
-            problems.append("GPHA_ADMIN_PASSWORD is still the published default")
+        if not self.admin_password:
+            problems.append("GPHA_ADMIN_PASSWORD must be set before creating the bootstrap administrator")
+        elif self.admin_password in PUBLISHED_PASSWORDS:
+            problems.append("GPHA_ADMIN_PASSWORD is a published default password")
+        if (self.database_url or "").startswith("mysql") and "gpha_dev_pass" in (self.database_url or ""):
+            problems.append("The database password is the published development password (gpha_dev_pass)")
         if not self.cookie_secure:
             problems.append("GPHA_COOKIE_SECURE must be true (serve the app over HTTPS)")
         if not self.encryption_key:

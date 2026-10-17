@@ -445,7 +445,7 @@ const HOST_GROUPS = [
   { host: "committee", tabs: [["committee", "Committee pack"], ["governance", "Governance portal"], ["portfolio", "Port portfolio"]] },
   { host: "qaip", tabs: [["qaip", "Quality reviews"], ["practice", "Professional practice"], ["service-feedback", "Service feedback"]] },
   { host: "orgstructure", tabs: [["orgstructure", "Org Structure"], ["organizations", "Organizations"], ["stakeholders", "Contacts"]] },
-  { host: "configuration", tabs: [["configuration", "Business rules"], ["audittypes", "Audit types"], ["apps", "Apps & customization"], ["logs", "Activity logs"]] },
+  { host: "configuration", tabs: [["configuration", "Business rules"], ["audittypes", "Audit types"], ["apps", "Apps & customization"], ["logs", "Audit trail"]] },
   { host: "robots", tabs: [["robots", "Robots"], ["automations", "Automations"]] },
 ];
 

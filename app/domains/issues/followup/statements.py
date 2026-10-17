@@ -229,9 +229,11 @@ def annual(year: int, db: DBSession = Depends(get_db), _: User = Reporter) -> di
 
 
 @router.get("/{kind}.{fmt}")
-def export(kind: str, fmt: str, year: int, quarter: int | None = None, db: DBSession = Depends(get_db),
-           _: User = Reporter):  # noqa: ANN201
+def export(kind: str, fmt: str, year: int, request: Request, quarter: int | None = None,
+           db: DBSession = Depends(get_db), user: User = Reporter):  # noqa: ANN201
     data = build(db, kind, year, quarter)
+    log_action(db, user_id=user.id, request=request, commit=True,
+               action=f"FOLLOWUP_REPORT_EXPORT {kind} {data.get('period_label', year)} {fmt}")
     if fmt == "docx":
         return docx_response(to_docx(data), _name(data, "docx"))
     if fmt == "xlsx":
@@ -283,10 +285,13 @@ def record_submission(payload: SubmissionIn, request: Request, db: DBSession = D
 
 
 @router.get("/submissions/{sub_id}/export.{fmt}")
-def submission_export(sub_id: int, fmt: str, db: DBSession = Depends(get_db), _: User = Reporter):  # noqa: ANN201
+def submission_export(sub_id: int, fmt: str, request: Request, db: DBSession = Depends(get_db),
+                      user: User = Reporter):  # noqa: ANN201
     sub = db.get(FollowupSubmission, sub_id)
     if sub is None:
         raise HTTPException(status_code=404, detail="Submission not found")
+    log_action(db, user_id=user.id, request=request, commit=True,
+               action=f"FOLLOWUP_SUBMISSION_EXPORT id={sub.id} {sub.period_label} {fmt}")
     data = json.loads(sub.snapshot)
     data["recipients"] = json.loads(sub.recipients or "[]")
     if data.get("due_date"):

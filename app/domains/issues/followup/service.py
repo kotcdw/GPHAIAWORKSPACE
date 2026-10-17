@@ -92,7 +92,12 @@ def run_escalations(db: DBSession, now: datetime | None = None) -> int:
         notify_many(db, recipients, title, body, link_type="capa", link_id=capa.id)
         capa.escalation_level = item.due_level
         capa.last_escalated_at = now
-        log_action(db, user_id=None, action=f"REMEDIATION_ESCALATED id={capa.id} level={item.due_level}")
+        from app.domains.issues.capa.timeline import add_event
+
+        add_event(db, capa, "escalation", user_id=None,
+                  text=f"{item.days_overdue} days overdue: escalated to {LEVEL_NAMES[item.due_level]}")
+        log_action(db, user_id=None, action=f"ESCALATION_RAISED remediation id={capa.id} level={item.due_level}",
+                   entity_type="remediation", entity_id=capa.id)
         moved += 1
     db.commit()
     return moved

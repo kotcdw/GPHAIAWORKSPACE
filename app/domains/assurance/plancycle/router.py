@@ -467,6 +467,7 @@ def return_draft(plan_id: int, payload: ReturnIn, request: Request, db: DBSessio
     plan = _plan(db, plan_id)
     _at(plan, "internal_review")
     on_internal_decision(db, plan, user, False, payload.comment.strip(), request)
+    log_action(db, user_id=user.id, request=request, action=f"PLAN_RETURN id={plan.id} draft returned for changes")
     db.commit()
     return _cycle(db, plan, user)
 

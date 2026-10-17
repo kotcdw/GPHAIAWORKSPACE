@@ -35,3 +35,6 @@ wheels/
 .pytest_cache/
 .coverage
 cov-report/
+
+# Security scan reports (regenerate; never commit)
+bandit.json

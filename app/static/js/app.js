@@ -272,7 +272,7 @@ const MODULES = {
     ],
     actions: [
       { key: "copy", label: "Copy", kind: "post", path: (id) => `/api/capa/${id}/copy` },
-      { key: "close", label: "Close (e-sign)", kind: "esign", adminOnly: true, path: (id) => `/api/capa/${id}/close` },
+      { key: "close", label: "Close (e-sign)", kind: "esign", perm: "followup.manage", path: (id) => `/api/capa/${id}/close` },
     ],
   },
   criteria: {
@@ -708,7 +708,8 @@ async function editRecordModal(key, record) {
   const initial = Object.fromEntries(m.fields.map((f) => [f.key, f.key.startsWith("cf_")
     ? (record.custom_fields || {})[f.key.slice(3)] : record[f.key]]));
   // Keep a record's current choice selectable even if it was retired from the list; never offer itself as parent.
-  const formFields = moduleFormFields(m).map((f) => {
+  // An agreed remediation target date is revised from the Follow-up panel (with a reason), not by editing.
+  const formFields = moduleFormFields(m).filter((f) => !(key === "capa" && f.name === "due_date" && record.due_date)).map((f) => {
     if (f.type !== "select" || !f.options) return f;
     let options = f.name === "parent_id" ? f.options.filter((o) => (o.value ?? o) !== record.id) : f.options;
     const cur = initial[f.name];
@@ -813,7 +814,7 @@ function renderRemediation(tab = state.remTab || "register") {
   state.remTab = tab;
   clear(viewRoot);
   const actions = [];
-  if (tab === "followup" && isAdmin()) {
+  if (tab === "followup" && hasPerm("followup.manage")) {
     actions.push(el("button", { class: "btn small secondary", onclick: async () => {
       try { const r = await API.post("/api/followup/run-escalations"); toast(`${r.escalated} action(s) escalated`); renderRemediation("followup"); }
       catch (err) { toast(err.message, "error"); }
@@ -868,7 +869,7 @@ async function openRecord(key, id) {
 
   const title = record[m.nameKey] || m.title;
   const canWrite = canWriteModule(key);
-  const allowedActions = (canWrite ? m.actions.filter((act) => !act.adminOnly || isAdmin()) : [])
+  const allowedActions = (canWrite ? m.actions.filter((act) => (!act.adminOnly || isAdmin()) && (!act.perm || hasPerm(act.perm))) : [])
     .filter((act) => !(key === "capa" && act.key === "close" && !(record.status === "Review" && record.validation_result === "Effective")));
 
   viewRoot.append(viewHeader(String(title),
@@ -970,7 +971,7 @@ async function renderHistoryTab(panel, recordType, id) {
     const items = await API.get(`/api/records/${recordType}/${id}/history`);
     if (!items.length) { card.append(el("div", { class: "empty" }, "No history yet.")); return; }
     card.append(el("div", null, ...items.map((h) => el("div", { class: "comment-row" },
-      el("div", { class: "who" }, `${fmtDate(h.timestamp)} \u00b7 user ${h.user_id ?? "-"}${h.cycle_no ? ` \u00b7 cycle ${h.cycle_no}` : ""}`),
+      el("div", { class: "who" }, `${fmtDate(h.timestamp)} \u00b7 ${h.user || (h.user_id ? `user ${h.user_id}` : "System")}${h.cycle_no ? ` \u00b7 cycle ${h.cycle_no}` : ""}`),
       el("div", null, h.action)))));
   } catch (err) { card.append(el("div", { class: "empty" }, err.message)); }
 }
@@ -1899,26 +1900,77 @@ async function renderUserManagement(container, msg) {
 
 // ==================================================================== logs (admin)
 
-async function renderLogs() {
+const LOG_CATEGORIES = [
+  { value: "authentication", label: "Sign-in & sessions" }, { value: "user_admin", label: "User administration" },
+  { value: "security", label: "Security" }, { value: "export", label: "Exports & downloads" },
+  { value: "system", label: "System" }, { value: "data", label: "Record changes" }];
+const LOG_CATEGORY_LABEL = Object.fromEntries(LOG_CATEGORIES.map((c) => [c.value, c.label]));
+
+async function renderLogs(preset = null) {
   clear(viewRoot);
-  viewRoot.append(viewHeader("Activity logs", null, { sub: "Immutable activity trail. Search the action text, filter by date; paging and export run on the server." }));
+  viewRoot.append(viewHeader("Audit trail", null, { sub: "Every sign-in (successful and failed), user administration, security event, export and record change: who, what, when and from where. Entries cannot be edited or deleted." }));
+  const tiles = el("div", { class: "stats" }, loadingState());
+  viewRoot.append(tiles);
+  API.get("/api/audit-logs/summary?days=7").then((s) => {
+    clear(tiles);
+    tiles.append(
+      stat(s.sign_ins, "Successful sign-ins", "last 7 days"),
+      stat(s.failed_sign_ins, "Failed sign-ins", s.top_failures.length ? `most: ${s.top_failures[0].username} (${s.top_failures[0].failures})` : "last 7 days", s.failed_sign_ins ? "warn" : "ok"),
+      stat(s.lockouts, "Account lockouts", s.locked_now.length ? `locked now: ${s.locked_now.join(", ")}` : "none locked now", s.lockouts ? "danger" : "ok"),
+      stat(s.denied, "Denied sign-ins", "pending or locked accounts", s.denied ? "warn" : ""),
+      stat(s.exports, "Exports & downloads", "last 7 days"),
+      stat(s.distinct_users, "Active users", `${s.distinct_ips} computer address${s.distinct_ips === 1 ? "" : "es"}`));
+  }).catch(() => clear(tiles));
+  const presets = [
+    { key: "all", label: "All activity", values: {} },
+    { key: "signins", label: "Sign-in history", values: { category: "authentication" } },
+    { key: "failed", label: "Failed & denied", values: { outcome: "failure" } },
+    { key: "users", label: "User administration", values: { category: "user_admin" } },
+    { key: "exports", label: "Exports", values: { category: "export" } },
+  ];
+  const active = preset || "all";
+  viewRoot.append(tabBar(presets.map((p) => ({ key: p.key, label: p.label })), active, (k) => renderLogs(k)));
   const card = el("div", { class: "card" });
   viewRoot.append(card);
   const today = new Date();
   const ago = (d) => { const x = new Date(today); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+  let users = [];
+  try { users = await API.get("/api/users"); } catch { users = []; }
+  const initial = { ...(presets.find((p) => p.key === active) || presets[0]).values };
+  let current = { ...initial };
+  const exportLink = el("a", { class: "btn small secondary", title: "Download every matching entry (logged)" },
+    el("i", { class: "bi bi-download" }), " Full export (CSV)");
+  const setExport = (v) => {
+    const sp = new URLSearchParams();
+    Object.entries(v).forEach(([k, val]) => { if (val) sp.set(k, val); });
+    exportLink.href = `/api/audit-logs/export.csv?${sp.toString()}`;
+  };
+  setExport(current);
+  card.append(el("div", { class: "actions end" }, exportLink));
   const t = serverTable({
     url: "/api/audit-logs/register",
     storageKey: "audit-log",
     defaultSort: "-timestamp",
     pageSize: 50,
-    exportName: "Activity logs",
-    filters: [{ key: "date_from", label: "Period", options: [{ value: ago(1), label: "Last 24 hours" }, { value: ago(7), label: "Last 7 days" }, { value: ago(30), label: "Last 30 days" }] }],
+    exportName: "Audit trail",
+    values: initial,
+    onFilter: (v) => { current = v; setExport(v); },
+    filters: [
+      { key: "date_from", label: "Period", options: [{ value: ago(1), label: "Last 24 hours" }, { value: ago(7), label: "Last 7 days" }, { value: ago(30), label: "Last 30 days" }, { value: ago(90), label: "Last 90 days" }, { value: ago(365), label: "Last 12 months" }] },
+      { key: "category", label: "Category", options: LOG_CATEGORIES },
+      { key: "outcome", label: "Outcome", options: [{ value: "success", label: "Success" }, { value: "failure", label: "Failure" }] },
+      { key: "user_id", label: "User", options: users.map((u) => ({ value: u.id, label: u.full_name || u.username })) },
+    ],
     emptyTitle: "No activity recorded",
     columns: [
       { key: "timestamp", label: "When", sort: true, render: (l) => fmtDate(l.timestamp), csv: (l) => l.timestamp },
       { key: "user", label: "User", sort: true, render: (l) => l.user || (l.user_id ? `#${l.user_id}` : "System"), csv: (l) => l.user || "" },
-      { key: "ip_address", label: "IP", hidden: true },
+      { key: "category", label: "Category", render: (l) => LOG_CATEGORY_LABEL[l.category] || l.category, csv: (l) => LOG_CATEGORY_LABEL[l.category] || l.category },
+      { key: "outcome", label: "Outcome", render: (l) => (l.outcome === "failure" ? badge("Failed") : el("span", { class: "muted" }, "Success")), csv: (l) => l.outcome },
       { key: "action_performed", label: "Action", render: (l) => el("span", { class: "log-action" }, l.action_performed) },
+      { key: "entity", label: "Record", hidden: true, render: (l) => (l.entity_type ? `${l.entity_type}${l.entity_id ? ` #${l.entity_id}` : ""}` : "-"), csv: (l) => (l.entity_type ? `${l.entity_type} ${l.entity_id || ""}`.trim() : "") },
+      { key: "ip_address", label: "IP address" },
+      { key: "user_agent", label: "Browser", hidden: true, render: (l) => el("span", { class: "muted small", title: l.user_agent || "" }, (l.user_agent || "-").slice(0, 60)) , csv: (l) => l.user_agent || "" },
     ],
   });
   card.append(t.root);

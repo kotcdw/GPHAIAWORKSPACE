@@ -65,6 +65,12 @@ def sign(
             detail="Segregation of duties: the preparer of a record cannot sign it off",
         )
     if not verify_password(password, user.password_hash):
+        from app.core.audit import log_action
+
+        db.rollback()  # the request fails: nothing else from it may be saved with the failure record
+        log_action(db, user_id=user.id, request=request, commit=True,
+                   action=f"ESIGN_FAILED wrong_password record={record_type} id={record_id}",
+                   entity_type=record_type, entity_id=record_id)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password verification failed")
 
     decision_enum = ApprovalDecision(decision)

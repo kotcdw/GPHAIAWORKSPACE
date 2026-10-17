@@ -82,7 +82,7 @@ def main() -> int:
         server.dispose()
     env = {**os.environ, "GPHA_DATABASE_URL": target_url.render_as_string(hide_password=False)}
     result = subprocess.run([sys.executable, "-m", "scripts.restore_backup", str(enc), "--yes"], cwd=BASE_DIR,
-                            env=env, capture_output=True, text=True)
+                            env=env, capture_output=True, text=True)  # nosec B603 - fixed argv, no shell
     if result.returncode != 0:
         # Show only the error lines (never the row data, which can include password hashes).
         lines = [ln for ln in (result.stdout + result.stderr).splitlines()

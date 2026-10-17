@@ -186,8 +186,10 @@ def approve_charter(charter_id: int, payload: ApprovalIn, request: Request, db: 
 
 
 @router.get("/api/charter/{charter_id}/export.docx")
-def charter_docx(charter_id: int, db: DBSession = Depends(get_db), _: User = Depends(require_active_user)):  # noqa: ANN201
+def charter_docx(charter_id: int, request: Request, db: DBSession = Depends(get_db),
+                 user: User = Depends(require_active_user)):  # noqa: ANN201
     c = _charter(db, charter_id)
+    log_action(db, user_id=user.id, request=request, commit=True, action=f"CHARTER_EXPORT id={c.id} v{c.version}")
     doc = new_document()
     doc.add_heading(c.title, level=1)
     doc.add_paragraph(f"Version {c.version} · {c.status}" + (

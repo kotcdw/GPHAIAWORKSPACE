@@ -173,9 +173,20 @@ function renderCapaFollowup(panel, c, refresh) {
     stepper(["Open", "Implemented", "Validated", "Closed"],
       c.status === "Closed" ? "Closed" : (c.validation_result === "Effective" ? "Validated" : (c.implemented_at ? "Implemented" : "Open"))));
   if (overdue) {
+    const where = c.escalation_level >= 4 ? "Reported to the Audit Committee." : c.escalation_level === 3 ? "Escalated to the CAE."
+      : (c.escalation_level === 2 ? "Escalated to Audit Managers." : "The owner has been reminded.");
     card.append(el("div", { class: "callout danger" }, el("i", { class: "bi bi-alarm" }),
-      el("div", null, el("strong", null, "Overdue. "), c.escalation_level >= 3 ? "Escalated to the CAE."
-        : (c.escalation_level === 2 ? "Escalated to Audit Managers." : "The owner has been reminded."))));
+      el("div", null, el("strong", null, "Overdue. "), where)));
+  }
+  if (c.due_date) {
+    const extended = c.extension_count && c.original_due_date;
+    card.append(el("dl", { class: "kv two-col fu-extra" },
+      el("dt", null, "Target date"), el("dd", null, fmtDate(c.due_date).split(",")[0],
+        extended ? el("span", { class: "muted small" }, ` (originally ${fmtDate(c.original_due_date).split(",")[0]}; revised ${c.extension_count} time${c.extension_count === 1 ? "" : "s"})`) : null)));
+  }
+  if (c.risk_acceptance) {
+    card.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-shield-exclamation" }),
+      el("div", null, el("strong", null, "Closed - risk accepted. "), c.risk_acceptance)));
   }
   if (c.reopen_count) card.append(el("p", { class: "muted small" }, `Reopened ${c.reopen_count} time(s) after validation.`));
   card.append(longBlock("Implementation evidence", c.implementation_evidence, "Not recorded yet"));
@@ -187,10 +198,113 @@ function renderCapaFollowup(panel, c, refresh) {
     if (c.validation_procedures) card.append(longBlock("Follow-up testing performed", c.validation_procedures, ""));
   }
   if (c.status === "Review" && c.validation_result === "Effective") {
-    card.append(el("p", { class: "muted small" }, "Validated as effective - an administrator can now close it with an e-signature, or the Audit Committee closes it (see Audit Committee > Meetings)."));
+    card.append(el("p", { class: "muted small" }, "Validated as effective - the Audit Manager or CAE can now close it with an e-signature, or the Audit Committee closes it (see Audit Committee > Meetings)."));
   }
   capaFollowupExtras(card, c, refresh);
+  capaManageActions(card, c, refresh);
   panel.append(card);
+  panel.append(capaEvidenceCard(c, refresh));
+  panel.append(capaTimelineCard(c));
+}
+
+// Revise the target date, accept the risk, reopen (follow-up manager: Audit Manager / CAE).
+function capaManageActions(card, c, refresh) {
+  if (!hasPerm("followup.manage")) return;
+  const btns = el("div", { class: "actions" });
+  if (c.status !== "Closed" && c.due_date) {
+    btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
+      title: `Revise target date - ${c.capa_ref}`, key: `capa:${c.id}:extend`, draftable: false, width: 600,
+      intro: `Current target date: ${fmtDate(c.due_date).split(",")[0]}. The original date, the new date and your reason are kept in the follow-up timeline, and escalation restarts from the new date.`,
+      fields: [
+        { name: "due_date", label: "New target date", type: "date", required: true, notPast: true },
+        { name: "reason", label: "Reason (agreed with management)", type: "textarea", rows: 3, required: true, minLength: 10, maxLength: 2000 },
+      ],
+      submitLabel: "Revise target date",
+      onSubmit: (v) => API.patch(`/api/capa/${c.id}`, { due_date: `${v.due_date}T00:00:00`, due_date_reason: v.reason }),
+      onDone: () => { toast("Target date revised"); refresh(); },
+    }) }, el("i", { class: "bi bi-calendar-plus" }), " Revise target date"));
+  }
+  if (c.status !== "Closed" && c.created_by !== state.user.id) {
+    btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
+      title: `Close by risk acceptance - ${c.capa_ref}`, key: `capa:${c.id}:risk`, draftable: false, width: 640,
+      intro: "Use only when management formally decides not to implement and accepts the remaining risk. The action closes as 'Risk Accepted' and is reported as such.",
+      fields: [
+        { name: "accepted_by", label: "Accepted by (name and position)", required: true, minLength: 3, maxLength: 255, singleLine: true },
+        { name: "reason", label: "Why the risk is accepted, and any compensating controls", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 },
+      ],
+      submitLabel: "Close - risk accepted",
+      onSubmit: (v) => API.post(`/api/capa/${c.id}/accept-risk`, v),
+      onDone: () => { toast("Closed - risk accepted"); refresh(); },
+    }) }, el("i", { class: "bi bi-shield-exclamation" }), " Accept risk"));
+  }
+  if (c.status === "Closed") {
+    btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
+      title: `Reopen ${c.capa_ref}`, key: `capa:${c.id}:reopen`, draftable: false, width: 600,
+      fields: [{ name: "reason", label: "Why the action is reopened", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
+      submitLabel: "Reopen",
+      onSubmit: (v) => API.post(`/api/capa/${c.id}/reopen`, v),
+      onDone: () => { toast("Action reopened"); refresh(); },
+    }) }, el("i", { class: "bi bi-arrow-counterclockwise" }), " Reopen"));
+  }
+  if (btns.childNodes.length) card.append(btns);
+}
+
+function capaEvidenceCard(c, refresh) {
+  const mine = state.user.email && c.owner_email && state.user.email.toLowerCase() === c.owner_email.toLowerCase();
+  const canAdd = c.status !== "Closed" && (isStaff() || mine);
+  const list = el("div", null, loadingState());
+  const input = el("input", { type: "file", class: "hidden", "aria-label": "Choose an evidence file" });
+  input.addEventListener("change", async () => {
+    if (!input.files.length) return;
+    const fd = new FormData();
+    fd.append("file", input.files[0]);
+    try { await API.request("POST", `/api/capa/${c.id}/files`, { form: fd }); toast("Evidence file attached"); refresh(); }
+    catch (err) { toast(err.message, "error"); }
+    input.value = "";
+  });
+  const card = el("div", { class: "card" },
+    el("div", { class: "card-head" }, el("h3", null, "Evidence files"),
+      canAdd ? el("div", { class: "actions" }, input, el("button", { class: "btn small secondary", onclick: () => input.click() },
+        el("i", { class: "bi bi-paperclip" }), " Attach file")) : null),
+    list);
+  API.get(`/api/capa/${c.id}/files`).then((files) => {
+    clear(list);
+    if (!files.length) { list.append(el("p", { class: "muted small" }, canAdd ? "No files yet. Attach signed documents, screenshots or reports that show the action was done." : "No files.")); return; }
+    list.append(el("div", { class: "table-wrap" }, el("table", null,
+      el("thead", null, el("tr", null, el("th", null, "File"), el("th", null, "Uploaded by"), el("th", null, "When"), el("th", { class: "num" }, "Size"), el("th", null, ""))),
+      el("tbody", null, ...files.map((f) => el("tr", { class: "no-click" },
+        el("td", null, el("a", { href: `/api/capa-files/${f.id}/download` }, f.original_name),
+          el("div", { class: "muted small", title: f.sha256 }, `SHA-256 ${f.sha256.slice(0, 16)}…`)),
+        el("td", null, f.uploaded_by || "-"), el("td", { class: "muted" }, fmtDate(f.uploaded_at)),
+        el("td", { class: "num" }, `${Math.max(1, Math.round(f.size_bytes / 1024))} KB`),
+        el("td", { class: "num" }, isStaff() && c.status !== "Closed" ? el("button", { class: "btn small danger-ghost", title: "Withdraw (kept in the trail)",
+          onclick: async () => {
+            const ok = await confirmDialog({ title: "Withdraw this file?", text: `${f.original_name} is hidden from the action but kept, with a record of who withdrew it.`, confirmLabel: "Withdraw", danger: true });
+            if (!ok.ok) return;
+            try { await API.del(`/api/capa-files/${f.id}`); toast("File withdrawn"); refresh(); } catch (err) { toast(err.message, "error"); }
+          } }, "Withdraw") : null)))))));
+  }).catch((err) => { clear(list); list.append(el("p", { class: "muted small" }, err.message)); });
+  return card;
+}
+
+const CAPA_EVENT_ICONS = { created: "flag", progress: "graph-up", implementation: "clipboard-check", evidence_file: "paperclip",
+  validation: "shield-check", extension: "calendar-plus", escalation: "alarm", reopened: "arrow-counterclockwise",
+  risk_accepted: "shield-exclamation", withdrawal: "x-octagon", closed: "lock", note: "chat-left-text" };
+
+function capaTimelineCard(c) {
+  const body = el("div", null, loadingState());
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Follow-up timeline"),
+    el("span", { class: "muted small" }, "Every step, in order. Entries cannot be edited or deleted.")), body);
+  API.get(`/api/capa/${c.id}/timeline`).then((rows) => {
+    clear(body);
+    body.append(activityTimeline(rows.slice().reverse().map((e) => {
+      const dates = e.kind === "extension" && e.new_due_date
+        ? ` ${e.old_due_date ? fmtDate(e.old_due_date).split(",")[0] : "none"} → ${fmtDate(e.new_due_date).split(",")[0]}.` : "";
+      return { at: e.created_at, who: e.user || "", icon: CAPA_EVENT_ICONS[e.kind] || "dot",
+        text: el("span", null, el("strong", null, e.label), dates, e.text ? ` ${e.text}` : "") };
+    }), { emptyText: "Nothing recorded yet." }));
+  }).catch((err) => { clear(body); body.append(el("p", { class: "muted small" }, err.message)); });
+  return card;
 }
 
 function implementForm(c, refresh) {
@@ -200,7 +314,7 @@ function implementForm(c, refresh) {
     meta: { title: `Implementation of ${c.capa_ref}`, record_type: "capa", record_id: c.id },
     fields: [{ name: "evidence", label: "What was done, when, and where the evidence is", type: "textarea", rows: 6,
       required: true, minLength: 10, maxLength: 20000,
-      help: "Be specific: dates, documents, system changes. Upload supporting files to the audit's working papers." }],
+      help: "Be specific: dates, documents, system changes. Attach supporting files under Evidence files on this page." }],
     initial: {},
     submitLabel: "Submit for validation",
     onSubmit: (v) => API.post(`/api/capa/${c.id}/implement`, v),
@@ -267,6 +381,21 @@ async function renderFollowup(root = viewRoot) {
     { label: "Days overdue", num: true, render: (r) => el("strong", null, String(r.days_overdue)) },
     { label: "Escalated to", render: (r) => badge(r.escalation_name) },
   ])));
+  const agingBox = el("div", null, loadingState());
+  root.append(panel("Aging of open actions", agingBox,
+    el("a", { class: "btn small secondary", href: "/api/followup/aging.csv" }, el("i", { class: "bi bi-filetype-csv" }), " Export")));
+  API.get("/api/followup/aging").then((a) => {
+    clear(agingBox);
+    const tones = { "Not yet due": "ok", "1-30 days": "warn", "31-60 days": "warn", "61-90 days": "danger", "Over 90 days": "danger" };
+    agingBox.append(el("div", { class: "stats" }, ...Object.entries(a.buckets).map(([k, v]) => stat(v, k, k === "Not yet due" ? "open, on time" : "overdue", v ? tones[k] : ""))));
+    if (a.by_owner.length) {
+      agingBox.append(el("div", { class: "table-wrap" }, el("table", null,
+        el("thead", null, el("tr", null, el("th", null, "Owner"), el("th", { class: "num" }, "Open"), el("th", { class: "num" }, "Overdue"), el("th", { class: "num" }, "Target date revised"))),
+        el("tbody", null, ...a.by_owner.map((o) => el("tr", { class: "no-click" }, el("td", null, o.owner),
+          el("td", { class: "num" }, String(o.open)), el("td", { class: "num" }, o.overdue ? el("strong", null, String(o.overdue)) : "0"),
+          el("td", { class: "num" }, String(o.extended))))))));
+    }
+  }).catch((err) => { clear(agingBox); agingBox.append(el("p", { class: "muted small" }, err.message)); });
   root.append(panel("Awaiting auditor validation", table(review, [
     { label: "Ref", render: (r) => el("span", { class: "ref" }, r.capa_ref) },
     { label: "Action", render: (r) => r.title },
@@ -435,6 +564,9 @@ function downloadCsv(filename, columns, items) {
   const a = el("a", { href: URL.createObjectURL(blob), download: filename });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  // Exports are part of the audit trail.
+  try { API.post("/api/export.log", { title: String(filename).replace(/\.csv$/i, "").slice(0, 100), rows: items.length, format: "csv" }).catch(() => {}); }
+  catch { /* never block the download */ }
 }
 
 // Sortable, paged, keyboard-accessible table with CSV export.

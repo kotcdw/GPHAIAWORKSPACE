@@ -7,7 +7,9 @@ NOT_IMPLEMENTED = "Not Implemented"
 PARTIALLY = "Partially Implemented"
 FULLY = "Fully Implemented"
 WITHDRAWN = "Withdrawn"
-IMPLEMENTATION_STATUSES = (NOT_IMPLEMENTED, PARTIALLY, FULLY, WITHDRAWN)
+# Management formally accepted the residual risk instead of implementing (closed, approved by Internal Audit).
+RISK_ACCEPTED = "Risk Accepted"
+IMPLEMENTATION_STATUSES = (NOT_IMPLEMENTED, PARTIALLY, FULLY, WITHDRAWN, RISK_ACCEPTED)
 
 
 def is_internal(capa) -> bool:  # noqa: ANN001

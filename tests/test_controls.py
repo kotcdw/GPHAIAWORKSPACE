@@ -344,3 +344,17 @@ def test_security_headers(client):
     r = client.get("/health")
     assert r.headers["X-Content-Type-Options"] == "nosniff"
     assert r.headers["X-Frame-Options"] == "DENY"
+
+
+def test_production_guard_rejects_published_passwords():
+    from app.core.config import Settings
+
+    good = dict(secret_key="s" * 40, cookie_secure=True, encryption_key="k" * 44,
+                database_url="mysql+pymysql://gpha:Str0ng-Random@db:3306/gpha_workspace")
+    assert Settings(admin_password="Unique-Admin-Pass-2026", **good).insecure_settings() == []
+    for weak in ("Admin@12345", "DemoPass!123", ""):
+        problems = Settings(admin_password=weak, **good).insecure_settings()
+        assert any("GPHA_ADMIN_PASSWORD" in p for p in problems), weak
+    dev_db = {**good, "database_url": "mysql+pymysql://gpha:gpha_dev_pass@db:3306/gpha_workspace"}
+    problems = Settings(admin_password="Unique-Admin-Pass-2026", **dev_db).insecure_settings()
+    assert any("gpha_dev_pass" in p for p in problems)

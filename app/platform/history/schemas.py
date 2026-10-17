@@ -13,6 +13,9 @@ class AuditLogOut(ORMModel):
     action_performed: str
     timestamp: datetime
     ip_address: str | None
+    username: str | None = None
+    category: str | None = None
+    outcome: str | None = None
 
 
 class RecordHistoryOut(ORMModel):
@@ -24,6 +27,7 @@ class RecordHistoryOut(ORMModel):
     cycle_no: int | None
     timestamp: datetime
     ip_address: str | None
+    user: str | None = None
 
 
 class ApprovalCycleOut(ORMModel):

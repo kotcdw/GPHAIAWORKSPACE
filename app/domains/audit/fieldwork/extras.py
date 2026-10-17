@@ -233,6 +233,7 @@ def create_narrative(objective_id: int, payload: NarrativeIn, request: Request, 
     db.flush()
     _set_controls(db, n, audit.id, payload.control_ids)
     _history(db, audit.id, user, f"NARRATIVE {n.ref} ADDED: {n.title}", request)
+    log_action(db, user_id=user.id, request=request, action=f"NARRATIVE_CREATE id={n.id} {n.ref} audit={audit.id}")
     db.commit()
     db.refresh(n)
     return _narrative_out(n, dots_for(db, "narrative", [n.id])[n.id], obj)
@@ -257,6 +258,8 @@ def update_narrative(narrative_id: int, payload: NarrativeUpdate, request: Reque
         _set_controls(db, n, audit.id, sent["control_ids"])
     n.updated_at = utcnow()
     _history(db, audit.id, user, f"NARRATIVE {n.ref} UPDATED [{', '.join(sent)}]", request)
+    log_action(db, user_id=user.id, request=request,
+               action=f"NARRATIVE_UPDATE id={n.id} {n.ref} audit={audit.id} [{', '.join(sent)}]")
     db.commit()
     db.refresh(n)
     return _narrative_out(n, dots_for(db, "narrative", [n.id])[n.id], obj)
@@ -272,6 +275,8 @@ def delete_narrative(narrative_id: int, request: Request, db: DBSession = Depend
     ref = n.ref
     db.delete(n)
     _history(db, audit.id, user, f"NARRATIVE {ref} DELETED", request)
+    log_action(db, user_id=user.id, request=request,
+               action=f"NARRATIVE_DELETE id={narrative_id} {ref} audit={audit.id}")
     db.commit()
     return MessageOut(message=f"Narrative {ref} deleted")
 
@@ -383,7 +388,7 @@ def status_tracker(db: DBSession = Depends(get_db), user: User = Staff) -> list[
 
 
 @router.post("/api/audits/{audit_id}/narratives/reorder", response_model=MessageOut)
-def reorder_narratives(audit_id: int, ids: list[int], db: DBSession = Depends(get_db),
+def reorder_narratives(audit_id: int, ids: list[int], request: Request, db: DBSession = Depends(get_db),
                        user: User = Staff) -> MessageOut:
     audit = _audit_or_404(db, audit_id)
     _ensure_open(audit)
@@ -393,6 +398,7 @@ def reorder_narratives(audit_id: int, ids: list[int], db: DBSession = Depends(ge
         raise _conflict("Every narrative must belong to this audit")
     for pos, i in enumerate(ids):
         found[i].position = pos
+    log_action(db, user_id=user.id, request=request, action=f"NARRATIVE_REORDER audit={audit_id}")
     db.commit()
     return MessageOut(message="Order saved")
 

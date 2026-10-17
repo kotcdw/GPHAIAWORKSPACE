@@ -193,6 +193,11 @@ def _apply_to_capa(db: DBSession, m: CommitteeMeeting, d: CommitteeDecision, use
         capa.withdrawal_reason = capa.withdrawal_reason or d.notes
         capa.closed_by = user.id
         capa.closed_at = utcnow()
+    if d.decision in ("Close", "Withdraw"):
+        from app.domains.issues.capa.timeline import add_event
+
+        add_event(db, capa, "closed" if d.decision == "Close" else "withdrawal", user_id=user.id, request=request,
+                  text=note + (f". {d.notes}" if d.notes else ""))
     if d.decision in ("Close", "Withdraw") and capa.source_type == "finding":
         from app.domains.issues.capa.closure import sync_finding
 
@@ -201,7 +206,11 @@ def _apply_to_capa(db: DBSession, m: CommitteeMeeting, d: CommitteeDecision, use
     if d.decision == "Extend deadline":
         if d.new_due_date is None or d.new_due_date <= utcnow():
             raise HTTPException(status_code=422, detail="Give a new due date in the future")
-        capa.due_date = d.new_due_date
+        from app.domains.issues.capa.timeline import change_due_date
+
+        change_due_date(db, capa, d.new_due_date, user_id=user.id, request=request,
+                        reason=f"Deadline extended by the Audit Committee. {(d.notes or '').strip()}".strip(),
+                        source=f"Audit Committee {m.meeting_ref}")
         capa.escalation_level = 0
         note += f" to {d.new_due_date:%d %b %Y}"
     elif d.decision == "Escalate to management":
@@ -269,8 +278,11 @@ def for_decision(db: DBSession = Depends(get_db), _: User = Viewer) -> list[dict
 
 
 @router.get("/meetings/{meeting_id}/minutes.docx")
-def minutes_docx(meeting_id: int, db: DBSession = Depends(get_db), _: User = Viewer):  # noqa: ANN201
+def minutes_docx(meeting_id: int, request: Request, db: DBSession = Depends(get_db),
+                 user: User = Viewer):  # noqa: ANN201
     m = _meeting(db, meeting_id)
+    log_action(db, user_id=user.id, request=request, commit=True,
+               action=f"COMMITTEE_MINUTES_EXPORT id={m.id} {m.meeting_ref}")
     doc = new_document()
     doc.add_heading(f"Minutes of the {m.meeting_type.lower()} meeting of the Audit Committee", level=1)
     doc.add_paragraph(f"Ref: {m.meeting_ref}    Date: {m.meeting_date:%d %B %Y %H:%M}    Venue: {m.venue or '-'}")

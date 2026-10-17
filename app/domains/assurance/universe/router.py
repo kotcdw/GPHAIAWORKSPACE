@@ -1133,7 +1133,8 @@ def configure_ara(ara_id: int, payload: AraConfig, request: Request, db: DBSessi
 
 
 @router.put("/api/audit-risk-assessments/{ara_id}/scores")
-def score_cell(ara_id: int, payload: ScoreIn, db: DBSession = Depends(get_db), user: User = Staff) -> dict:
+def score_cell(ara_id: int, payload: ScoreIn, request: Request, db: DBSession = Depends(get_db),
+               user: User = Staff) -> dict:
     """Score one entity on one factor (saved at once). Higher scores mean higher risk."""
     ensure_perm(user, *PLANNING)
     a = _ara(db, ara_id)
@@ -1157,6 +1158,9 @@ def score_cell(ara_id: int, payload: ScoreIn, db: DBSession = Depends(get_db), u
     if a.status == "Draft":
         a.status = "In progress"
     a.updated_at = utcnow()
+    log_action(db, user_id=user.id, request=request,
+               action=f"ARA_SCORE {a.ref} id={a.id} entity={payload.entity_id} factor={payload.factor_id} "
+                      f"score={payload.score if payload.score is not None else 'cleared'}")
     db.commit()
     out = _ara_out(db, a, True)
     row_out = next(r for r in out["rows"] if r["entity_id"] == payload.entity_id)
@@ -1171,7 +1175,8 @@ def _require_complete(db: DBSession, a: AuditRiskAssessment) -> None:
 
 
 @router.put("/api/audit-risk-assessments/{ara_id}/priorities")
-def set_priorities(ara_id: int, payload: PriorityIn, db: DBSession = Depends(get_db), user: User = Staff) -> dict:
+def set_priorities(ara_id: int, payload: PriorityIn, request: Request, db: DBSession = Depends(get_db),
+                   user: User = Staff) -> dict:
     """Prioritised auditable entities for audit, in rank order. Removing one deletes its note."""
     ensure_perm(user, *PLANNING)
     a = _ara(db, ara_id)
@@ -1185,12 +1190,14 @@ def set_priorities(ara_id: int, payload: PriorityIn, db: DBSession = Depends(get
             m.priority, m.note, m.note_by, m.note_at = None, None, None, None
     if rank:
         raise field_error("entity_ids", "prioritise entities included in this assessment")
+    log_action(db, user_id=user.id, request=request,
+               action=f"ARA_PRIORITIES {a.ref} id={a.id} order={','.join(map(str, payload.entity_ids))[:300]}")
     db.commit()
     return _ara_out(db, a, True)
 
 
 @router.put("/api/audit-risk-assessments/{ara_id}/notes/{entity_id}")
-def set_note(ara_id: int, entity_id: int, payload: NoteIn, db: DBSession = Depends(get_db),
+def set_note(ara_id: int, entity_id: int, payload: NoteIn, request: Request, db: DBSession = Depends(get_db),
              user: User = Staff) -> dict:
     ensure_perm(user, *PLANNING)
     a = _ara(db, ara_id)
@@ -1200,16 +1207,19 @@ def set_note(ara_id: int, entity_id: int, payload: NoteIn, db: DBSession = Depen
         raise _conflict("Notes are kept on prioritised entities")
     text = (payload.note or "").strip() or None
     m.note, m.note_by, m.note_at = text, (user.id if text else None), (utcnow() if text else None)
+    log_action(db, user_id=user.id, request=request, action=f"ARA_NOTE {a.ref} id={a.id} entity={entity_id}")
     db.commit()
     return _ara_out(db, a, True)
 
 
 @router.put("/api/audit-risk-assessments/{ara_id}/conclusion")
-def set_conclusion(ara_id: int, payload: ConclusionIn, db: DBSession = Depends(get_db), user: User = Staff) -> dict:
+def set_conclusion(ara_id: int, payload: ConclusionIn, request: Request, db: DBSession = Depends(get_db),
+                   user: User = Staff) -> dict:
     ensure_perm(user, *PLANNING)
     a = _ara(db, ara_id)
     _editable(a)
     a.conclusion = payload.conclusion.strip()
+    log_action(db, user_id=user.id, request=request, action=f"ARA_CONCLUSION {a.ref} id={a.id}")
     db.commit()
     return _ara_out(db, a, True)
 

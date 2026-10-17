@@ -48,7 +48,7 @@ _ATTEMPTS: dict[str, deque] = {}
 _ATTEMPTS_LOCK = threading.Lock()
 
 
-def _throttle(request: Request) -> None:
+def _throttle(request: Request, db: DBSession | None = None, username: str | None = None) -> None:
     limit = cfg("login_rate_limit_per_minute")
     if limit <= 0:
         return
@@ -59,6 +59,9 @@ def _throttle(request: Request) -> None:
         while window and now - window[0] > 60:
             window.popleft()
         if len(window) >= limit:
+            if db is not None:
+                log_action(db, user_id=None, request=request, commit=True, username=(username or "")[:64] or None,
+                           action=f"LOGIN_RATE_LIMITED ip={ip} limit={limit}/min")
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Too many sign-in attempts from this computer. Wait a minute and try again.",
@@ -102,7 +105,7 @@ def _clear_auth_cookies(response: Response) -> None:
 
 @router.post("/register", response_model=MessageOut, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, request: Request, db: DBSession = Depends(get_db)) -> MessageOut:
-    _throttle(request)
+    _throttle(request, db, payload.username)
     exists = db.execute(select(User).where(func.lower(User.username) == payload.username.lower())).scalar_one_or_none()
     if exists is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
@@ -132,7 +135,7 @@ def register(payload: RegisterRequest, request: Request, db: DBSession = Depends
 
 @router.post("/login", response_model=MeOut)
 def login(payload: LoginRequest, request: Request, response: Response, db: DBSession = Depends(get_db)) -> MeOut:
-    _throttle(request)
+    _throttle(request, db, payload.username)
     user = db.execute(select(User).where(func.lower(User.username) == payload.username.lower())).scalar_one_or_none()
     now = utcnow()
     if user is not None and user.locked_until is not None and user.locked_until > now:
@@ -163,7 +166,11 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DBSes
             elif found.full_name and not user.full_name:
                 user.full_name = found.full_name[:255]
     if not local_ok and not via_directory:
-        log_action(db, user_id=None, action=f"LOGIN_FAILED username={payload.username[:64]}", request=request)
+        # Known account: tie the failure to it so it shows in that user's history; unknown name: keep what was typed.
+        log_action(db, user_id=user.id if user is not None else None, request=request,
+                   username=payload.username[:64],
+                   action=f"LOGIN_FAILED {'wrong_password' if user is not None else 'unknown_user'} "
+                          f"username={payload.username[:64]}")
         if user is not None:
             user.failed_login_count = (user.failed_login_count or 0) + 1
             if user.failed_login_count >= settings.login_max_attempts:
@@ -273,6 +280,8 @@ def change_password(
     session: UserSession = Depends(get_current_session),
 ) -> MessageOut:
     if not verify_password(payload.current_password, user.password_hash):
+        log_action(db, user_id=user.id, action="PASSWORD_CHANGE_FAILED wrong_current_password", request=request,
+                   commit=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
     user.password_hash = hash_password(payload.new_password)
     # Sign out every other session (e.g. a stolen cookie); keep the current one.
@@ -303,6 +312,7 @@ def mfa_enable(payload: MfaCode, request: Request, db: DBSession = Depends(get_d
     if not user.mfa_secret:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Start the set-up first")
     if not totp.verify(totp.unseal(user.mfa_secret), payload.code):
+        log_action(db, user_id=user.id, action="MFA_ENABLE_FAILED bad_code", request=request, commit=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="That code is not right. Check the time on your phone and try the newest code.")
     user.mfa_enabled = True
@@ -323,6 +333,8 @@ def mfa_disable(payload: MfaDisable, request: Request, db: DBSession = Depends(g
     if not verify_password(payload.password, user.password_hash) or not totp.verify(
         totp.unseal(user.mfa_secret), payload.code
     ):
+        log_action(db, user_id=user.id, action="MFA_DISABLE_FAILED bad_password_or_code", request=request,
+                   commit=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password or code is not right")
     user.mfa_enabled = False
     user.mfa_secret = None

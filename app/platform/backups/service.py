@@ -81,7 +81,9 @@ def _try_mysqldump(dest: Path) -> bool:
     # (where any local user could read it from the process list).
     env = {**os.environ, "MYSQL_PWD": parsed.password or settings.mysql_password}
     try:
-        subprocess.run(cmd, check=True, capture_output=True, timeout=300, env=env)
+        # The command and all arguments are fixed or derived from the configured database URL.
+        # Shell execution is disabled.
+        subprocess.run(cmd, check=True, capture_output=True, timeout=300, env=env)  # nosec B603 - fixed argv, no shell
         return dest.exists() and dest.stat().st_size > 0
     except (subprocess.SubprocessError, OSError):
         dest.unlink(missing_ok=True)

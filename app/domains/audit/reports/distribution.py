@@ -127,9 +127,11 @@ def report_register(year: int | None = Query(default=None), db: DBSession = Depe
 
 
 @router.get("/api/reports/register.xlsx")
-def report_register_xlsx(year: int | None = Query(default=None), db: DBSession = Depends(get_db),
+def report_register_xlsx(request: Request, year: int | None = Query(default=None), db: DBSession = Depends(get_db),
                          user: User = Staff):  # noqa: ANN201
     rows = _scoped(db, user, register_rows(db, year))
+    log_action(db, user_id=user.id, request=request, commit=True,
+               action=f"REPORT_REGISTER_EXPORT year={year or 'all'} rows={len(rows)}")
     headers = ["Ref", "Title", "Audit", "Status", "Rating", "Draft to management", "Response due",
                "Response received", "Issued", "Copies sent", "Copies outstanding"]
     data = [[r["report_ref"], r["title"], r["audit_title"], r["status"], r["overall_rating"], r["draft_sent_at"],

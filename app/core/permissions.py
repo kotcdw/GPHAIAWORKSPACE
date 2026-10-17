@@ -10,6 +10,7 @@ every permission and can change what the other four roles may do on the Roles & 
 from __future__ import annotations
 
 import dataclasses
+import logging
 import threading
 import time
 from dataclasses import dataclass, field
@@ -187,6 +188,7 @@ def is_cae(user) -> bool:  # noqa: ANN001
 
 # ---------------------------------------------------------------- matrix with admin overrides
 
+logger = logging.getLogger(__name__)
 _CACHE: dict[str, set[str]] = {}
 _CACHE_AT = 0.0
 _LOCK = threading.Lock()
@@ -216,7 +218,7 @@ def matrix() -> dict[str, set[str]]:
                     continue  # full control stays with the Super Administrator
                 (out[row.job_role].add if row.granted else out[row.job_role].discard)(row.permission)
     except Exception:  # noqa: BLE001 - table missing / database down: defaults
-        pass
+        logger.warning("Could not load role permission overrides; using built-in defaults", exc_info=True)
     finally:
         db.close()
     out["super_admin"] = set(_ALL)  # the Super Administrator always has full control

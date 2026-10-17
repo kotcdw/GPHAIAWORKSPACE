@@ -458,7 +458,7 @@ def _controls(db: DBSession, audit_id: int) -> list[Control]:
     ).scalars())
 
 
-def _test_row(t: ControlTest, names: dict[int, str], issues: dict[int, int], requests: dict[int, int]) -> dict:
+def _test_row(t: ControlTest, names: dict[int, str], issues: dict[int, int], evidence_requests: dict[int, int]) -> dict:
     return {
         "id": t.id, "ref": t.ref, "test_type": t.test_type.value, "round_no": t.round_no, "in_scope": t.in_scope,
         "assigned_to": t.assigned_to, "assigned_name": names.get(t.assigned_to), "procedure": t.procedure,
@@ -467,7 +467,7 @@ def _test_row(t: ControlTest, names: dict[int, str], issues: dict[int, int], req
         "prepared_by": names.get(t.performed_by), "prepared_by_id": t.performed_by,
         "prepared_at": t.performed_at.isoformat() if t.performed_at else None,
         "reviewed_by": names.get(t.reviewed_by), "reviewed_at": t.reviewed_at.isoformat() if t.reviewed_at else None,
-        "issue_id": issues.get(t.id), "evidence_requests": requests.get(t.id, 0),
+        "issue_id": issues.get(t.id), "evidence_requests": evidence_requests.get(t.id, 0),
         "signoffs": dots_for(object_session(t), "test", [t.id])[t.id],
     }
 

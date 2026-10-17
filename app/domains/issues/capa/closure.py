@@ -26,12 +26,12 @@ def actions_of(db: DBSession, finding_id: int) -> list:
 
 
 def _verified(capa) -> bool:  # noqa: ANN001
-    """Closed with Internal Audit's 'Effective' validation, or closed by an authorized decision (withdrawn or an
-    external body's closure reference)."""
+    """Closed with Internal Audit's 'Effective' validation, or closed by an authorized decision (withdrawn, an
+    external body's closure reference, or management's recorded acceptance of the risk)."""
     if capa.status != CapaStatus.Closed:
         return False
     return (capa.validation_result == ValidationResult.Effective or bool(capa.withdrawal_reason)
-            or bool((capa.external_closure_ref or "").strip()))
+            or bool((capa.external_closure_ref or "").strip()) or bool(capa.risk_accepted_at))
 
 
 def remediation_summary(db: DBSession, finding) -> dict:  # noqa: ANN001

@@ -570,7 +570,10 @@ def draw_sample(
     recommended, _ = recommended_sample(test.control.frequency, test.control.nature, test.test_type)
     size = min(payload.sample_size or recommended, payload.population_size)
     seed = payload.seed if payload.seed is not None else random.SystemRandom().randrange(1, 2**31 - 1)
-    items = sorted(random.Random(seed).sample(range(1, payload.population_size + 1), size))
+    # This is a reproducible audit-sampling generator, not a security token or cryptographic value.
+    items = sorted(random.Random(seed).sample(  # nosec B311 - reproducible audit sample, not cryptography
+        range(1, payload.population_size + 1), size
+    ))
     test.population_size = payload.population_size
     test.sample_size = size
     test.sample_seed = seed

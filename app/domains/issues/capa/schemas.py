@@ -54,6 +54,8 @@ class CapaUpdate(BaseModel):
     followup_comment: str | None = Field(default=None, max_length=10000)
     external_closure_ref: str | None = Field(default=None, max_length=120)
     custom_fields: dict[str, Any] | None = None
+    # Required when an agreed target date is revised.
+    due_date_reason: str | None = Field(default=None, max_length=2000)
 
 
 class CapaLink(BaseModel):
@@ -99,6 +101,11 @@ class CapaOut(ORMModel):
     withdrawal_reason: str | None = None
     withdrawal_proposed_at: datetime | None = None
     external_closure_ref: str | None = None
+    original_due_date: datetime | None = None
+    extension_count: int = 0
+    risk_accepted_by: int | None = None
+    risk_accepted_at: datetime | None = None
+    risk_acceptance: str | None = None
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None
     created_at: datetime

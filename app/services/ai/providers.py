@@ -32,15 +32,23 @@ class ProviderConfig:
     timeout: int
 
 
+def _validated_url(url: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise AiError("The AI endpoint address must be a valid http:// or https:// URL")
+    if parsed.username or parsed.password:
+        raise AiError("The AI endpoint address must not contain embedded credentials")
+    return url
+
+
 def _post(url: str, headers: dict[str, str], body: dict, timeout: int) -> dict:
-    # Only web addresses: file:, ftp: and other schemes would let the endpoint setting read local files.
-    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
-        raise AiError("The AI endpoint address must start with http:// or https://")
+    # Only authenticated web endpoints are permitted; local-file and credential-bearing URLs are rejected.
+    url = _validated_url(url)
     data = json.dumps(body).encode()
     request = urllib.request.Request(url, data=data, method="POST",
                                      headers={"Content-Type": "application/json", **headers})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - admin-set URL
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - URL validated above
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:300]

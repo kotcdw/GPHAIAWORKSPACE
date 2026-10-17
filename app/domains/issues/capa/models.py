@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -64,6 +64,13 @@ class Capa(Base):
                                                                nullable=True)
     withdrawal_proposed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     external_closure_ref: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Revised target dates: the first agreed date is kept; every change needs a reason (capa_events).
+    original_due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    extension_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Management accepts the residual risk instead of implementing (approved by the CAE / follow-up manager).
+    risk_accepted_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    risk_accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    risk_acceptance: Mapped[str | None] = mapped_column(Text, nullable=True)
     custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
@@ -72,3 +79,41 @@ class Capa(Base):
     linked_nc: Mapped[Nonconformance | None] = relationship(
         "Nonconformance", foreign_keys=[linked_nc_id], lazy="selectin"
     )
+
+
+class CapaEvent(Base):
+    """Append-only follow-up timeline of a remediation action (UPDATE/DELETE blocked by database triggers).
+
+    ``kind``: created, progress, implementation, evidence_file, validation, extension, escalation, reopened,
+    risk_accepted, withdrawal, closed. ``capa_id`` is a soft reference so the trail outlives the action.
+    """
+
+    __tablename__ = "capa_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    capa_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    old_due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    new_due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class CapaFile(Base):
+    """An evidence file attached to a remediation action (encrypted at rest, SHA-256, never hard-deleted)."""
+
+    __tablename__ = "capa_files"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    capa_id: Mapped[int] = mapped_column(ForeignKey("capa.id", ondelete="CASCADE"), nullable=False, index=True)
+    original_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    deleted_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
