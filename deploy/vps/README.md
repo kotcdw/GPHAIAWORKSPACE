@@ -1,7 +1,8 @@
 # GIAW on a VPS (Hostinger or any Ubuntu server)
 
-One script installs GIAW with its database and an HTTPS front door (Caddy, free automatic
-certificates). Only ports 22, 80 and 443 are open; MySQL is never reachable from the internet.
+One script installs GIAW with its database and free automatic HTTPS. If the server already runs
+Traefik (Hostinger's Docker Manager installs it), GIAW plugs into that Traefik; otherwise the script
+starts its own Caddy. Only ports 22, 80 and 443 are open; MySQL is never reachable from the internet.
 
 ## First installation (about 15 minutes)
 
@@ -14,9 +15,9 @@ certificates). Only ports 22, 80 and 443 are open; MySQL is never reachable from
 
    Delete any other `A`/`AAAA` record for `@`.
 
-2. **Remove the earlier test deployment**, if you made one with Hostinger's Docker Manager
-   (project `gphaiaworkspace`, container `gpha-mysql`): Docker Manager > the project > Delete.
-   It used the published development passwords. (The installer also offers to remove it.)
+2. **The earlier test deployment** made with Hostinger's Docker Manager (project
+   `gphaiaworkspace`, container `gpha-mysql`) is not used by GIAW. It is an empty test database with
+   the published development passwords; the installer offers to remove it (answer `y`).
 
 3. **Open a terminal on the VPS** (hPanel > VPS > Browser terminal, or `ssh root@<VPS IP>`) and run:
 
@@ -47,11 +48,11 @@ Data, passwords and certificates are kept.
 ## Everyday commands (run in `/opt/giaw`)
 
 ```bash
-D="docker compose -f deploy/vps/docker-compose.yml --env-file .env.production"
-$D ps                 # status
-$D logs -f app        # application log
-$D restart app        # restart the application
-$D exec app python -m scripts.reset_password   # reset a forgotten password (asks for the username)
+docker ps                                   # giaw-app-1, giaw-mysql-1 (and giaw-caddy-1 or traefik)
+docker logs --tail 100 giaw-app-1           # application log
+docker restart giaw-app-1                   # restart the application
+docker exec -it giaw-app-1 python -m scripts.reset_password   # reset a forgotten password
+sudo bash deploy/vps/install.sh             # apply any configuration change (safe to repeat)
 ```
 
 ## Backups

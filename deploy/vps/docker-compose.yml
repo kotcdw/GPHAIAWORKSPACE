@@ -1,7 +1,9 @@
-# GIAW on a Linux VPS: MySQL + the app + Caddy (automatic HTTPS for your domain).
-# Used by deploy/vps/install.sh. Run from the repository root:
-#   docker compose -f deploy/vps/docker-compose.yml --env-file .env.production up -d --build
-# Only Caddy publishes ports (80 and 443). MySQL and the app are reachable only inside Docker.
+# GIAW on a Linux VPS: MySQL + the app + an HTTPS front door. Used by deploy/vps/install.sh.
+# Two ways to get HTTPS (the installer picks one):
+#   - Caddy (profile "caddy"): this file's caddy service publishes 80/443 and gets certificates itself;
+#   - an existing Traefik (Hostinger Docker Manager installs one): docker-compose.traefik.yml adds the
+#     labels instead and Caddy is not started.
+# MySQL and the app never publish ports; they are reachable only inside Docker.
 
 name: giaw
 
@@ -48,6 +50,7 @@ services:
 
   caddy:
     image: caddy:2.10
+    profiles: ["caddy"]
     restart: unless-stopped
     ports:
       - "80:80"

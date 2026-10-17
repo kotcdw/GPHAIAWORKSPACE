@@ -8,7 +8,8 @@
 #   1. installs Docker if it is missing;
 #   2. on the first run, creates .env.production with random passwords and keys (shown ONCE);
 #   3. opens only SSH, HTTP and HTTPS in the firewall (ufw), if you agree;
-#   4. builds and starts MySQL + GIAW + Caddy, which gets the HTTPS certificate automatically.
+#   4. builds and starts MySQL + GIAW with automatic HTTPS: through the Traefik that Hostinger's
+#      Docker Manager installs, if it is running, otherwise through its own Caddy.
 # Run it again after "git pull" to update: data, passwords and certificates are kept.
 set -euo pipefail
 
@@ -111,7 +112,25 @@ if command -v ufw >/dev/null 2>&1; then
   fi
 fi
 
-# --------------------------------------------------------------------------- 4. Build and start
+# --------------------------------------------------------------------------- 4. HTTPS front door
+# Hostinger's Docker Manager installs Traefik on ports 80/443. If Traefik (or anything else that is not
+# ours) already owns port 443, hand GIAW to that Traefik; otherwise start our own Caddy.
+OWNER_443="$(docker ps --filter publish=443 --format '{{.Names}} {{.Image}}' | grep -v '^giaw-caddy' | head -1 || true)"
+if [ -n "$OWNER_443" ]; then
+  if echo "$OWNER_443" | grep -qi traefik; then
+    say "Traefik already serves ports 80/443 ($OWNER_443) - GIAW will use it for HTTPS"
+    docker network inspect traefik-proxy >/dev/null 2>&1 || die "Traefik is running but the 'traefik-proxy' network was not found. Check Traefik in Docker Manager."
+    COMPOSE+=(-f "$ROOT/deploy/vps/docker-compose.traefik.yml")
+    docker rm -f giaw-caddy-1 >/dev/null 2>&1 || true
+  else
+    die "Port 443 is already used by: $OWNER_443. Stop it (or put it behind the same proxy) and run again."
+  fi
+else
+  say "Using Caddy for HTTPS (ports 80/443)"
+  COMPOSE+=(--profile caddy)
+fi
+
+# --------------------------------------------------------------------------- 5. Build and start
 say "Building and starting GIAW (the first build takes a few minutes)"
 "${COMPOSE[@]}" up -d --build --remove-orphans
 
@@ -122,7 +141,7 @@ for _ in $(seq 1 60); do
   sleep 5
 done
 "${COMPOSE[@]}" ps
-[ "${state:-}" = "healthy" ] || { warn "GIAW is not healthy yet. Look at:  docker compose -f deploy/vps/docker-compose.yml --env-file .env.production logs app"; exit 1; }
+[ "${state:-}" = "healthy" ] || { warn "GIAW is not healthy yet. Look at:  docker logs giaw-app-1"; exit 1; }
 
 echo
 printf '\033[1;32m%s\033[0m\n' "GIAW is running:  https://$DOMAIN"
