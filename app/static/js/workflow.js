@@ -643,6 +643,10 @@ const CONFIG_EXTRA = [
   { key: "@recordfields", name: "Record fields", icon: "ui-checks", desc: "Extra inputs on audits, findings and actions", render: (c) => renderRecordFieldsCard(c) },
 ];
 
+const CONFIG_WORKFLOW = [
+  { key: "@sla", name: "SLA time limits", icon: "stopwatch", desc: "Working days allowed per task in My work", render: (c) => renderSlaPoliciesCard(c) },
+];
+
 const cfgSummary = (r, v) => {
   if (r.kind === "bool") return v ? "On" : "Off";
   if (r.kind === "roles" || r.kind === "list") {
@@ -675,6 +679,8 @@ async function renderConfiguration(focusKey = null) {
     sections.push(...list);
     return { name: c.name, sections: list };
   }).filter((c) => c.sections.length);
+  categories.push({ name: "Workflow", sections: CONFIG_WORKFLOW });
+  sections.push(...CONFIG_WORKFLOW);
   categories.push({ name: "Custom fields", sections: CONFIG_EXTRA });
   sections.push(...CONFIG_EXTRA);
 

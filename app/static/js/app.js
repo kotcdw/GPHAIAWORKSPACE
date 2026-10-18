@@ -532,6 +532,7 @@ function showApp() {
   checkHealth();
   refreshDraftCount();
   refreshPortalCount();
+  refreshMyWorkCount();
   initBell();
   initGlobalSearch();
   const helpBtn = qs("#helpBtn");
@@ -583,6 +584,7 @@ function navigate(view) {
   if (view === "analytics") return renderAnalytics();
   if (view === "qaip") return renderQaipPage();
   if (view === "capacity") return renderCapacity();
+  if (view === "mywork") return renderMyWork();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "issues") return renderIssueTracker();
@@ -1064,6 +1066,7 @@ function panel(title, body, action = null) {
 function workspaceGroups() {
   return [
     { title: "Audit management", tiles: [
+      { view: "mywork", icon: "inbox", name: "My work", desc: "Everything waiting for you: prepare, review, respond, validate", count: "mywork" },
       { view: "universe", icon: "bullseye", name: "Audit universe", desc: "Auditable entities defined from the Org Structure and Process library" },
       { view: "riskassess", icon: "clipboard-data", name: "Audit risk assessment", desc: "Score entities on assessment factors and prioritise them for the plan", staff: true },
       { view: "plans", icon: "calendar3", name: "Assurance Plans", desc: "Annual risk-based audit plan by fiscal year", count: "plans", staff: true },
@@ -1142,6 +1145,7 @@ async function renderWorkspace() {
   const open = (rows) => (rows.items || rows).filter((x) => x.status !== "Closed").length;
   const jobs = {
     tasks: () => safeGet("/api/tasks?assigned_to_me=true", { items: [] }).then((r) => [open(r), "open"]),
+    mywork: () => safeGet("/api/my-work/counts", { total: 0, overdue: 0 }).then((c) => (c.overdue ? [c.overdue, "overdue", "danger"] : [c.total, "open"])),
     drafts: () => safeGet("/api/drafts", []).then((r) => [r.length, "unfinished"]),
     plans: () => (staff ? safeGet("/api/assurance-plans", []).then((r) => [open(r), "active"]) : null),
     audits: () => safeGet("/api/audits", []).then((r) => [open(r), "open"]),

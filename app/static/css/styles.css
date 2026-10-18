@@ -615,6 +615,31 @@ tbody tr[tabindex]:focus-visible { outline: 2px solid var(--accent); outline-off
 .table-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 2px 0; }
 
 /* ---------------------------------------------------------------- configuration */
+/* My work inbox */
+.sla-chip { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); font-weight: 600; padding: 2px 9px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text-2); white-space: nowrap; }
+.sla-chip.sla-breached { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger-text); }
+.sla-chip.sla-warning { background: var(--warn-soft); border-color: var(--warn-line); color: var(--warn-text); }
+.sla-chip.sla-ok { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok-text); }
+.sla-chip.sla-none { font-weight: 400; color: var(--muted); }
+.mywork-tabs .tab-count { margin-left: 6px; font-size: var(--fs-xs); padding: 0 6px; border-radius: 999px; background: var(--panel-3); color: var(--text-2); }
+.mywork-tabs .tab.active .tab-count { background: var(--accent-soft); color: var(--accent-text); }
+.mywork-tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; }
+.mywork-tabs .tab { white-space: nowrap; }
+.mywork-cards { display: grid; gap: var(--sp-2); }
+.mywork-card { display: grid; gap: 6px; text-align: left; width: 100%; background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; font: inherit; color: var(--text); cursor: pointer; }
+.mywork-card:hover, .mywork-card:focus-visible { border-color: var(--accent-line); outline: none; box-shadow: var(--focus); }
+.mywork-card.high { border-left: 3px solid var(--danger); }
+.mywork-card-top { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.mywork-card-title { font-weight: 600; }
+.mywork-toolbar { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin: var(--sp-3) 0; }
+.mywork-toolbar input[type=search] { min-width: 200px; flex: 1 1 200px; }
+.mywork-kind { white-space: nowrap; }
+.mywork-kind i { color: var(--accent); }
+.sla-table td, .sla-table th { vertical-align: middle; }
+.sla-table .cfg-num { width: 84px; text-align: right; }
+
 /* Configuration: one section at a time, chosen from a grouped drop-down */
 .cfg-toolbar { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-4);
   position: sticky; top: calc(var(--topbar-h) + 6px); z-index: 20; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
@@ -1614,3 +1639,4 @@ input.switch:disabled { opacity: .5; cursor: default; }
 #sidebarNav .count.alert { background: var(--danger); color: #ffffff; }
 .sidebar:hover, #sidebarNav:hover { scrollbar-color: #ffffff59 transparent; }
 .sidebar:hover::-webkit-scrollbar-thumb, #sidebarNav:hover::-webkit-scrollbar-thumb { background: #ffffff59; background-clip: padding-box; }
+.strong { font-weight: 600; }

@@ -69,6 +69,7 @@ async def lifespan(app: FastAPI):
     # Make sure the database can accept writes (and is migrated) before serving.
     await asyncio.to_thread(ensure_schema)
     await asyncio.to_thread(_seed_automations)
+    await asyncio.to_thread(_workflow_startup)
     tasks: list[asyncio.Task] = [asyncio.create_task(_schema_watcher())]
     if settings.escalation_check_minutes > 0:
         tasks.append(asyncio.create_task(_escalation_watcher()))
@@ -92,6 +93,46 @@ def _seed_automations() -> None:
         ensure_builtins(db)
     except Exception:  # noqa: BLE001 - database not ready yet; seeded on the next start or first visit
         logger.exception("Could not seed automation rules")
+    finally:
+        db.close()
+
+
+_LAST_RESYNC: list[float] = [0.0]
+
+
+def _workflow_startup() -> None:
+    """Seed the SLA policies and rebuild the "My work" inbox from the records."""
+    import time
+
+    from app.platform.workflow.workitems import full_resync
+
+    db = SessionLocal()
+    try:
+        n = full_resync(db)
+        db.commit()
+        _LAST_RESYNC[0] = time.monotonic()
+        logger.info("Work items rebuilt from %s records", n)
+    except Exception:  # noqa: BLE001 - database not ready yet; rebuilt on the next tick
+        db.rollback()
+        logger.exception("Could not rebuild work items")
+    finally:
+        db.close()
+
+
+def _workflow_tick() -> None:
+    """SLA clock (warn, escalate) on every check; a full rebuild of the inbox about once a day."""
+    import time
+
+    from app.platform.workflow.workitems import run_sla_clock
+
+    if time.monotonic() - _LAST_RESYNC[0] > 20 * 3600:
+        _workflow_startup()
+    db = SessionLocal()
+    try:
+        run_sla_clock(db)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("SLA clock failed")
     finally:
         db.close()
 
@@ -127,6 +168,7 @@ async def _escalation_watcher() -> None:
             run_scheduled_robots(db)
         finally:
             db.close()
+        _workflow_tick()
 
     while True:
         await asyncio.sleep(settings.escalation_check_minutes * 60)

@@ -47,6 +47,8 @@ _ACTION_FIELDS = {"ref": "Reference", "title": "Title", "severity": "Severity", 
 _REPORT_FIELDS = {"ref": "Reference", "title": "Title", "overall_rating": "Overall rating",
                   "due_date": "Response due", "days": "Days overdue", "missing": "Missing recipients"}
 
+_WORK_FIELDS = {"task": "Task", "title": "Item", "kind": "Kind", "due_date": "Due date"}
+
 TRIGGERS: dict[str, Trigger] = {t.key: t for t in [
     Trigger("finding.created", "A finding is raised", "event", "finding",
             {"ref": "Reference", "title": "Title", "risk_rating": "Risk rating", "audit_title": "Audit"},
@@ -87,6 +89,10 @@ TRIGGERS: dict[str, Trigger] = {t.key: t for t in [
     Trigger("cpd.below_target", "An auditor is below the CPD target", "schedule", "user",
             {"user": "Auditor", "hours": "Hours this year", "target": "Target"}, "days before the year ends",
             people=("subject_user",)),
+    Trigger("workitem.sla_warning", "A task in someone's inbox is close to its due date", "event", "work_item",
+            _WORK_FIELDS, people=("subject_user",)),
+    Trigger("workitem.sla_breached", "A task in someone's inbox has passed its due date", "event", "work_item",
+            _WORK_FIELDS, people=("subject_user",)),
     Trigger("followup.quarter_ended", "A quarter ended without a follow-up report submitted", "schedule",
             "quarter", {"title": "Quarter"}, "days after the quarter ends"),
     Trigger("annual_statement.due", "The annual implementation statement is due and not submitted", "schedule",

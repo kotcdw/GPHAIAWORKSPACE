@@ -82,3 +82,12 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+def _install_workflow_engine() -> None:
+    # Every session records status changes and keeps the "My work" inbox in step (app.platform.workflow).
+    from app.platform.workflow.engine import install
+
+    install()
+
+
+_install_workflow_engine()

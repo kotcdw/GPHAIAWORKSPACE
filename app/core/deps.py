@@ -32,6 +32,7 @@ def get_current_session(request: Request, db: DBSession = Depends(get_db)) -> Us
 
 
 def get_current_user(
+    request: Request,
     session: UserSession | None = Depends(get_current_session),
     db: DBSession = Depends(get_db),
 ) -> User:
@@ -40,6 +41,11 @@ def get_current_user(
     user = db.get(User, session.user_id)
     if user is None:
         raise _UNAUTHORIZED
+    # Who is acting: the workflow engine records it with every status change made in this request.
+    from app.core.audit import client_ip
+    from app.platform.workflow.engine import set_actor
+
+    set_actor(db, user.id, client_ip(request))
     return user
 
 
