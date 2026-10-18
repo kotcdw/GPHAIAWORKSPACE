@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.enums import Role
-from tests.conftest import csrf_headers, login, make_user, release_plan, walk_plan_to_review
+from tests.conftest import csrf_headers, login, make_entity, make_user, release_plan, walk_plan_to_review
 
 PASSWORD = "Passw0rd!"
 
@@ -26,26 +26,9 @@ def people(client, client2, db):
 
 
 def _universe(client2, adm, tag):
-    loc = client2.post("/api/locations", json={"code": f"T{tag}", "name": f"Tema {tag}"}, headers=adm)
-    assert loc.status_code == 201, loc.text
-    lid = loc.json()["id"]
-    high = client2.post(
-        "/api/entity-units",
-        json={
-            "location_id": lid,
-            "code": "GJT",
-            "name": "Golden Jubilee Terminal",
-            "risk_likelihood": 4,
-            "risk_impact": 5,
-        },
-        headers=adm,
-    ).json()
-    low = client2.post(
-        "/api/entity-units",
-        json={"location_id": lid, "code": "FH", "name": "Fishing Harbour", "risk_likelihood": 1, "risk_impact": 2},
-        headers=adm,
-    ).json()
-    return lid, high, low
+    high = make_entity(client2, adm, f"Golden Jubilee Terminal {tag}", likelihood=4, impact=5)
+    low = make_entity(client2, adm, f"Fishing Harbour {tag}", likelihood=1, impact=2)
+    return None, high, low
 
 
 _YEARS = iter(range(2031, 2100))
@@ -87,7 +70,8 @@ def _approved_plan_with_audit(client, client2, people):
 
 
 def test_universe_is_admin_managed(client, people):
-    r = client.post("/api/locations", json={"code": "X", "name": "X"}, headers=people["aud"])
+    r = client.post("/api/auditable-entities", json={"name": "X entity", "entity_type": "Org unit", "org_ids": [1]},
+                    headers=people["aud"])
     assert r.status_code == 403
     assert client.get("/api/entity-units").status_code == 200
 

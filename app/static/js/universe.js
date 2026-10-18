@@ -24,8 +24,6 @@ function ratingBadge(r) {
 // people, sub-units, audits, processes and change history. Units that are no longer used are deactivated rather
 // than deleted, so the audits, plans and history that name them stay intact; the server enforces every rule.
 
-const ORG_ADMIN = () => hasPerm("system.reference");
-
 async function renderOrgStructure() {
   clear(viewRoot);
   const can = UNIVERSE_EDIT();

@@ -1,5 +1,5 @@
-"""Integrated audit universe (Diligent One Audit model): Org Structure, Process library, Define audit universe,
-auditable entities, audit risk assessments and planning from them."""
+"""Integrated audit universe: Org Structure, Process library, auditable entities, audit risk assessments and
+planning from them."""
 
 from __future__ import annotations
 
@@ -7,10 +7,8 @@ import io
 import uuid
 
 import pytest
-from sqlalchemy import select
 
 from app.core.enums import Role
-from app.domains.assurance.planning.models import EntityUnit
 from tests.conftest import csrf_headers, login, make_user
 
 
@@ -18,18 +16,6 @@ from tests.conftest import csrf_headers, login, make_user
 def admin(client, db):
     u = make_user(db, f"uvadm_{uuid.uuid4().hex[:6]}", Role.Admin)
     return csrf_headers(login(client, u.username))
-
-
-@pytest.fixture
-def keep_universe(db):
-    """Defining the universe archives every other entity; put the rest of the suite's entities back afterwards."""
-    db.rollback()
-    before = [e.id for e in db.execute(select(EntityUnit).where(EntityUnit.is_active.is_(True))).scalars()]
-    yield
-    db.rollback()
-    for e in db.execute(select(EntityUnit).where(EntityUnit.id.in_(before or [0]))).scalars():
-        e.is_active, e.archived_at, e.definition_status = True, None, "Ready"
-    db.commit()
 
 
 def _org(client, h, name, category, parent=None):
@@ -66,48 +52,39 @@ def test_org_structure_and_process_library(client, admin, db):
     assert bad.status_code == 422
 
 
-def test_define_universe_coverage_redefine_and_entity_page(client, admin, db, keep_universe):
+def _entity(client, h, name, org_ids, process_ids=()):
+    r = client.post("/api/auditable-entities", json={
+        "name": name, "entity_type": "Process + unit" if process_ids else "Org unit", "org_ids": org_ids,
+        "process_ids": list(process_ids), "definition_status": "Ready", "owner_email": "owner@gpha.test",
+        "scope": f"Activities of {name}."}, headers=h)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_entities_coverage_and_entity_page(client, admin, db):
     tag = uuid.uuid4().hex[:5]
     t = _tree(client, admin, tag)
-    fin, rev, ops, tema = t["fin"]["id"], t["rev"]["id"], t["ops"]["id"], t["tema"]["id"]
-    p1, p2 = t["p1"]["id"], t["p2"]["id"]
-
-    # A higher-level entity and one of its lower-level entities cannot both be selected.
-    clash = client.post("/api/audit-universe/define", json={"entities": [
-        {"keys": [f"o:{fin}"]}, {"keys": [f"p:{rev}:{p1}"]}]}, headers=admin)
-    assert clash.status_code == 422 and "lower-level" in clash.json()["errors"][0]["message"]
-    # Only entities in the same branch or level can be merged.
-    cross = client.post("/api/audit-universe/define", json={"entities": [
-        {"keys": [f"o:{rev}", f"o:{ops}"]}]}, headers=admin)
-    assert cross.status_code == 422 and "same branch" in cross.json()["errors"][0]["message"]
-
-    # Coverage preview: Finance (with its unit and processes) covered, Tema partially, Marine not.
-    cov = client.post("/api/audit-universe/coverage", json={"keys": [f"o:{fin}"]}, headers=admin).json()
-    assert cov["by_org"][str(fin)] == "Covered" and cov["by_org"][str(tema)] == "Partially covered"
-    assert cov["by_org"][str(ops)] == "Not covered"
-
-    r = client.post("/api/audit-universe/define", json={"entities": [
-        {"keys": [f"o:{fin}"], "name": f"Tema Finance {tag}"},
-        {"keys": [f"p:{ops}:{p2}"]}]}, headers=admin)
-    assert r.status_code == 200, r.text
-    assert r.json()["created"] == 2
+    fin, ops = t["fin"]["id"], t["ops"]["id"]
+    p2 = t["p2"]["id"]
+    before = client.get("/api/audit-universe").json()["coverage"]
+    fin_e = _entity(client, admin, f"Tema Finance {tag}", [fin])
+    pil = _entity(client, admin, f"Tema Marine {tag} - Pilotage {tag}", [ops], [p2])
     uni = client.get("/api/audit-universe").json()
     mine = {e["name"]: e for e in uni["entities"] if e["status"] == "Active" and tag in e["name"]}
-    assert set(mine) == {f"Tema Finance {tag}", f"Tema Marine {tag} - Pilotage {tag}"}
-    pil = mine[f"Tema Marine {tag} - Pilotage {tag}"]
-    assert pil["processes"][0]["id"] == p2 and pil["org_units"][0]["id"] == ops
-    assert pil["category"] == f"Tema {tag}"  # entity category = the port the org unit sits in
+    assert set(mine) == {fin_e["name"], pil["name"]}
+    row = mine[pil["name"]]
+    assert row["processes"][0]["id"] == p2 and row["org_units"][0]["id"] == ops
+    assert row["category"] == f"Tema {tag}"  # entity category = the port the org unit sits in
+    assert uni["coverage"]["org_units_covered"] == before["org_units_covered"] + 2
     assert uni["defined"] is True
 
-    # Redefine: the unchanged entity is kept, the pilotage entity is archived, a new one is created.
-    keep_id = mine[f"Tema Finance {tag}"]["id"]
-    r = client.post("/api/audit-universe/define", json={"entities": [
-        {"keys": [f"o:{fin}"], "name": f"Tema Finance {tag}"}, {"keys": [f"o:{ops}"]}]}, headers=admin).json()
-    assert r["kept"] == 1 and r["created"] == 1
+    # Retiring keeps the entity (and its history) but takes it out of the active universe.
+    client.patch(f"/api/auditable-entities/{pil['id']}", json={"definition_status": "Retired"}, headers=admin)
     states = {e["id"]: e["status"] for e in client.get("/api/audit-universe").json()["entities"]}
-    assert states[keep_id] == "Active" and states[pil["id"]] == "Archived"
+    assert states[fin_e["id"]] == "Active" and states[pil["id"]] == "Archived"
 
     # Entity page: frequency, next due date, tabs.
+    keep_id = fin_e["id"]
     e = client.patch(f"/api/auditable-entities/{keep_id}", json={"audit_frequency_months": 24}, headers=admin)
     assert e.status_code == 200 and e.json()["frequency"] == "Every 2 years" and e.json()["next_due"]
     assert client.patch(f"/api/auditable-entities/{keep_id}", json={"audit_frequency_months": 7},
@@ -116,13 +93,11 @@ def test_define_universe_coverage_redefine_and_entity_page(client, admin, db, ke
     assert client.get(f"/api/auditable-entities/{keep_id}/findings").json()["summary"]["findings"] == 0
 
 
-def test_audit_risk_assessment_to_plan(client, admin, db, keep_universe):
+def test_audit_risk_assessment_to_plan(client, admin, db):
     tag = uuid.uuid4().hex[:5]
     t = _tree(client, admin, tag)
-    client.post("/api/audit-universe/define", json={"entities": [
-        {"keys": [f"o:{t['fin']['id']}"], "name": f"Finance {tag}"},
-        {"keys": [f"o:{t['ops']['id']}"], "name": f"Marine {tag}"},
-        {"keys": [f"o:{t['hq']['id']}"], "name": f"HQ {tag}"}]}, headers=admin)
+    for name, key in ((f"Finance {tag}", "fin"), (f"Marine {tag}", "ops"), (f"HQ {tag}", "hq")):
+        _entity(client, admin, name, [t[key]["id"]])
     ents = {e["name"]: e["id"] for e in client.get("/api/audit-universe").json()["entities"]
             if e["status"] == "Active" and tag in e["name"]}
     f1 = client.post("/api/assessment-factors", json={"name": f"Fraud risk {tag}"}, headers=admin).json()

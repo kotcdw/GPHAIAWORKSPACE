@@ -18,7 +18,6 @@ from typing import Annotated
 from pydantic import AfterValidator, BeforeValidator, StringConstraints
 
 _EMAIL = re.compile(r"^[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
-_CODE = re.compile(r"^[A-Z0-9][A-Z0-9_-]{0,19}$")
 
 
 def _single_line(value: str) -> str:
@@ -42,18 +41,10 @@ def _email(value: str | None) -> str | None:
     return value
 
 
-def _code(value: str) -> str:
-    value = value.strip().upper()
-    if not _CODE.match(value):
-        raise ValueError("use 1-20 letters, digits, '-' or '_' (e.g. TEMA, GJT-01)")
-    return value
-
-
 Title = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255), AfterValidator(_single_line)
 ]
 OptEmail = Annotated[str | None, BeforeValidator(_blank_to_none), AfterValidator(_email)]
-Code = Annotated[str, AfterValidator(_code)]
 Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=20000)]
 
 
@@ -69,7 +60,7 @@ def not_in_past(value: datetime | None) -> datetime | None:
 
 FutureDate = Annotated[datetime | None, AfterValidator(not_in_past)]
 
-__all__ = ["Code", "FutureDate", "OptEmail", "Text", "Title", "date", "not_in_past"]
+__all__ = ["FutureDate", "OptEmail", "Text", "Title", "date", "not_in_past"]
 
 
 _COMMON_PASSWORDS = {

@@ -18,7 +18,6 @@ function adminAreasAllowed() {
     .map(([k]) => k);
 }
 
-const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const fmtAge = (h) => (h < 1 ? "less than an hour ago" : h < 48 ? `${Math.round(h)} hours ago` : `${Math.round(h / 24)} days ago`);
 const dayOf = (iso) => (iso ? fmtDay(iso) : "never");
 
@@ -170,25 +169,3 @@ function backupFactsCard(b) {
     el("dl", { class: "kv admin-kv" }, ...facts.flatMap(([k, v]) => [el("dt", null, k), el("dd", null, v)])));
 }
 
-function showPolicies(p) {
-  if (!p) return;
-  const body = el("div", { class: "admin-policies" },
-    el("h4", null, "Attachments"),
-    el("dl", { class: "kv" },
-      el("dt", null, "Largest file"), el("dd", null, `${p.attachments.max_upload_mb} MB`),
-      el("dt", null, "Stored"), el("dd", null, p.attachments.encrypted_at_rest ? "encrypted, with an integrity hash; every download is permission-checked and logged" : "as uploaded"),
-      el("dt", null, "Set in"), el("dd", null, p.attachments.source)),
-    el("div", { class: "admin-ext" }, ...p.attachments.allowed_extensions.map((x) => el("span", { class: "chip-mini" }, x))),
-    el("h4", null, "Bulk import"),
-    el("dl", { class: "kv" },
-      el("dt", null, "File"), el("dd", null, `${p.imports.formats.join(", ").toUpperCase()}, up to ${p.imports.max_file_mb} MB and ${p.imports.max_rows} rows`),
-      el("dt", null, "Behaviour"), el("dd", null, p.imports.all_or_nothing ? "all-or-nothing: nothing is written while any row has an error" : "row by row")),
-    el("h4", null, "Sign-in and sessions"),
-    el("dl", { class: "kv" },
-      el("dt", null, "Session length"), el("dd", null, `${p.sessions.ttl_hours} hours`),
-      el("dt", null, "Lockout"), el("dd", null, `after ${p.sessions.max_failed_sign_ins} failed attempts, for ${p.sessions.lockout_minutes} minutes`)),
-    el("p", { class: "muted small" }, "These limits are read from the server settings. Making them editable here is part of a later phase."));
-  const closeBtn = el("button", { class: "btn secondary", type: "button" }, "Close");
-  const m = modal({ title: "Data and attachment policies", body, width: 620, footer: el("div", { class: "actions end" }, closeBtn) });
-  closeBtn.addEventListener("click", () => m.close());
-}

@@ -46,14 +46,6 @@ _CHUNK = 1024 * 1024
 _LOCKED = "The audit is closed; working papers are locked"
 
 
-def _max_bytes() -> int:
-    return settings.max_upload_mb * 1024 * 1024
-
-
-def _safe_name(name: str) -> str:
-    return Path(name).name.replace("\x00", "")[:200] or "upload.bin"
-
-
 async def _read_upload(file: UploadFile) -> tuple[bytes, str, str]:
     """Read an upload under the upload policy (type, size, content). Returns (data, sha256, safe original name)."""
     from app.core.upload_policy import read_upload

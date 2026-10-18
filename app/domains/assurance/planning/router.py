@@ -19,7 +19,6 @@ from collections import Counter
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.core.approvalsvc import sign
@@ -30,17 +29,12 @@ from app.core.enums import AuditStatus, EngagementStatus, PlanStatus, Role, utcn
 from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.core.schemas import ESignRequest, MessageOut
-from app.domains.assurance.planning.models import AssurancePlan, EntityUnit, Location, PlanEngagement
+from app.domains.assurance.planning.models import AssurancePlan, EntityUnit, PlanEngagement
 from app.domains.assurance.planning.schemas import (
     EngagementIn,
     EngagementOut,
     EngagementUpdate,
-    EntityUnitIn,
     EntityUnitOut,
-    EntityUnitUpdate,
-    LocationIn,
-    LocationOut,
-    LocationUpdate,
     PlanDetail,
     PlanIn,
     PlanOut,
@@ -61,7 +55,6 @@ router = APIRouter(tags=["planning"])
 Staff = Depends(require_role(Role.Admin, Role.Auditor))
 PlanApprove = Depends(require_perm("plan.approve"))
 PlanAmend = Depends(require_perm("plan.amend"))
-LibraryEdit = Depends(require_perm("method.library", "system.reference"))
 
 
 def _conflict(detail: str) -> HTTPException:
@@ -82,46 +75,6 @@ def _unit_out(unit: EntityUnit) -> EntityUnitOut:
     return out
 
 
-@router.get("/api/locations", response_model=list[LocationOut])
-def list_locations(db: DBSession = Depends(get_db), _: User = Staff) -> list[Location]:
-    return list(db.execute(select(Location).order_by(Location.code)).scalars())
-
-
-@router.post("/api/locations", response_model=LocationOut, status_code=status.HTTP_201_CREATED)
-def create_location(payload: LocationIn, request: Request, db: DBSession = Depends(get_db), user: User = LibraryEdit):
-    loc = Location(**payload.model_dump())
-    db.add(loc)
-    try:
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        raise _conflict(f"Location code '{payload.code}' already exists") from exc
-    log_action(db, user_id=user.id, action=f"LOCATION_CREATE id={loc.id} code={loc.code}", request=request)
-    db.commit()
-    db.refresh(loc)
-    return loc
-
-
-@router.patch("/api/locations/{location_id}", response_model=LocationOut)
-def update_location(
-    location_id: int,
-    payload: LocationUpdate,
-    request: Request,
-    db: DBSession = Depends(get_db),
-    user: User = LibraryEdit,
-):
-    loc = db.get(Location, location_id)
-    if loc is None:
-        raise _not_found("Location")
-    changes = payload.model_dump(exclude_none=True)
-    for key, value in changes.items():
-        setattr(loc, key, value)
-    log_action(db, user_id=user.id, action=f"LOCATION_UPDATE id={loc.id} [{', '.join(changes)}]", request=request)
-    db.commit()
-    db.refresh(loc)
-    return loc
-
-
 @router.get("/api/entity-units", response_model=list[EntityUnitOut])
 def list_entity_units(
     db: DBSession = Depends(get_db), _: User = Staff, location_id: int | None = None, active_only: bool = False
@@ -132,45 +85,6 @@ def list_entity_units(
     if active_only:
         stmt = stmt.where(EntityUnit.is_active.is_(True))
     return [_unit_out(u) for u in db.execute(stmt).scalars()]
-
-
-@router.post("/api/entity-units", response_model=EntityUnitOut, status_code=status.HTTP_201_CREATED)
-def create_entity_unit(
-    payload: EntityUnitIn, request: Request, db: DBSession = Depends(get_db), user: User = LibraryEdit
-) -> EntityUnitOut:
-    if db.get(Location, payload.location_id) is None:
-        raise _not_found("Location")
-    unit = EntityUnit(**payload.model_dump())
-    db.add(unit)
-    try:
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        raise _conflict(f"Entity unit code '{payload.code}' already exists at this location") from exc
-    log_action(db, user_id=user.id, action=f"ENTITY_UNIT_CREATE id={unit.id} code={unit.code}", request=request)
-    db.commit()
-    db.refresh(unit)
-    return _unit_out(unit)
-
-
-@router.patch("/api/entity-units/{unit_id}", response_model=EntityUnitOut)
-def update_entity_unit(
-    unit_id: int, payload: EntityUnitUpdate, request: Request, db: DBSession = Depends(get_db), user: User = LibraryEdit
-) -> EntityUnitOut:
-    unit = db.get(EntityUnit, unit_id)
-    if unit is None:
-        raise _not_found("Entity unit")
-    changes = payload.model_dump(exclude_none=True)
-    was_active = unit.is_active
-    for key, value in changes.items():
-        setattr(unit, key, value)
-    if "is_active" in changes and changes["is_active"] != was_active:  # Retired <=> inactive
-        unit.definition_status = "Draft" if unit.is_active else "Retired"
-        unit.archived_at = None if unit.is_active else utcnow()
-    log_action(db, user_id=user.id, action=f"ENTITY_UNIT_UPDATE id={unit.id} [{', '.join(changes)}]", request=request)
-    db.commit()
-    db.refresh(unit)
-    return _unit_out(unit)
 
 
 # ====================================================================== plans

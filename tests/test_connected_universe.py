@@ -7,10 +7,8 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from sqlalchemy import select
 
 from app.core.enums import Role
-from app.domains.assurance.planning.models import EntityUnit
 from tests.conftest import csrf_headers, login, make_user
 
 
@@ -18,17 +16,6 @@ from tests.conftest import csrf_headers, login, make_user
 def admin(client, db):
     u = make_user(db, f"cuadm_{uuid.uuid4().hex[:6]}", Role.Admin)
     return csrf_headers(login(client, u.username))
-
-
-@pytest.fixture
-def keep_universe(db):
-    db.rollback()
-    before = [e.id for e in db.execute(select(EntityUnit).where(EntityUnit.is_active.is_(True))).scalars()]
-    yield
-    db.rollback()
-    for e in db.execute(select(EntityUnit).where(EntityUnit.id.in_(before or [0]))).scalars():
-        e.is_active, e.archived_at, e.definition_status = True, None, "Ready"
-    db.commit()
 
 
 def _library(db, tag):
@@ -46,6 +33,15 @@ def _library(db, tag):
     return risk.id, ctl.id
 
 
+def _entity(client, h, name, org_ids, process_ids=()):
+    r = client.post("/api/auditable-entities", json={
+        "name": name, "entity_type": "Process + unit" if process_ids else "Org unit", "org_ids": org_ids,
+        "process_ids": list(process_ids), "definition_status": "Ready", "owner_email": "owner@gpha.test",
+        "scope": f"Activities of {name}.", "allow_duplicate": True}, headers=h)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
 def _setup(client, admin, db, tag):
     port = client.post("/api/organizations", json={"name": f"CU Port {tag}", "category": "Port"}, headers=admin).json()
     fin = client.post("/api/organizations", json={"name": f"CU Finance {tag}", "category": "Department",
@@ -58,14 +54,11 @@ def _setup(client, admin, db, tag):
     assert links.status_code == 200, links.text
     assert client.post("/api/grc/links", json={"from_type": "risk", "from_id": risk_id, "to_type": "control",
                                                "to_id": ctl_id}, headers=admin).status_code == 201
-    client.post("/api/audit-universe/define", json={"entities": [
-        {"keys": [f"p:{fin['id']}:{proc['id']}"], "name": f"CU Revenue entity {tag}"}]}, headers=admin)
-    ent = next(e for e in client.get("/api/audit-universe").json()["entities"]
-               if e["name"] == f"CU Revenue entity {tag}")
+    ent = _entity(client, admin, f"CU Revenue entity {tag}", [fin["id"]], [proc["id"]])
     return {"port": port, "fin": fin, "proc": proc, "risk": risk_id, "ctl": ctl_id, "entity": ent}
 
 
-def test_detailed_scoping_from_the_object_library(client, admin, db, keep_universe):
+def test_detailed_scoping_from_the_object_library(client, admin, db):
     tag = uuid.uuid4().hex[:5]
     s = _setup(client, admin, db, tag)
     assert client.get("/api/processes").json() and any(
@@ -116,7 +109,7 @@ def test_detailed_scoping_from_the_object_library(client, admin, db, keep_univer
     assert bad.status_code == 422
 
 
-def test_automatic_assessment_factors(client, admin, db, keep_universe):
+def test_automatic_assessment_factors(client, admin, db):
     tag = uuid.uuid4().hex[:5]
     s = _setup(client, admin, db, tag)
     eid = s["entity"]["id"]
@@ -146,13 +139,10 @@ def test_automatic_assessment_factors(client, admin, db, keep_universe):
     assert r["filled"] == 2 and r["rows"][0]["scores"][str(p["id"])] == 3
 
 
-def test_org_unit_entity_covers_its_processes_when_scoping(client, admin, db, keep_universe):
+def test_org_unit_entity_covers_its_processes_when_scoping(client, admin, db):
     tag = uuid.uuid4().hex[:5]
     s = _setup(client, admin, db, tag)
-    client.post("/api/audit-universe/define", json={"entities": [
-        {"keys": [f"o:{s['port']['id']}"], "name": f"CU whole port {tag}"}]}, headers=admin)
-    ent = next(e for e in client.get("/api/audit-universe").json()["entities"]
-               if e["name"] == f"CU whole port {tag}" and e["status"] == "Active")
+    ent = _entity(client, admin, f"CU whole port {tag}", [s["port"]["id"]])
     au = client.post("/api/audits", json={"title": f"CU port audit {tag}", "scope": "x"}, headers=admin).json()
     client.put(f"/api/audits/{au['id']}/entities", json={"entity_ids": [ent["id"]]}, headers=admin)
     groups = client.get(f"/api/audits/{au['id']}/scoping").json()["groups"]

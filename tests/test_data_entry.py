@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.core.enums import Role
-from tests.conftest import csrf_headers, login, make_user
+from tests.conftest import csrf_headers, login, make_entity, make_user
 
 
 def _user(client, db, role=Role.Auditor):
@@ -81,34 +81,18 @@ def test_email_date_and_whitespace_rules(client, db):
     assert blank_email["owner_email"] is None
 
 
-def test_codes_years_and_numbers(client, db):
+def test_fiscal_years_are_checked(client, db):
     admin = _user(client, db, Role.Admin)
-    tag = uuid.uuid4().hex[:5].upper()
-    loc = client.post("/api/locations", json={"code": f" t{tag} ", "name": "Tema"}, headers=admin)
-    assert loc.status_code == 201 and loc.json()["code"] == f"T{tag}"
-    assert "letters, digits" in _field(
-        client.post("/api/locations", json={"code": "TE MA!", "name": "x"}, headers=admin), "code"
-    )
     year = datetime.now(UTC).year
     assert "between" in _field(
         client.post("/api/assurance-plans", json={"fiscal_year": year + 50, "title": "x"}, headers=admin),
         "fiscal_year",
     )
-    unit = client.post(
-        "/api/entity-units",
-        json={"location_id": loc.json()["id"], "code": "U1", "name": "Unit", "risk_likelihood": 9},
-        headers=admin,
-    )
-    assert _field(unit, "risk_likelihood")
 
 
 def test_engagement_duplicates_and_inactive_units(client, db):
     admin = _user(client, db, Role.Admin)
-    tag = uuid.uuid4().hex[:5].upper()
-    loc = client.post("/api/locations", json={"code": f"L{tag}", "name": "Loc"}, headers=admin).json()
-    unit = client.post(
-        "/api/entity-units", json={"location_id": loc["id"], "code": "U", "name": "Unit"}, headers=admin
-    ).json()
+    unit = make_entity(client, admin)
     plans = client.get("/api/assurance-plans").json()
     used = {p["fiscal_year"] for p in plans}
     year = next(y for y in range(datetime.now(UTC).year - 2, datetime.now(UTC).year + 11) if y not in used)
@@ -117,7 +101,7 @@ def test_engagement_duplicates_and_inactive_units(client, db):
     assert client.post(url, json={"title": "Cash", "entity_unit_id": unit["id"]}, headers=admin).status_code == 201
     dup = client.post(url, json={"title": " cash ", "entity_unit_id": unit["id"]}, headers=admin)
     assert dup.status_code == 409 and "already planned" in dup.json()["detail"]
-    client.patch(f"/api/entity-units/{unit['id']}", json={"is_active": False}, headers=admin)
+    client.patch(f"/api/auditable-entities/{unit['id']}", json={"definition_status": "Retired"}, headers=admin)
     assert client.post(url, json={"title": "Other", "entity_unit_id": unit["id"]}, headers=admin).status_code == 400
 
 

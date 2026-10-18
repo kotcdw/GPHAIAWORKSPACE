@@ -43,7 +43,6 @@ CATALOGUE = {
     "users": ("User accounts", ("system.users",), "Created as awaiting approval; approve them under Users & access"),
     "orgunits": ("Org units", ("system.reference", "method.library"), "Org Structure (created or updated by name)"),
     "processes": ("Processes", ("method.library", "system.reference"), "Process library"),
-    "universe": ("Audit universe", ("method.library", "system.reference"), "Auditable units and inherent risk"),
     "remediation": ("Remediation actions", ("followup.manage",), "Including external recommendations"),
     "risks": ("Enterprise risks", ("grc.risk",), "Risk register"),
 }

@@ -162,15 +162,6 @@ function roleAssignControls(u, cat, onChanged) {
 // Job-role select used in user management.
 let JOB_ROLE_OPTIONS = null;
 let ROLE_CATALOGUE = null;
-async function jobRoleSelect(u, onChanged) {
-  if (!ROLE_CATALOGUE) {
-    try { ROLE_CATALOGUE = await API.get("/api/roles"); } catch { ROLE_CATALOGUE = { roles: [], can_assign: false, can_appoint_admins: false }; }
-    JOB_ROLE_OPTIONS = ROLE_CATALOGUE.roles.map((r) => ({ code: r.code, name: r.name, tier: r.tier, assignable: ROLE_CATALOGUE.can_appoint_admins || !["super_admin", "admin"].includes(r.code) }));
-  }
-  if (u.id === state.user.id) return el("span", null, (JOB_ROLE_OPTIONS.find((r) => r.code === u.job_role) || {}).name || u.job_role_name || "-");
-  return roleAssignControls(u, ROLE_CATALOGUE, onChanged);
-}
-
 // ==================================================================== Audit programmes
 
 

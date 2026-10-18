@@ -7,7 +7,15 @@ import uuid
 
 from app.core import permissions as perms
 from app.core.enums import Role, utcnow
-from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user, release_plan, walk_plan_to_review
+from tests.conftest import (
+    DEFAULT_PASSWORD,
+    csrf_headers,
+    login,
+    make_entity,
+    make_user,
+    release_plan,
+    walk_plan_to_review,
+)
 
 _YEARS = iter(range(2024, 2031))
 
@@ -26,12 +34,7 @@ def test_change_request_lifecycle(client, client2, db):
     mgr = _u(db, "crmgr", "audit_manager")
     ah = csrf_headers(login(client2, adm.username))
     # Universe unit to measure coverage.
-    loc = client2.post("/api/locations", json={"code": f"L{uuid.uuid4().hex[:4]}", "name": "Tema"}, headers=ah).json()
-    unit = client2.post(
-        "/api/entity-units",
-        json={"location_id": loc["id"], "code": "CY", "name": "Container yard", "risk_likelihood": 5, "risk_impact": 4},
-        headers=ah,
-    ).json()
+    unit = make_entity(client2, ah, f"Container yard {uuid.uuid4().hex[:4]}", likelihood=5, impact=4)
     mh = csrf_headers(login(client, mgr.username))
     for fy in _YEARS:
         created = client.post(

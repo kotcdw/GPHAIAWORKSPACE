@@ -25,7 +25,7 @@ async function renderAnalytics(fy = currentFiscalYear()) {
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(viewHeader("Analytics", fySelect(fy, (y) => renderAnalytics(y)),
-    { sub: "Risk heat map, finding trends, repeat findings and performance against the CAE's KPI targets" }), msg);
+    { sub: "Assessed risk, finding trends, repeat findings and KPI targets" }), msg);
   let a;
   try { a = await API.get(`/api/analytics?fiscal_year=${fy}`); } catch (err) { notify(msg, err.message, "error"); return; }
 
@@ -43,26 +43,15 @@ async function renderAnalytics(fy = currentFiscalYear()) {
   const grid = el("div", { class: "dash-grid" });
   viewRoot.append(grid);
 
-  // Heat map: impact (rows, 5 at top) x likelihood (columns)
-  const cellInfo = el("div", { class: "muted small heat-info", "aria-live": "polite" }, "Select a cell to list its auditable units.");
-  const heatGrid = el("div", { class: "heatmap", role: "group", "aria-label": "Inherent risk heat map: impact by likelihood" });
-  for (let im = 5; im >= 1; im -= 1) {
-    heatGrid.append(el("div", { class: "hm-axis", "aria-hidden": "true" }, String(im)));
-    for (let lk = 1; lk <= 5; lk += 1) {
-      const c = a.heat_map.find((x) => x.likelihood === lk && x.impact === im);
-      const band = c.score >= 15 ? "high" : c.score >= 8 ? "med" : "low";
-      const tip = `Likelihood ${lk} × Impact ${im} = ${c.score} · ${c.count} unit${c.count === 1 ? "" : "s"}`;
-      heatGrid.append(el("button", { class: `hm-cell hm-${band} ${c.count ? "" : "empty"}`, type: "button",
-        title: c.units.length ? `${tip}\n${c.units.join("\n")}` : tip, "aria-label": tip,
-        onclick: () => { cellInfo.textContent = c.count ? `${tip}: ${c.units.join(", ")}` : `${tip}.`; } }, c.count ? String(c.count) : ""));
-    }
-  }
-  heatGrid.append(el("div", { class: "hm-axis" }), ...[1, 2, 3, 4, 5].map((n) => el("div", { class: "hm-axis" }, String(n))));
-  grid.append(panel("Inherent risk heat map", el("div", null,
-    el("div", { class: "hm-wrap" }, el("div", { class: "hm-ylabel" }, "Impact"), heatGrid),
-    el("div", { class: "hm-xlabel" }, "Likelihood"),
-    legend([["Low (1-7)", "r-low"], ["Medium (8-14)", "r-med"], ["High (15-25)", "r-high"]]), cellInfo),
-  el("button", { class: "btn small secondary", onclick: () => navigate("universe") }, "Audit Universe")));
+  // Auditable entities by the rating of their latest completed audit risk assessment
+  const total = a.entity_ratings.reduce((n, r) => n + r.count, 0);
+  const tone = { High: "r-high", Medium: "r-med", Low: "r-low", "Not assessed": "" };
+  grid.append(panel("Auditable entities by assessed risk", el("div", { class: "rating-bars" },
+    ...a.entity_ratings.map((r) => el("div", { class: "rating-bar", title: r.entities.join("\n") },
+      el("span", { class: "l" }, r.rating),
+      el("span", { class: "track" }, el("span", { class: `fill ${tone[r.rating]}`, style: `width:${total ? Math.round((100 * r.count) / total) : 0}%` })),
+      el("strong", null, String(r.count))))),
+  el("button", { class: "btn small secondary", onclick: () => navigate("universe_entities") }, "Auditable entities")));
 
   // Findings trend (stacked by rating)
   const max = Math.max(1, ...a.findings_trend.map((m) => m.High + m.Medium + m.Low));
@@ -370,7 +359,7 @@ function initGlobalSearch() {
     if (h.type === "organization") return openRecord("organizations", h.id);
     if (h.type === "stakeholder") return openRecord("stakeholders", h.id);
     if (h.type === "assurance_plan") return openPlan(h.id);
-    if (h.type === "entity_unit") return navigate("universe");
+    if (h.type === "entity_unit") return openEntity(h.id);
     return null;
   };
   function paint() {

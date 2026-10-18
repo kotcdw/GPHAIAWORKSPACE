@@ -9,7 +9,7 @@ Modeling your organizational structure.
 
 ```
 Org Structure (organizations of the Org Structure types)  ─┐
-Process library (processes linked to org units)           ─┴─► Define audit universe ─► auditable entities
+Process library (processes linked to org units)           ─┴─► review units and processes ─► auditable entities
 auditable entities + assessment factors + rating scale ─► Audit risk assessment (scores, overall = average)
    ─► Conclude (prioritised entities, notes, conclusion) ─► Mark as completed (rates the entities)
    ─► Start planning (add or link a draft Assurance Plan; one engagement per prioritised entity)
@@ -33,38 +33,45 @@ auditable entities + assessment factors + rating scale ─► Audit risk assessm
   **Status** | Edit. Filters: search, Status (Active default).
 - API: `GET/POST /api/processes`, `PATCH /api/processes/{id}`, `POST /api/import/processes`.
 
-## 3. Audit universe (Universe, risk & controls > Audit universe)
+## 3. Audit universe (Audit management > Audit universe)
 
-- Not yet defined: the **Integrated audit universe** card with "View org structure", "Visit Process library" and
-  **Let's start**.
-- Defined: **Coverage** (percentage of active org units and org-unit processes covered), active and archived counts,
-  entities due within 12 months; actions **Audit risk assessment** and **Redefine** (with the archive warning).
-- Columns: **Auditable entity** | **Status** | **Org unit** (several: count opening a side sheet) | **Process** |
-  **Risk rating** | **Audit frequency** | **Last audited** | **Next due** | **Planned audits**.
-  Filters: search, Status (Active default), Risk rating.
-- Entities carried over from the earlier universe show "Not mapped" until mapped to an org unit.
-- API: `GET /api/audit-universe`.
+One page with four tabs; source records stay in the Org Structure and the Process library (nothing is copied).
 
-## 4. Define audit universe
+- **Overview**: setup flow (review units > review processes > define entities > assess risk), counts (org units,
+  processes, defined entities, needs review) and coverage (units included, processes mapped, entities ready).
+  API: `GET /api/audit-universe/overview`.
+- **Units**: Org Structure units with filters (type, parent, location, owner, status, processes), selection,
+  **Include selected** and **Not included…** (reason required). Status: Included (in an entity or reviewed in),
+  Not included, Needs review. Side panel: details, processes, risks and controls, entities, audits and findings,
+  link to the Org Structure. API: `GET /api/audit-universe/units`, `GET /api/audit-universe/units/{id}`,
+  `POST /api/audit-universe/units/review`.
+- **Processes**: processes with the units that perform them, owner, linked risks and mapping status (Mapped /
+  Unmapped); **Map to units** and **New entity** for selected processes; units with no processes listed below.
+  Mapping writes the Process library itself. API: `GET /api/audit-universe/processes`,
+  `POST /api/audit-universe/processes/map`.
+- **Entities**: register (name, type, org units, processes, business owner, linked risks, last audit, status) with
+  filters, export and **New entity**. API: `GET /api/audit-universe/entities`.
 
-- Left: the org tree with each unit's processes as check boxes and a coverage state per unit (Covered, Partially
-  covered, Not covered). Selecting a unit includes everything below it; lower-level boxes are then locked.
-- Right: the auditable entities, each with an editable name; **Merge** (entities in the same branch or level; a merged
-  group can't be merged again) and **Split**.
-- Top: live coverage meter. **Define** saves.
-- Redefining keeps entities whose selection is unchanged (with their history) and archives the others; archived
-  entities stay on the plans, assessments and audits that used them. (HighBond archives all previous entities; keeping
-  unchanged ones is deliberate so history is not split.)
-- API: `GET /api/audit-universe/candidates`, `POST /api/audit-universe/coverage`, `POST /api/audit-universe/define`.
+## 4. New / edit auditable entity
+
+- Fields: name, type (Configuration > Audit methodology > Auditable entity types), status, organizational units,
+  processes (a process with no unit chosen takes the units that perform it), business owner, effective dates, scope
+  statement, objectives, rationale, risks and controls. A live panel shows the relationships before saving.
+- Status is about the definition, never risk: **Draft**, **Needs review**, **Ready** (business owner and scope
+  required; only Ready entities join an audit risk assessment), **Retired** (= archived; kept on the plans,
+  assessments and audits that used it).
+- A possible duplicate (same units and processes as an active entity) asks before saving; names must be unique among
+  active entities. Leaving with unsaved changes asks first.
+- An entity used by an audit, assessment or plan cannot be deleted, only retired.
+- API: `GET /api/audit-universe/entity-options`, `POST /api/auditable-entities`,
+  `PATCH /api/auditable-entities/{id}`, `DELETE /api/auditable-entities/{id}`.
 
 ## 5. Auditable entity page
 
-- Tabs: **Details** (name, audit frequency — every 1 to 5 years or the default for its rating from the plan audit
-  cycle settings — status, risk rating and overall score, last assessed, last audited, next due, defined, archived),
-  with **Taxonomy** (org units with their path, processes, entity category); **Audit risk assessments** (overall score,
-  rating, priority per assessment); **Audits** (audits and planned engagements); **Findings and actions** (summary and
-  list with remediation state). Action: Archive / Reactivate. Unmapped entities: **Map to org unit**.
-- API: `GET/PATCH /api/auditable-entities/{id}` and `/assessments`, `/audits`, `/findings`.
+- Tabs: **Overview** (definition, relationships, scope and objectives, risks and controls), **Risk assessment**
+  (Start / Open risk assessment; a rating appears only once an assessment is completed), **Audits**, **Findings**,
+  **History** (who changed what, with before and after values).
+- API: `GET /api/auditable-entities/{id}` and `/assessments`, `/audits`, `/findings`, `/history`.
 
 ## 6. Audit risk assessment (Assurance planning > Audit risk assessment)
 

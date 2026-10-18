@@ -265,7 +265,8 @@ def test_analytics_search_and_repeat_findings(client, client2, db):
     )
 
     data = client.get("/api/analytics").json()
-    assert len(data["heat_map"]) == 25 and len(data["findings_trend"]) == 12
+    assert [r["rating"] for r in data["entity_ratings"]] == ["High", "Medium", "Low", "Not assessed"]
+    assert len(data["findings_trend"]) == 12
     assert {k["key"] for k in data["kpis"]} >= {
         "plan",
         "actions_on_time",
@@ -289,59 +290,35 @@ def test_excel_import_export_and_saved_views(client, client2, db):
     auditor = _u(db, "ioaud", Role.Auditor)
     admin = _u(db, "ioadm", Role.Admin)
     ah = csrf_headers(login(client2, auditor.username))
-    assert client2.post("/api/import/universe", files={"file": ("u.xlsx", b"x", "application/octet-stream")},
+    assert client2.post("/api/import/orgunits", files={"file": ("u.xlsx", b"x", "application/octet-stream")},
                         headers=ah).status_code == 403
     h = csrf_headers(login(client, admin.username))
-    tpl = client.get("/api/import/universe/template.xlsx")
+    tpl = client.get("/api/import/orgunits/template.xlsx")
     assert tpl.status_code == 200
     wb = load_workbook(io.BytesIO(tpl.content))
-    assert wb.worksheets[0]["A1"].value == "Location code" and "Instructions" in wb.sheetnames
+    assert wb.worksheets[0]["A1"].value == "Name" and "Instructions" in wb.sheetnames
 
     code = uuid.uuid4().hex[:4].upper()
-    header = [
-        "Location code",
-        "Location name",
-        "Unit code",
-        "Unit name",
-        "Description",
-        "Owner email",
-        "Likelihood",
-        "Impact",
-    ]
-    bad = _xlsx(
-        header,
-        [
-            [f"L{code}", "Takoradi", "U1", "Bulk terminal", "", "not-an-email", 6, 3],
-            [f"L{code}", "Takoradi", "U1", "Dup", "", "", 3, 3],
-        ],
-    )
+    header = ["Name", "Type", "Parent", "Address"]
+    bad = _xlsx(header, [[f"Takoradi {code}", "Spaceport", "", ""], ["", "Department", "", ""]])
     res = client.post(
-        "/api/import/universe?commit=true", files={"file": ("u.xlsx", bad, "application/octet-stream")}, headers=h
+        "/api/import/orgunits?commit=true", files={"file": ("u.xlsx", bad, "application/octet-stream")}, headers=h
     ).json()
-    assert not res["committed"] and {e["field"] for e in res["errors"]} >= {"Owner email", "Likelihood", "Unit code"}
+    assert not res["committed"] and {e["field"] for e in res["errors"]} >= {"Type", "Name"}
 
-    good = _xlsx(
-        header,
-        [
-            [f"L{code}", "Takoradi", "U1", "Bulk terminal", "Bulk cargo", "", 4, 5],
-            [f"L{code}", "Takoradi", "U2", "Marine services", "", "", 2, 3],
-        ],
-    )
+    good = _xlsx(header, [[f"Takoradi {code}", "Port", "", ""], [f"Bulk terminal {code}", "Department",
+                                                                  f"Takoradi {code}", ""]])
     preview = client.post(
-        "/api/import/universe", files={"file": ("u.xlsx", good, "application/octet-stream")}, headers=h
+        "/api/import/orgunits", files={"file": ("u.xlsx", good, "application/octet-stream")}, headers=h
     ).json()
     assert preview["to_create"] == 2 and not preview["committed"] and not preview["errors"]
     done = client.post(
-        "/api/import/universe?commit=true", files={"file": ("u.xlsx", good, "application/octet-stream")}, headers=h
+        "/api/import/orgunits?commit=true", files={"file": ("u.xlsx", good, "application/octet-stream")}, headers=h
     ).json()
     assert done["committed"]
-    again = client.post(
-        "/api/import/universe", files={"file": ("u.xlsx", good, "application/octet-stream")}, headers=h
-    ).json()
-    assert again["to_update"] == 2
     assert (
         client.post(
-            "/api/import/universe", files={"file": ("u.xlsx", b"nope", "application/octet-stream")}, headers=h
+            "/api/import/orgunits", files={"file": ("u.xlsx", b"nope", "application/octet-stream")}, headers=h
         ).status_code
         == 422
     )

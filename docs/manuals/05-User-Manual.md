@@ -99,7 +99,14 @@ Approvals, such as approving the plan, reviewing a test, approving a report or c
 
 ![Audit universe](images/12-universe.jpg){width=100%}
 
-The audit universe is the list of **auditable entities**: units, processes and systems defined on the Org Structure and the Process library. Each entity shows its risk rating, audit frequency, when it was last audited, when the next audit is due and any planned audits. Use **Let's start**, **Define** or **Redefine** to build or update the universe. Open an entity to see its details, its risk assessments, its audits, and its findings and actions.
+The audit universe is the list of **auditable entities** built from the Org Structure and the Process library. It has four tabs:
+
+1. **Overview**: the setup flow, the counts and the coverage.
+2. **Units**: include the units that belong in the universe, or mark them **Not included** with a reason.
+3. **Processes**: map each process to the units that perform it.
+4. **Entities**: the register. Select **New entity**, choose the units and processes, the business owner and the scope, and save. Set the status to **Ready** when the entity is fully defined.
+
+Open an entity to see its definition, its risk assessment, its audits, its findings and its history. Only **Ready** entities go to the audit risk assessment; use **Start audit risk assessment** on the entity page.
 
 ## 4.2 Audit risk assessment
 

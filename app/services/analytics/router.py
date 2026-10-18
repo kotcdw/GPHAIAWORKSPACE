@@ -1,4 +1,4 @@
-"""Analytics for the CAE (risk heat map, finding trends, repeat findings, KPIs) and global search."""
+"""Analytics for the CAE (entities by assessed risk, finding trends, repeat findings, KPIs) and global search."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class Kpi(BaseModel):
 
 class Analytics(BaseModel):
     fiscal_year: int
-    heat_map: list[dict]
+    entity_ratings: list[dict]
     findings_trend: list[dict]
     open_by_rating: dict[str, int]
     repeat_findings: list[dict]
@@ -167,16 +167,13 @@ def analytics(db: DBSession, fy: int) -> Analytics:
     from app.domains.audit.reports.models import AuditReport
 
     start, end = datetime(fy, 1, 1), datetime(fy + 1, 1, 1)
-    # Heat map: 5x5 likelihood x impact over active auditable units.
-    cells: dict[tuple[int, int], list[str]] = defaultdict(list)
-    units = db.execute(select(EntityUnit).where(EntityUnit.is_active.is_(True))).scalars().all()
-    for u in units:
-        cells[(u.risk_likelihood, u.risk_impact)].append(u.name)
-    heat = [
-        {"likelihood": lk, "impact": im, "score": lk * im, "count": len(cells[(lk, im)]), "units": cells[(lk, im)][:12]}
-        for lk in range(1, 6)
-        for im in range(1, 6)
-    ]
+    # Auditable entities by the rating of their latest completed audit risk assessment (no rating until assessed).
+    from app.domains.assurance.universe.models import band
+
+    groups: dict[str, list[str]] = {k: [] for k in ("High", "Medium", "Low", "Not assessed")}
+    for e in db.execute(select(EntityUnit).where(EntityUnit.is_active.is_(True)).order_by(EntityUnit.name)).scalars():
+        groups[band(e.assessed_rating) or "Not assessed"].append(e.name)
+    ratings = [{"rating": k, "count": len(v), "entities": v[:12]} for k, v in groups.items()]
 
     audits = {a.id: a for a in db.execute(select(Audit)).scalars()}
     findings = db.execute(select(Finding)).scalars().all()
@@ -347,7 +344,7 @@ def analytics(db: DBSession, fy: int) -> Analytics:
 
     return Analytics(
         fiscal_year=fy,
-        heat_map=heat,
+        entity_ratings=ratings,
         findings_trend=findings_trend,
         open_by_rating=open_by,
         repeat_findings=repeat_findings(findings, audits),
@@ -488,12 +485,12 @@ def search(
         ),
         (
             "entity_unit",
-            "Auditable unit",
+            "Auditable entity",
             EntityUnit,
             (EntityUnit.code, EntityUnit.name),
             "code",
             "name",
-            lambda r: f"Risk {r.risk_likelihood * r.risk_impact}",
+            lambda r: r.assessed_rating or ("Retired" if not r.is_active else r.definition_status),
             True,
         ),
     ]

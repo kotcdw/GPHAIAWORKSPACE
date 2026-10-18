@@ -189,3 +189,31 @@ def release_plan(client: TestClient, plan_id: int, headers: dict) -> None:
     me = client.get("/api/auth/me").json()["user"]["id"]
     r = client.post(f"{base}/distribute", json={"user_ids": [me]}, headers=headers)
     assert r.status_code == 200, r.text
+
+
+def make_entity(client: TestClient, headers: dict, name: str | None = None, *, likelihood: int = 3,
+                impact: int = 3, parent_id: int | None = None) -> dict:
+    """A Ready auditable entity defined the supported way: an org unit of the Org Structure, then the entity.
+    ``likelihood``/``impact`` set the inherent score that rates an entity until an assessment is completed."""
+    import uuid as _uuid
+
+    tag = _uuid.uuid4().hex[:6]
+    name = name or f"Entity {tag}"
+    unit = client.post("/api/organizations", json={"name": f"{name} unit {tag}", "category": "Port" if parent_id is None
+                                                   else "Department", "parent_id": parent_id}, headers=headers)
+    assert unit.status_code == 201, unit.text
+    r = client.post("/api/auditable-entities", json={
+        "name": name, "entity_type": "Org unit", "org_ids": [unit.json()["id"]], "definition_status": "Ready",
+        "owner_email": "owner@gpha.test", "scope": f"Operations of {name}.", "allow_duplicate": True}, headers=headers)
+    assert r.status_code == 201, r.text
+    entity = r.json()
+    entity["org_unit_id"] = unit.json()["id"]
+    if (likelihood, impact) != (3, 3):
+        from app.core.database import SessionLocal
+        from app.domains.assurance.planning.models import EntityUnit
+
+        with SessionLocal() as s:
+            s.execute(EntityUnit.__table__.update().where(EntityUnit.id == entity["id"])
+                      .values(risk_likelihood=likelihood, risk_impact=impact))
+            s.commit()
+    return entity

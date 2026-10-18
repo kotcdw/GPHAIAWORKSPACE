@@ -9,51 +9,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.core.enums import EngagementStatus, PlanStatus
 from app.core.schemas import ORMModel
-from app.core.validators import Code, OptEmail, Title
+from app.core.validators import Title
 
 Quarter = Literal["Q1", "Q2", "Q3", "Q4"]
-Score = Field(ge=1, le=5)
-
-
-class LocationIn(BaseModel):
-    code: Code
-    name: Title
-    description: str = ""
-    is_active: bool = True
-
-
-class LocationUpdate(BaseModel):
-    name: Title | None = None
-    description: str | None = None
-    is_active: bool | None = None
-
-
-class LocationOut(ORMModel):
-    id: int
-    code: str
-    name: str
-    description: str
-    is_active: bool
-
-
-class EntityUnitIn(BaseModel):
-    location_id: int
-    code: Code
-    name: Title
-    description: str = ""
-    owner_email: OptEmail = None
-    risk_likelihood: int = Field(default=3, ge=1, le=5)
-    risk_impact: int = Field(default=3, ge=1, le=5)
-    is_active: bool = True
-
-
-class EntityUnitUpdate(BaseModel):
-    name: Title | None = None
-    description: str | None = None
-    owner_email: OptEmail = None
-    risk_likelihood: int | None = Field(default=None, ge=1, le=5)
-    risk_impact: int | None = Field(default=None, ge=1, le=5)
-    is_active: bool | None = None
 
 
 class EntityUnitOut(ORMModel):

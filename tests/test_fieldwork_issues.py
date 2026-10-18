@@ -9,7 +9,7 @@ from datetime import timedelta
 import pytest
 
 from app.core.enums import ReviewLevel, Role, utcnow
-from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
+from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_entity, make_user
 
 
 def _u(db, prefix, role=Role.Auditor, level=None):
@@ -236,11 +236,10 @@ def test_issue_tracker_register_publish_and_signoffs(client, client2, db, team):
 def test_plan_coverage_grid(client, client2, db, team):
     ah = team["ah"]
     tag = uuid.uuid4().hex[:5]
-    loc = client2.post("/api/locations", json={"code": f"C{tag}", "name": f"Cov {tag}"}, headers=ah).json()
-    u1 = client2.post("/api/entity-units", json={"location_id": loc["id"], "code": "U1", "name": "Marine",
-                                                 "risk_likelihood": 5, "risk_impact": 5}, headers=ah).json()
-    client2.post("/api/entity-units", json={"location_id": loc["id"], "code": "U2", "name": "Stores",
-                                            "risk_likelihood": 5, "risk_impact": 4}, headers=ah)
+    port = client2.post("/api/organizations", json={"name": f"Cov {tag}", "category": "Port"}, headers=ah).json()
+    u1 = make_entity(client2, ah, "Marine", likelihood=5, impact=5, parent_id=port["id"])
+    make_entity(client2, ah, "Stores", likelihood=5, impact=4, parent_id=port["id"])
+    loc = {"id": next(u["location_id"] for u in client2.get("/api/entity-units").json() if u["id"] == u1["id"])}
     used = {p["fiscal_year"] for p in client2.get("/api/assurance-plans").json()}
     free = [y for y in range(2024, 2037) if y not in used]
     if not free:

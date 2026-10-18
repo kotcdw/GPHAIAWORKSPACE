@@ -641,13 +641,6 @@ async function issueForm(f, auditId, canWrite, onSaved) {
 // ------------------------------------------------------------------ draft resume handlers
 
 function registerPlanningOpeners() {
-  registerFormOpener("location:new", () => { navigate("universe"); locationForm(); });
-  registerFormOpener("unit:new", async () => { navigate("universe"); editUnit(null, await API.get("/api/locations")); });
-  registerFormOpener("unit:edit:", async (key) => {
-    navigate("universe");
-    const unit = (await API.get("/api/entity-units")).find((u) => String(u.id) === key.split(":")[2]);
-    if (unit) editUnit(unit);
-  });
   registerFormOpener("plan:new", () => { navigate("plans"); newPlanModal(); });
   registerFormOpener("plan:edit:", async (key) => {
     const id = key.split(":")[2];

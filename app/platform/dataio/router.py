@@ -1,4 +1,4 @@
-"""Excel import (audit universe, findings) and Excel export of any list.
+"""Excel import (org units, processes, findings) and Excel export of any list.
 
 Imports are two-step: upload with ``commit=false`` to validate and preview, then
 upload again with ``commit=true``. Nothing is written if any row has an error.
@@ -27,7 +27,6 @@ from app.platform.users.models import User
 
 router = APIRouter(tags=["import / export"])
 Staff = Depends(require_module_tier("import", Role.Admin, Role.Auditor))
-AdminOnly = Depends(require_module_tier("audit universe import", Role.Admin))
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 MAX_BYTES = 20 * 1024 * 1024  # hard ceilings; the working limits are settings (Configuration > Data & attachments)
 MAX_ROWS = 5000
@@ -47,16 +46,6 @@ _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 TEMPLATES: dict[str, list[tuple[str, bool, str]]] = {
     # column, required, help
-    "universe": [
-        ("Location code", True, "Short code of the port / site, e.g. TEMA"),
-        ("Location name", True, "e.g. Tema Port"),
-        ("Unit code", True, "Short code of the auditable unit, unique within its location, e.g. GJT"),
-        ("Unit name", True, "e.g. Golden Jubilee Terminal"),
-        ("Description", False, ""),
-        ("Owner email", False, "Head of the unit"),
-        ("Likelihood", True, "Inherent risk likelihood, 1 (rare) to 5 (almost certain)"),
-        ("Impact", True, "Inherent risk impact, 1 (minor) to 5 (severe)"),
-    ],
     "orgunits": [
         ("Name", True, "Org unit name, e.g. Finance Department"),
         ("Type", True, "One of the Org Structure types (Configuration > Organizations), e.g. Department"),
@@ -246,18 +235,6 @@ def template(kind: str, user: User = Staff) -> Response:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown import type")
     cols = TEMPLATES[kind]
     example = {
-        "universe": [
-            [
-                "TEMA",
-                "Tema Port",
-                "GJT",
-                "Golden Jubilee Terminal",
-                "Container terminal operations",
-                "head.gjt@gpha.gov.gh",
-                4,
-                5,
-            ]
-        ],
         "orgunits": [["Finance Department", "Department", "Tema Port", ""],
                      ["Revenue Unit", "Unit", "Finance Department", ""]],
         "processes": [["Revenue collection", "Billing and collection of port dues", "", "revenue@gpha.gov.gh",
@@ -371,91 +348,6 @@ def _rating(v) -> int | None:  # noqa: ANN001
     except (TypeError, ValueError):
         return None
     return n if 1 <= n <= 5 and float(v) == n else None
-
-
-@router.post("/api/import/universe", response_model=ImportResult)
-async def import_universe(
-    request: Request,
-    file: UploadFile = File(...),
-    commit: bool = Query(False),
-    db: DBSession = Depends(get_db),
-    user: User = Depends(require_perm("method.library", "system.reference")),
-) -> ImportResult:
-    from app.domains.assurance.planning.models import EntityUnit, Location
-
-    rows, issues = _read_rows(await file.read(), "universe", db=db, user=user, filename=file.filename)
-    cols = TEMPLATES["universe"]
-    locations = {loc.code.upper(): loc for loc in db.execute(select(Location)).scalars()}
-    units = {(u.location_id, u.code.upper()): u for u in db.execute(select(EntityUnit)).scalars()}
-    seen: set[tuple[str, str]] = set()
-    plan: list[tuple[dict, EntityUnit | None]] = []
-    for rec in rows:
-        _required(rec, cols, issues)
-        r = rec["_row"]
-        lcode, ucode = str(rec.get("Location code") or "").upper(), str(rec.get("Unit code") or "").upper()
-        for field, val, limit in (
-            ("Location code", lcode, 20),
-            ("Unit code", ucode, 20),
-            ("Unit name", str(rec.get("Unit name") or ""), 255),
-            ("Location name", str(rec.get("Location name") or ""), 255),
-        ):
-            if len(val) > limit:
-                issues.append(RowIssue(row=r, field=field, message=f"must be {limit} characters or fewer"))
-        if (lcode, ucode) in seen and lcode and ucode:
-            issues.append(RowIssue(row=r, field="Unit code", message="appears twice in the file for this location"))
-        seen.add((lcode, ucode))
-        for f in ("Likelihood", "Impact"):
-            if rec.get(f) not in (None, "") and _rating(rec.get(f)) is None:
-                issues.append(RowIssue(row=r, field=f, message="must be a whole number from 1 to 5"))
-        email = rec.get("Owner email")
-        if email and not _EMAIL.match(str(email)):
-            issues.append(RowIssue(row=r, field="Owner email", message="is not a valid e-mail address"))
-        loc = locations.get(lcode)
-        plan.append((rec, units.get((loc.id, ucode)) if loc else None))
-    to_update = sum(1 for _, u in plan if u is not None)
-    result = ImportResult(
-        kind="universe",
-        committed=False,
-        total_rows=len(rows),
-        to_create=len(plan) - to_update,
-        to_update=to_update,
-        errors=issues,
-        preview=[
-            {
-                "row": rec["_row"],
-                "location": rec.get("Location code"),
-                "unit": rec.get("Unit code"),
-                "name": rec.get("Unit name"),
-                "risk": (_rating(rec.get("Likelihood")) or 0) * (_rating(rec.get("Impact")) or 0),
-                "action": "update" if u else "create",
-            }
-            for rec, u in plan[:50]
-        ],
-    )
-    if not commit or issues:
-        return record_run(db, user, "universe", file.filename, result)
-    for rec, unit in plan:
-        lcode = str(rec["Location code"]).upper()
-        loc = locations.get(lcode)
-        if loc is None:
-            loc = Location(code=lcode, name=str(rec["Location name"]), description="")
-            db.add(loc)
-            db.flush()
-            locations[lcode] = loc
-        if unit is None:
-            unit = EntityUnit(location_id=loc.id, code=str(rec["Unit code"]).upper())
-            db.add(unit)
-        unit.name = str(rec["Unit name"])
-        unit.description = str(rec.get("Description") or "")
-        unit.owner_email = str(rec["Owner email"]) if rec.get("Owner email") else None
-        unit.risk_likelihood = _rating(rec["Likelihood"])
-        unit.risk_impact = _rating(rec["Impact"])
-    log_action(
-        db, user_id=user.id, action=f"IMPORT_UNIVERSE created={result.to_create} updated={to_update}", request=request
-    )
-    db.commit()
-    result.committed = True
-    return record_run(db, user, "universe", file.filename, result)
 
 
 @router.post("/api/import/orgunits", response_model=ImportResult)

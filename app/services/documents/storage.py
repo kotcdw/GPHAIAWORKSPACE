@@ -16,13 +16,6 @@ def safe_name(name: str | None) -> str:
     return Path(name or "upload.bin").name.replace("\x00", "")[:200] or "upload.bin"
 
 
-def check_extension(filename: str) -> None:
-    """The type must be allowed by the upload policy (Configuration > Data & attachments)."""
-    from app.core.upload_policy import check_name
-
-    check_name(filename)
-
-
 def store_encrypted(data: bytes, folder: str, filename: str) -> tuple[str, str]:
     """Encrypt and save ``data`` under the upload directory; returns (relative path, sha256)."""
     target = Path(settings.upload_dir) / folder
