@@ -161,8 +161,12 @@ def update_entity_unit(
     if unit is None:
         raise _not_found("Entity unit")
     changes = payload.model_dump(exclude_none=True)
+    was_active = unit.is_active
     for key, value in changes.items():
         setattr(unit, key, value)
+    if "is_active" in changes and changes["is_active"] != was_active:  # Retired <=> inactive
+        unit.definition_status = "Draft" if unit.is_active else "Retired"
+        unit.archived_at = None if unit.is_active else utcnow()
     log_action(db, user_id=user.id, action=f"ENTITY_UNIT_UPDATE id={unit.id} [{', '.join(changes)}]", request=request)
     db.commit()
     db.refresh(unit)

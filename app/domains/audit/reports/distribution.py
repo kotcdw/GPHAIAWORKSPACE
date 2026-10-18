@@ -129,6 +129,9 @@ def report_register(year: int | None = Query(default=None), db: DBSession = Depe
 @router.get("/api/reports/register.xlsx")
 def report_register_xlsx(request: Request, year: int | None = Query(default=None), db: DBSession = Depends(get_db),
                          user: User = Staff):  # noqa: ANN201
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "data.export")
     rows = _scoped(db, user, register_rows(db, year))
     log_action(db, user_id=user.id, request=request, commit=True,
                action=f"REPORT_REGISTER_EXPORT year={year or 'all'} rows={len(rows)}")

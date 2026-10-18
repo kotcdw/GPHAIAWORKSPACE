@@ -111,20 +111,10 @@ def in_list(value: str, key: str, label: str, allow_empty: bool = True) -> str:
 
 async def read_upload(file) -> tuple[str, bytes]:  # noqa: ANN001
     """Read an uploaded file within the configured size limit and allowed types; returns (safe name, bytes)."""
-    from app.core.config import settings
-    from app.services.documents import storage
+    from app.core.upload_policy import read_upload as policy_read
 
-    original = storage.safe_name(file.filename)
-    storage.check_extension(original)
-    limit, chunks, size = settings.max_upload_mb * 1024 * 1024, [], 0
-    while chunk := await file.read(1024 * 1024):
-        size += len(chunk)
-        if size > limit:
-            raise HTTPException(status_code=413, detail=f"File exceeds the {settings.max_upload_mb} MB limit")
-        chunks.append(chunk)
-    if size == 0:
-        raise HTTPException(status_code=400, detail="The uploaded file is empty")
-    return original, b"".join(chunks)
+    data, _, original = await policy_read(file)
+    return original, data
 
 
 def audience_user_ids(db: DBSession, user_ids: list[int], job_roles: list[str], tiers: list[str],

@@ -424,7 +424,7 @@ function initBell() {
 async function refreshBell() {
   if (!state.user) return;
   try {
-    const data = await API.get("/api/notifications?unread_only=true&limit=1");
+    const data = await API.getBackground("/api/notifications?unread_only=true&limit=1");
     const count = qs("#bellCount");
     count.textContent = data.unread > 99 ? "99+" : String(data.unread);
     count.classList.toggle("hidden", !data.unread);
@@ -501,7 +501,7 @@ function paintMfa(card) {
       el("div", null, "Your role requires two-step verification. Set it up to continue using the workspace.")));
   }
   if (!on) {
-    card.append(el("p", { class: "muted" }, "Protect your account with a 6-digit code from an authenticator app (Microsoft Authenticator, Google Authenticator) in addition to your password."),
+    card.append(el("p", { class: "muted" }, "Sign in with your password plus a code from an authenticator app."),
       el("button", { class: "btn", onclick: async () => {
         try { const s = await API.post("/api/auth/mfa/setup"); mfaEnrol(card, s); } catch (err) { toast(err.message, "error"); }
       } }, el("i", { class: "bi bi-shield-lock" }), " Set up two-step verification"));
@@ -557,16 +557,16 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function downloadCsv(filename, columns, items) {
+async function downloadCsv(filename, columns, items) {
+  // Exports are part of the audit trail and need the export permission: record first, download only if allowed.
+  try { await API.post("/api/export.log", { title: String(filename).replace(/\.csv$/i, "").slice(0, 100), rows: items.length, format: "csv" }); }
+  catch (err) { toast(err.message, "error"); return; }
   const raw = (it, c) => (c.csv ? c.csv(it) : it[c.key]);
   const lines = [columns.map((c) => csvCell(c.label)).join(","), ...items.map((it) => columns.map((c) => csvCell(raw(it, c))).join(","))];
   const blob = new Blob([`﻿${lines.join("\r\n")}`], { type: "text/csv;charset=utf-8" });
   const a = el("a", { href: URL.createObjectURL(blob), download: filename });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  // Exports are part of the audit trail.
-  try { API.post("/api/export.log", { title: String(filename).replace(/\.csv$/i, "").slice(0, 100), rows: items.length, format: "csv" }).catch(() => {}); }
-  catch { /* never block the download */ }
 }
 
 // Sortable, paged, keyboard-accessible table with CSV export.
@@ -617,9 +617,9 @@ function dataTable(items, columns, { onRow = null, pageSize = 25, exportName = n
       el("div", { class: "actions" },
         pages > 1 ? el("button", { class: "btn small secondary", disabled: page === 0 ? "1" : null, onclick: () => { page -= 1; paint(); } }, el("i", { class: "bi bi-chevron-left" }), " Previous") : null,
         pages > 1 ? el("button", { class: "btn small secondary", disabled: page >= pages - 1 ? "1" : null, onclick: () => { page += 1; paint(); } }, "Next ", el("i", { class: "bi bi-chevron-right" })) : null,
-        exportName ? el("button", { class: "btn small secondary", onclick: () => downloadXlsx(exportName.replace(/\.csv$/, ""), columns, rows) },
+        exportName && hasPerm("data.export") ? el("button", { class: "btn small secondary", onclick: () => downloadXlsx(exportName.replace(/\.csv$/, ""), columns, rows) },
           el("i", { class: "bi bi-file-earmark-excel" }), " Excel") : null,
-        exportName ? el("button", { class: "btn small secondary", onclick: () => downloadCsv(exportName, columns, rows) },
+        exportName && hasPerm("data.export") ? el("button", { class: "btn small secondary", onclick: () => downloadCsv(exportName, columns, rows) },
           el("i", { class: "bi bi-filetype-csv" }), " CSV") : null)));
   }
   paint();
@@ -631,11 +631,12 @@ function dataTable(items, columns, { onRow = null, pageSize = 25, exportName = n
 // Each setting is a row: what it does on the left, the control on the right. Lists and long texts
 // fold away behind a summary until opened. Edits are kept while switching sections and saved together.
 
-const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text", Organizations: "building", "KPI targets": "speedometer2", AI: "stars", "Follow-up & reporting": "file-earmark-bar-graph", "Professional practice": "person-check", "Audit methodology": "journal-check", "Plan configuration": "calendar3", "Risk & compliance": "clipboard2-pulse" };
+const CONFIG_GROUP_ICONS = { "Audit workflow": "diagram-3", "Action plans": "alarm", Security: "shield-lock", Reports: "file-earmark-text", Organizations: "building", "KPI targets": "speedometer2", AI: "stars", "Follow-up & reporting": "file-earmark-bar-graph", "Professional practice": "person-check", "Audit methodology": "journal-check", "Plan configuration": "calendar3", "Risk & compliance": "clipboard2-pulse", Regional: "globe2", "Data & attachments": "paperclip", Backups: "hdd-stack" };
 const CONFIG_CATEGORIES = [
+  { name: "General", groups: ["Regional"] },
   { name: "Audit process", groups: ["Audit workflow", "Audit methodology", "Plan configuration", "Professional practice", "Reports"] },
   { name: "Issues & follow-up", groups: ["Action plans", "Follow-up & reporting", "Risk & compliance"] },
-  { name: "Organization & access", groups: ["Organizations", "Security"] },
+  { name: "Organization & access", groups: ["Organizations", "Security", "Data & attachments", "Backups"] },
   { name: "Performance & services", groups: ["KPI targets", "AI"] },
 ];
 const CONFIG_EXTRA = [
@@ -658,13 +659,67 @@ const cfgSummary = (r, v) => {
   return t ? (t.length > 70 ? `${t.slice(0, 70)}…` : t) : "Empty";
 };
 const cfgSame = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// A list whose entries come from fixed choices (working days, review chain): shown as tick boxes.
+const cfgChoiceList = (r) => r.kind === "list" && Array.isArray(r.options) && r.options.length > 0;
+
+const cfgValueText = (v) => {
+  if (v === null || v === undefined) return "-";
+  if (typeof v === "boolean") return v ? "On" : "Off";
+  if (Array.isArray(v)) return v.length ? v.join(", ") : "None";
+  if (typeof v === "object") return "(updated)";
+  const t = String(v).replace(/\s+/g, " ").trim();
+  return t ? (t.length > 160 ? `${t.slice(0, 160)}…` : t) : "Empty";
+};
+
+// Settings history (append-only on the server): one setting, or every setting the user manages.
+async function openConfigHistory(key = null, label = "") {
+  const body = el("div", null, loadingState("Loading the history…"));
+  detailPanel({ title: key ? `History: ${label}` : "Recent changes to settings", body, width: 620 });
+  let rows;
+  try { rows = await API.get(`/api/config/history?limit=200${key ? `&key=${encodeURIComponent(key)}` : ""}`); }
+  catch (err) { clear(body); body.append(errorState(err)); return; }
+  clear(body);
+  body.append(el("p", { class: "muted small" }, "Every change is kept: who made it, when, the value before and after, and the reason given. The record cannot be edited or deleted."));
+  if (!rows.length) { body.append(el("p", { class: "muted" }, "No changes recorded yet.")); return; }
+  body.append(el("ul", { class: "cfg-history" }, ...rows.map((h) => el("li", null,
+    el("div", { class: "cfg-history-head" }, el("strong", null, key ? (h.action === "reset" ? "Reset to default" : "Changed") : h.label),
+      el("span", { class: "muted small" }, ` · ${h.by} · ${fmtDate(h.at)}`)),
+    key ? null : el("div", { class: "muted small" }, `${h.group}${h.action === "reset" ? " · reset to default" : ""}`),
+    h.key === "app_customization" ? null : el("div", { class: "cfg-history-change small" },
+      el("span", { class: "cfg-old" }, cfgValueText(h.old)), el("i", { class: "bi bi-arrow-right", "aria-hidden": "true" }), el("span", { class: "cfg-new" }, cfgValueText(h.new))),
+    h.reason ? el("div", { class: "small" }, el("span", { class: "muted" }, "Reason: "), h.reason) : null))));
+}
+
+// Storage: what the encrypted attachments take up on disk, by file type.
+async function renderStorageCard(container) {
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-hdd" }), " Storage")), loadingState());
+  container.append(card);
+  let s;
+  try { s = await API.get("/api/admin/storage"); } catch (err) { card.lastChild.remove(); card.append(errorState(err)); return; }
+  card.lastChild.remove();
+  const mb = (b) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+  card.append(el("div", { class: "stats" },
+    stat(s.files.toLocaleString(), "Stored files", "encrypted"),
+    stat(mb(s.bytes), "Space used", "attachments"),
+    s.disk ? stat(mb(s.disk.free_bytes), "Free on the server", `of ${mb(s.disk.total_bytes)}`, s.disk.free_bytes / s.disk.total_bytes < 0.1 ? "danger" : "ok") : null));
+  if (s.by_type.length) card.append(el("div", { class: "table-wrap" }, el("table", { class: "compact-table" },
+    el("thead", null, el("tr", null, el("th", null, "Type"), el("th", { class: "num" }, "Files"), el("th", { class: "num" }, "Space"))),
+    el("tbody", null, ...s.by_type.map((t) => el("tr", { class: "no-click" }, el("td", null, t.type), el("td", { class: "num" }, String(t.files)), el("td", { class: "num" }, mb(t.bytes))))))));
+  else card.append(el("p", { class: "muted" }, "No files stored yet."));
+}
 
 async function renderConfiguration(focusKey = null) {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Configuration", null,
-    { sub: "Business rules that drive the audit workflow. Changes apply immediately and are recorded in the audit trail." }), msg);
   let rules;
+  const headActions = el("div", { class: "actions" },
+    el("button", { class: "btn small secondary", type: "button", onclick: () => openConfigHistory() }, el("i", { class: "bi bi-clock-history" }), " History"),
+    hasPerm("data.export") ? el("button", { class: "btn small secondary", type: "button", onclick: () => downloadXlsx("Workspace settings", [
+      { key: "group", label: "Section" }, { key: "label", label: "Setting" }, { key: "value", label: "Current value", csv: (r) => cfgValueText(r.value) },
+      { key: "default", label: "Default", csv: (r) => cfgValueText(r.default) }, { key: "is_default", label: "Changed", csv: (r) => (r.is_default ? "" : "Yes") },
+      { key: "updated_at", label: "Last changed", csv: (r) => (r.updated_at ? fmtDate(r.updated_at) : "") }, { key: "updated_by", label: "Changed by" },
+    ], rules || []) }, el("i", { class: "bi bi-download" }), " Export") : null);
+  viewRoot.append(viewHeader("Configuration", headActions), msg);
   try { rules = await API.get("/api/config"); } catch (err) { notify(msg, err.message, "error"); return; }
 
   const known = new Set(CONFIG_CATEGORIES.flatMap((c) => c.groups));
@@ -683,6 +738,11 @@ async function renderConfiguration(focusKey = null) {
   sections.push(...CONFIG_WORKFLOW);
   categories.push({ name: "Custom fields", sections: CONFIG_EXTRA });
   sections.push(...CONFIG_EXTRA);
+  if (hasPerm("system.technical", "system.config")) {
+    const storage = [{ key: "@storage", name: "Storage", icon: "hdd", desc: "Space used by attachments", render: (c) => renderStorageCard(c) }];
+    categories.push({ name: "Data", sections: storage });
+    sections.push(...storage);
+  }
 
   const byKey = Object.fromEntries(rules.map((r) => [r.key, r]));
   const saved = Object.fromEntries(rules.map((r) => [r.key, r.kind === "list" ? (r.value || []) : r.value]));
@@ -700,7 +760,7 @@ async function renderConfiguration(focusKey = null) {
   const prev = el("button", { class: "btn small secondary icon-only", type: "button", title: "Previous section", "aria-label": "Previous section" }, el("i", { class: "bi bi-chevron-left" }));
   const next = el("button", { class: "btn small secondary icon-only", type: "button", title: "Next section", "aria-label": "Next section" }, el("i", { class: "bi bi-chevron-right" }));
   const customisedCount = el("span", { class: "muted small cfg-custom-count" });
-  const toolbar = el("div", { class: "cfg-toolbar" }, el("span", { class: "cfg-toolbar-label muted small" }, "Section"), picker,
+  const toolbar = el("div", { class: "cfg-toolbar" }, picker,
     el("div", { class: "cfg-stepper" }, prev, next), customisedCount);
   const panelHost = el("div", { class: "cfg-panel-host" });
   const saveBar = el("div", { class: "cfg-savebar hidden", role: "region", "aria-label": "Unsaved changes" });
@@ -716,7 +776,8 @@ async function renderConfiguration(focusKey = null) {
       dirtyIn(active) ? el("span", { class: "cfg-dot dirty", title: "Unsaved changes" }) : null,
       el("i", { class: "bi bi-chevron-down cfg-caret", "aria-hidden": "true" })].filter(Boolean));
     const n = rules.filter((r) => !r.is_default).length;
-    customisedCount.textContent = n ? `${n} setting${n === 1 ? "" : "s"} changed from default` : "All settings at their defaults";
+    customisedCount.textContent = n ? `${n} changed` : "";
+    customisedCount.title = n ? `${n} setting${n === 1 ? "" : "s"} changed from default` : "";
     const i = sections.indexOf(active);
     prev.disabled = i <= 0; next.disabled = i >= sections.length - 1;
   };
@@ -803,7 +864,7 @@ async function renderConfiguration(focusKey = null) {
       sel.addEventListener("change", () => onChange(sel.value));
       return sel;
     }
-    if (r.kind === "roles") {
+    if (r.kind === "roles" || cfgChoiceList(r)) {
       const wanted = new Set((v || []).map(String));
       const wrap = el("div", { class: "cfg-chips", role: "group", "aria-label": r.label });
       r.options.forEach((o) => {
@@ -826,44 +887,71 @@ async function renderConfiguration(focusKey = null) {
     return inp;
   };
 
+  // A small "more" menu for one setting: when it was changed, Reset to default, History.
+  const rowMenu = (r, defText) => {
+    const btn = el("button", { class: "cfg-more", type: "button", "aria-haspopup": "menu", "aria-expanded": "false", title: "More", "aria-label": `More for ${r.label}` },
+      el("i", { class: "bi bi-three-dots", "aria-hidden": "true" }));
+    const menu = el("div", { class: "cfg-more-menu hidden", role: "menu" });
+    const close = () => { menu.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); document.removeEventListener("mousedown", away); };
+    const away = (e) => { if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) close(); };
+    const item = (icon, label, fn, danger = false) => el("button", { class: `cfg-more-item ${danger ? "danger" : ""}`, type: "button", role: "menuitem", onclick: () => { close(); fn(); } },
+      el("i", { class: `bi bi-${icon}`, "aria-hidden": "true" }), label);
+    btn.addEventListener("click", () => {
+      const open = menu.classList.contains("hidden");
+      if (!open) { close(); return; }
+      clear(menu);
+      menu.append(el("div", { class: "cfg-more-head muted small" }, r.updated_at ? `Changed ${fmtDay(r.updated_at)}${r.updated_by ? ` by ${r.updated_by}` : ""}` : "Not changed yet",
+        el("br"), `Default: ${defText.length > 60 ? `${defText.slice(0, 60)}…` : defText || "empty"}`));
+      if (!r.is_default) menu.append(item("arrow-counterclockwise", "Reset to default", async () => {
+        const ok = await confirmDialog({ title: "Reset to default?", text: `${r.label}: ${defText.slice(0, 200) || "empty"}`, confirmLabel: "Reset" });
+        if (!ok.ok) return;
+        try {
+          await API.post(`/api/config/${r.key}/reset`); toast("Reset to default");
+          try { setRegional(await API.get("/api/config/regional")); } catch { /* ignore */ }
+          renderConfiguration(r.key);
+        } catch (e) { toast(e.message, "error"); }
+      }));
+      menu.append(item("clock-history", "History", () => openConfigHistory(r.key, r.label)));
+      menu.classList.remove("hidden"); btn.setAttribute("aria-expanded", "true");
+      setTimeout(() => document.addEventListener("mousedown", away), 0);
+    });
+    menu.addEventListener("keydown", (e) => { if (e.key === "Escape") { close(); btn.focus(); } });
+    return el("div", { class: "cfg-more-wrap" }, btn, menu);
+  };
+
   const settingRow = (r, refresh) => {
     const err = el("div", { class: "field-error", role: "alert" });
     const defText = Array.isArray(r.default) ? (r.default.join(", ") || "none") : (r.kind === "bool" ? (r.default ? "On" : "Off") : String(r.default ?? ""));
-    const meta = el("div", { class: "cfg-meta" });
-    const paintMeta = () => {
-      clear(meta);
-      if (r.key in edits) meta.append(el("span", { class: "cfg-tag dirty" }, "Unsaved"));
-      else if (!r.is_default) meta.append(el("span", { class: "cfg-tag" }, "Changed"),
-        el("button", { class: "linkish small", type: "button", title: `Reset "${r.label}" to its default (${defText})`, onclick: async () => {
-          const ok = await confirmDialog({ title: "Reset to default?", text: `"${r.label}" goes back to: ${defText.slice(0, 300) || "empty"}.`, confirmLabel: "Reset" });
-          if (!ok.ok) return;
-          try { await API.post(`/api/config/${r.key}/reset`); toast("Reset to default"); renderConfiguration(r.key); }
-          catch (e) { toast(e.message, "error"); }
-        } }, "Reset"));
+    const mark = el("span", { class: "cfg-mark" });
+    const paintMark = () => {
+      mark.className = `cfg-mark ${r.key in edits ? "dirty" : (!r.is_default ? "changed" : "")}`;
+      mark.title = r.key in edits ? "Unsaved" : (!r.is_default ? "Changed from default" : "");
     };
+    let summary = null;
     const onChange = (val) => {
       err.textContent = "";
       if (cfgSame(val, saved[r.key])) delete edits[r.key]; else edits[r.key] = val;
-      paintMeta(); refresh(); if (summary) summary.textContent = cfgSummary(r, current(r.key));
+      paintMark(); refresh(); if (summary) summary.textContent = cfgSummary(r, current(r.key));
     };
-    let summary = null;
-    const help = el("div", { class: "help muted" }, r.help || "", r.help ? " " : "", el("span", { class: "cfg-default" }, `Default: ${defText.length > 80 ? `${defText.slice(0, 80)}…` : defText || "empty"}`));
-    paintMeta();
-    const label = el("label", { class: "cfg-label", for: `cfg-${r.key}` }, r.label);
-    if (r.kind === "list" || r.kind === "longtext") {
+    paintMark();
+    const info = r.help ? el("i", { class: "bi bi-info-circle cfg-info", title: r.help, tabindex: "0", "aria-label": r.help }) : null;
+    const label = el("label", { class: "cfg-label", for: `cfg-${r.key}` }, mark, r.label, info);
+    const more = rowMenu(r, defText);
+    if ((r.kind === "list" && !cfgChoiceList(r)) || r.kind === "longtext") {
       summary = el("span", { class: "cfg-summary muted small" }, cfgSummary(r, current(r.key)));
       const det = el("details", { class: "cfg-row cfg-fold", "data-key": r.key, open: r.key === focusKey ? "1" : null },
-        el("summary", null, el("div", { class: "cfg-text" }, label, summary), meta, el("i", { class: "bi bi-chevron-down cfg-fold-caret", "aria-hidden": "true" })),
-        el("div", { class: "cfg-fold-body" }, help, control(r, onChange), err));
+        el("summary", null, el("div", { class: "cfg-text" }, label, summary), more, el("i", { class: "bi bi-chevron-down cfg-fold-caret", "aria-hidden": "true" })),
+        el("div", { class: "cfg-fold-body" }, control(r, onChange), err));
       return { node: det, err };
     }
-    const wide = r.kind === "roles";
+    const wide = r.kind === "roles" || cfgChoiceList(r);
     return { node: el("div", { class: `cfg-row ${wide ? "cfg-row-wide" : ""} ${r.kind === "bool" ? "cfg-row-bool" : ""}`, "data-key": r.key },
-      el("div", { class: "cfg-text" }, label, help, err), el("div", { class: "cfg-control" }, control(r, onChange), meta)), err };
+      el("div", { class: "cfg-text" }, label, err), el("div", { class: "cfg-control" }, control(r, onChange)), more), err };
   };
 
   // ---------------------------------------------------------------- the selected section
   let rowErrs = {};
+  const reasonBox = el("input", { type: "text", class: "compact cfg-reason", maxlength: "500", placeholder: "Reason (optional)", "aria-label": "Reason for the change" });
   const paintSaveBar = () => {
     const keys = Object.keys(edits);
     saveBar.classList.toggle("hidden", !keys.length);
@@ -873,8 +961,9 @@ async function renderConfiguration(focusKey = null) {
     saveBar.append(el("i", { class: "bi bi-pencil-square", "aria-hidden": "true" }),
       el("span", { class: "cfg-savebar-text" }, `${keys.length} unsaved change${keys.length === 1 ? "" : "s"}`,
         el("span", { class: "muted small" }, ` in ${groups.join(", ")}`)),
+      reasonBox,
       el("div", { class: "actions" },
-        el("button", { class: "btn secondary small", type: "button", onclick: () => { Object.keys(edits).forEach((k) => delete edits[k]); select(active); } }, "Discard"),
+        el("button", { class: "btn secondary small", type: "button", onclick: () => { Object.keys(edits).forEach((k) => delete edits[k]); reasonBox.value = ""; select(active); } }, "Discard"),
         el("button", { class: "btn small", type: "button", onclick: saveAll }, el("i", { class: "bi bi-check2" }), " Save changes")));
   };
 
@@ -890,9 +979,10 @@ async function renderConfiguration(focusKey = null) {
       if (r.kind === "text" && !String(v).trim()) return problem(k, "This setting cannot be empty");
       values[k] = v;
     }
-    try { await API.put("/api/config", { values }); }
+    try { await API.put("/api/config", { values, reason: reasonBox.value.trim() || null }); }
     catch (e) { toast(e.message, "error"); return; }
     toast(`${Object.keys(values).length} setting${Object.keys(values).length === 1 ? "" : "s"} saved`);
+    try { setRegional(await API.get("/api/config/regional")); } catch { /* keeps the previous format */ }
     renderConfiguration();
   }
   function problem(key, text) {
@@ -916,30 +1006,11 @@ async function renderConfiguration(focusKey = null) {
     const card = el("section", { class: "card cfg-panel", "aria-label": s.name });
     panelHost.append(card);
     const refresh = () => { paintTrigger(); paintSaveBar(); };
-    const head = el("div", { class: "cfg-panel-head" },
-      el("div", { class: "cfg-panel-title" }, el("i", { class: `bi bi-${s.icon}`, "aria-hidden": "true" }), el("h3", null, s.name)),
-      el("div", { class: "cfg-panel-tools" },
-        s.items.some((r) => r.kind === "list" || r.kind === "longtext") ? el("button", { class: "linkish small", type: "button", onclick: (e) => {
-          const folds = [...card.querySelectorAll("details.cfg-fold")];
-          const open = folds.some((d) => !d.open);
-          folds.forEach((d) => { d.open = open; });
-          e.target.textContent = open ? "Collapse all" : "Expand all";
-        } }, "Expand all") : null));
-    card.append(head);
     const order = { bool: 0, int: 1, text: 2, roles: 3, list: 4, longtext: 5 };
-    const kinds = [
-      { title: "Switches", test: (r) => r.kind === "bool" },
-      { title: "Values & limits", test: (r) => ["int", "text", "roles"].includes(r.kind) },
-      { title: "Lists & texts", test: (r) => ["list", "longtext"].includes(r.kind) },
-    ];
-    const items = [...s.items].sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9));
-    kinds.forEach((k) => {
-      const rows = items.filter(k.test);
-      if (!rows.length) return;
-      const list = el("div", { class: "cfg-rows" });
-      card.append(el("div", { class: "cfg-subhead" }, k.title, el("span", { class: "muted" }, ` · ${rows.length}`)), list);
-      rows.forEach((r) => { const { node, err } = settingRow(r, refresh); rowErrs[r.key] = err; list.append(node); });
-    });
+    const items = [...s.items].sort((a, b) => (order[cfgChoiceList(a) ? "roles" : a.kind] ?? 9) - (order[cfgChoiceList(b) ? "roles" : b.kind] ?? 9));
+    const list = el("div", { class: "cfg-rows" });
+    card.append(list);
+    items.forEach((r) => { const { node, err } = settingRow(r, refresh); rowErrs[r.key] = err; list.append(node); });
     paintSaveBar();
     if (settingKey) {
       const row = card.querySelector(`[data-key="${settingKey}"]`);

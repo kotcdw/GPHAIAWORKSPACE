@@ -54,11 +54,12 @@ def _quarter_bounds(year: int, quarter: str) -> tuple[date, date]:
 
 
 def working_days(start: date, end: date) -> int:
-    from app.core.workdays import holidays
+    from app.core.regional import working_weekdays
+    from app.core.workdays import holidays, is_working_day
 
-    hols, n, d = holidays(), 0, start
+    hols, week, n, d = holidays(), working_weekdays(), 0, start
     while d <= end:
-        if d.weekday() < 5 and d not in hols:
+        if is_working_day(d, hols, week):
             n += 1
         d += timedelta(days=1)
     return n

@@ -328,6 +328,9 @@ def aging(db: DBSession = Depends(get_db), user: User = Staff) -> AgingOut:
 
 @router.get("/api/followup/aging.csv")
 def aging_csv(request: Request, db: DBSession = Depends(get_db), user: User = Staff) -> Response:
+    from app.core.deps import ensure_perm
+
+    ensure_perm(user, "data.export")
     rows = _aging_rows(db, user)
     out = io.StringIO()
     writer = csv.writer(out)

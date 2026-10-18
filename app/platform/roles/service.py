@@ -21,8 +21,8 @@ def normalise(code: str | None) -> str | None:
     code = perms.LEGACY_ROLES.get(code, code)
     if code not in perms.JOB_ROLE_CODES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            detail="Unknown role: choose Super Administrator, Administrator, Manager, Auditor or "
-                                   "Audit Client")
+                            detail="Unknown role: choose Super Administrator, Administrator, Manager, Auditor, "
+                                   "Read-only User or Audit Client")
     return code
 
 
@@ -39,8 +39,19 @@ def check_can_manage(actor: User, target: User | None, new_code: str | None) -> 
                             detail="Only a Super Administrator can appoint or change administrators")
 
 
+def active_admins(db: DBSession, excluding: int | None = None) -> list[User]:
+    rows = db.execute(select(User).where(User.is_active.is_(True))).scalars()
+    return [u for u in rows if perms.job_role_of(u) in ADMIN_ROLES and u.id != excluding]
+
+
 def guard_last_super_admin(db: DBSession, target: User, new_code: str | None = None,
                            deactivating: bool = False) -> None:
+    """Never leave the platform without an active administrator, nor without an active Super Administrator."""
+    removing = deactivating or (new_code is not None and new_code not in ADMIN_ROLES)
+    if removing and target.is_active and perms.job_role_of(target) in ADMIN_ROLES \
+            and not active_admins(db, excluding=target.id):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="This is the last active administrator: appoint another administrator first")
     if not perms.is_super_admin(target):
         return
     if (new_code is not None and new_code != "super_admin") or deactivating:

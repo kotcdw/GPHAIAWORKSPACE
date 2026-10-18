@@ -24,6 +24,7 @@ class OrganizationCreate(BaseModel):
     plan_destination: bool = False
     destination_label: str | None = Field(default=None, max_length=60)
     custom_fields: dict[str, Any] | None = None
+    head_user_id: int | None = None
 
 
 class OrganizationUpdate(BaseModel):
@@ -41,6 +42,7 @@ class OrganizationUpdate(BaseModel):
     plan_destination: bool | None = None
     destination_label: str | None = Field(default=None, max_length=60)
     custom_fields: dict[str, Any] | None = None
+    head_user_id: int | None = None
 
 
 class OrganizationOut(BaseModel):
@@ -66,9 +68,18 @@ class OrganizationOut(BaseModel):
     approved_at: datetime | None
     notes: str
     custom_fields: dict[str, Any] = {}
+    head_user_id: int | None = None
+    head_name: str | None = None
+    is_active: bool = True
+    deactivated_at: datetime | None = None
+    deactivation_reason: str | None = None
     created_by: int | None
     created_at: datetime
     updated_at: datetime
+
+
+class DeactivateRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class OrganizationList(BaseModel):
@@ -88,3 +99,4 @@ class EntityLite(BaseModel):
     parent_id: int | None
     plan_destination: bool = False
     destination_label: str | None = None
+    is_active: bool = True

@@ -69,6 +69,22 @@ class EntityProcess(Base):
     org_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
 
 
+class UniverseReview(Base):
+    """An auditor's decision on whether an org unit or a process belongs in the audit universe (Included / Not
+    included, with a reason). Units and processes without a decision, and not in an entity, need review."""
+
+    __tablename__ = "universe_reviews"
+    __table_args__ = (UniqueConstraint("object_type", "object_id", name="uq_universe_reviews_object"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    object_type: Mapped[str] = mapped_column(String(10), nullable=False)  # unit | process
+    object_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)  # Included | Not included
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
 class AssessmentFactor(Base):
     """A factor auditable entities are scored on (e.g. Financial materiality, Fraud risk, Time since last audit)."""
 
@@ -167,5 +183,6 @@ def band(label: str | None) -> str | None:
     return {"Very low": "Low", "Very high": "High"}.get(label, label)
 
 
-__all__ = ["AuditEntity", "Process", "ProcessOrgUnit", "EntityOrgUnit", "EntityProcess", "AssessmentFactor",
-           "AuditRiskAssessment", "AraEntity", "AraFactor", "AraScore", "SCALES", "scale_label", "band"]
+__all__ = ["AuditEntity", "UniverseReview", "Process", "ProcessOrgUnit", "EntityOrgUnit", "EntityProcess",
+           "AssessmentFactor", "AuditRiskAssessment", "AraEntity", "AraFactor", "AraScore", "SCALES", "scale_label",
+           "band"]

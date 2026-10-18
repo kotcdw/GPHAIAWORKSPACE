@@ -3,7 +3,6 @@ the auditor accepts (optionally filing them as working papers) or returns them f
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timedelta
 from urllib.parse import quote
@@ -16,7 +15,6 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.access import ensure_can_view, is_privileged
 from app.core.audit import log_action
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import ensure_perm, require_active_user
 from app.core.enums import AuditStatus, Role, utcnow
@@ -288,19 +286,11 @@ async def upload_file(request_id: int, request: Request, file: UploadFile = File
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the assignee can add files")
     if r.status not in OPEN:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"The request is {r.status}")
-    original = storage.safe_name(file.filename)
-    storage.check_extension(original)
-    limit = settings.max_upload_mb * 1024 * 1024
-    digest, chunks, size = hashlib.sha256(), [], 0
-    while chunk := await file.read(_CHUNK):
-        size += len(chunk)
-        if size > limit:
-            raise HTTPException(status_code=413, detail=f"File exceeds the {settings.max_upload_mb} MB limit")
-        digest.update(chunk)
-        chunks.append(chunk)
-    if size == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
-    path, sha = storage.store_encrypted(b"".join(chunks), f"{r.audit_id}/evidence", original)
+    from app.core.upload_policy import read_upload
+
+    data, _, original = await read_upload(file)
+    size = len(data)
+    path, sha = storage.store_encrypted(data, f"{r.audit_id}/evidence", original)
     f = EvidenceFile(request_id=r.id, filename=original, file_path=path, sha256=sha, size_bytes=size,
                      uploaded_by=user.id)
     db.add(f)

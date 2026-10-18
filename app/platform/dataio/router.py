@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core.access import ensure_can_view
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier, require_perm
+from app.core.deps import ensure_perm, require_active_user, require_module_tier, require_perm
 from app.core.enums import AuditStatus, RiskRating, Role
 from app.core.history import log_record_history
 from app.domains.audit.audits.models import Audit, Finding
@@ -29,8 +29,20 @@ router = APIRouter(tags=["import / export"])
 Staff = Depends(require_module_tier("import", Role.Admin, Role.Auditor))
 AdminOnly = Depends(require_module_tier("audit universe import", Role.Admin))
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-MAX_BYTES = 5 * 1024 * 1024
-MAX_ROWS = 2000
+MAX_BYTES = 20 * 1024 * 1024  # hard ceilings; the working limits are settings (Configuration > Data & attachments)
+MAX_ROWS = 5000
+
+
+def import_max_bytes() -> int:
+    from app.core.appconfig import cfg
+
+    return min(int(cfg("import_max_mb")) * 1024 * 1024, MAX_BYTES)
+
+
+def import_max_rows() -> int:
+    from app.core.appconfig import cfg
+
+    return min(int(cfg("import_max_rows")), MAX_ROWS)
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 TEMPLATES: dict[str, list[tuple[str, bool, str]]] = {
@@ -69,7 +81,79 @@ TEMPLATES: dict[str, list[tuple[str, bool, str]]] = {
         ("Recommendation", False, ""),
         ("Owner email", False, "Management owner of the finding"),
     ],
+    "users": [
+        ("Full name", True, "e.g. Ama Mensah"),
+        ("Username", True, "Letters, digits, '.', '_' or '-'; unique"),
+        ("Email", True, "Work e-mail; unique"),
+        ("Role", True, "Administrator, Manager, Auditor, Read-only User or Audit Client"),
+        ("Approval level", False, "Managers only: Unit Head, Audit Manager, PIA or GM Audit (CAE)"),
+        ("Workplace", False, "Name or reference of their unit in the Org Structure"),
+    ],
+    "remediation": [
+        ("Title", True, "The recommendation or action, e.g. Reconcile vessel calls to invoices monthly"),
+        ("Source", True, "Who made the recommendation: one of the configured sources, e.g. Internal Audit"),
+        ("Source reference", False, "Report or letter reference, e.g. AG/2025/14"),
+        ("Source year", False, "Year of the report, e.g. 2025"),
+        ("Severity", True, "High, Medium or Low"),
+        ("Owner email", False, "Responsible officer"),
+        ("Due date", False, "Target date (a date cell or YYYY-MM-DD); past dates are kept as overdue"),
+        ("Timeframe", False, "One of the configured timeframes"),
+        ("Description", False, "Background or condition found"),
+        ("Recommended action", False, "What management should do"),
+    ],
+    "risks": [
+        ("Title", True, "Risk statement, e.g. Revenue leakage from unbilled vessel calls"),
+        ("Category", False, "One of the configured risk categories"),
+        ("Description", False, ""),
+        ("Cause", False, ""),
+        ("Consequence", False, ""),
+        ("Owner email", False, "Risk owner (an existing account)"),
+        ("Org unit", False, "Name or reference of the unit in the Org Structure"),
+        ("Inherent likelihood", True, "1 (rare) to 5 (almost certain)"),
+        ("Inherent impact", True, "1 (minor) to 5 (severe)"),
+        ("Residual likelihood", False, "1 to 5; defaults to inherent"),
+        ("Residual impact", False, "1 to 5; defaults to inherent"),
+        ("Appetite", False, "One of the configured appetite levels"),
+        ("Treatment", False, "One of the configured treatments"),
+        ("Treatment plan", False, ""),
+    ],
 }
+
+EXTRA_EXAMPLES = {
+    "users": [["Kofi Mensah", "k.mensah", "k.mensah@gpha.gov.gh", "Auditor", "", "Finance Department"],
+              ["Esi Boateng", "e.boateng", "e.boateng@gpha.gov.gh", "Manager", "Unit Head", "Tema Port"]],
+    "remediation": [["Reconcile vessel calls to invoices monthly", "Internal Audit", "IA/2025/07", 2025, "High",
+                     "finance.manager@gpha.gov.gh", "2026-12-31", "", "No reconciliation in 2025",
+                     "Assign a reviewer and evidence the monthly reconciliation"]],
+    "risks": [["Revenue leakage from unbilled vessel calls", "", "", "Manual billing", "Loss of revenue",
+               "finance.manager@gpha.gov.gh", "Finance Department", 4, 4, 3, 3, "", "", ""]],
+}
+
+
+def record_run(db: DBSession, user: User, kind: str, filename: str | None, result: ImportResult,
+               context: str | None = None) -> ImportResult:
+    """Keep imports that were carried out and uploads that were rejected (with their first problems)."""
+    import json
+
+    from app.platform.dataio.models import ImportRun
+
+    if not (result.errors or result.committed):
+        return result  # a clean preview: nothing happened yet
+    try:
+        if result.errors:
+            db.rollback()  # nothing from a rejected file is kept
+        db.add(ImportRun(kind=kind, filename=(filename or "")[:255] or None,
+                         outcome="imported" if result.committed else "rejected", total_rows=result.total_rows,
+                         created=result.to_create if result.committed else 0,
+                         updated=result.to_update if result.committed else 0, error_count=len(result.errors),
+                         errors=json.dumps([e.model_dump() for e in result.errors[:200]]) if result.errors else None,
+                         context=context, user_id=user.id, user_name=user.full_name or user.username))
+        if result.errors:
+            log_action(db, user_id=user.id, action=f"IMPORT_REJECTED kind={kind} problems={len(result.errors)}")
+        db.commit()
+    except Exception:  # noqa: BLE001 - the history must never break an import
+        db.rollback()
+    return result
 
 
 def _workbook(title: str, headers: list[str], rows: list[list], notes: list[str] | None = None) -> bytes:
@@ -128,6 +212,7 @@ def export_xlsx(
     payload: ExportIn, request: Request, db: DBSession = Depends(get_db), user: User = Depends(require_active_user)
 ) -> Response:
     """Turn the rows a user is looking at into a formatted Excel workbook."""
+    ensure_perm(user, "data.export")
     content = _workbook(payload.title, payload.columns, payload.rows)
     log_action(
         db, user_id=user.id, action=f"EXPORT_XLSX {payload.title[:60]} rows={len(payload.rows)}", request=request
@@ -145,7 +230,8 @@ class ExportNoteIn(BaseModel):
 @router.post("/api/export.log", status_code=204)
 def export_logged(payload: ExportNoteIn, request: Request, db: DBSession = Depends(get_db),
                   user: User = Depends(require_active_user)) -> Response:
-    """Record a CSV export made in the browser (the rows never leave the user's screen otherwise)."""
+    """Record a CSV export made in the browser. The web app asks first and downloads only when this succeeds."""
+    ensure_perm(user, "data.export")
     log_action(db, user_id=user.id, request=request, commit=True,
                action=f"EXPORT_{payload.format.upper()} {payload.title[:60]} rows={payload.rows}")
     return Response(status_code=204)
@@ -189,14 +275,14 @@ def template(kind: str, user: User = Staff) -> Response:
                 "finance.manager@gpha.gov.gh",
             ]
         ],
-    }[kind]
+    }.get(kind) or EXTRA_EXAMPLES[kind]
     notes = (
         [f"How to fill the {kind} import sheet", ""]
         + [f"{c} ({'required' if req else 'optional'}){': ' + h if h else ''}" for c, req, h in cols]
         + [
             "",
             "Keep the header row exactly as provided. One record per row. Delete the example row first.",
-            f"Up to {MAX_ROWS} rows per file.",
+            f"Up to {import_max_rows()} rows per file.",
         ]
     )
     return _xlsx_response(
@@ -220,11 +306,26 @@ class ImportResult(BaseModel):
     preview: list[dict]
 
 
-def _read_rows(data: bytes, kind: str) -> tuple[list[dict], list[RowIssue]]:
+def _read_rows(data: bytes, kind: str, *, db: DBSession | None = None, user: User | None = None,
+               filename: str | None = None, context: str | None = None) -> tuple[list[dict], list[RowIssue]]:
+    """Read the sheet. A file that cannot be used at all (too large, not a workbook, wrong columns) is refused, and
+    the refusal is kept in the import history when ``db`` and ``user`` are given."""
+    try:
+        return _read_rows_unchecked(data, kind)
+    except HTTPException as exc:
+        if db is not None and user is not None:
+            record_run(db, user, kind, filename, ImportResult(
+                kind=kind, committed=False, total_rows=0, to_create=0, to_update=0, preview=[],
+                errors=[RowIssue(row=0, field="file", message=str(exc.detail))]), context=context)
+        raise
+
+
+def _read_rows_unchecked(data: bytes, kind: str) -> tuple[list[dict], list[RowIssue]]:
     from openpyxl import load_workbook
 
-    if len(data) > MAX_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="The file is larger than 5 MB")
+    if len(data) > import_max_bytes():
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f"The file is larger than {import_max_bytes() // (1024 * 1024)} MB")
     try:
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception as exc:  # noqa: BLE001
@@ -250,8 +351,8 @@ def _read_rows(data: bytes, kind: str) -> tuple[list[dict], list[RowIssue]]:
         rec = {c: (v.strip() if isinstance(v, str) else v) for c, v in rec.items()}
         rec["_row"] = n
         rows.append(rec)
-        if len(rows) > MAX_ROWS:
-            issues.append(RowIssue(row=n, field="file", message=f"More than {MAX_ROWS} rows; split the file"))
+        if len(rows) > import_max_rows():
+            issues.append(RowIssue(row=n, field="file", message=f"More than {import_max_rows()} rows; split the file"))
             break
     if not rows:
         issues.append(RowIssue(row=1, field="file", message="The sheet has no data rows"))
@@ -282,7 +383,7 @@ async def import_universe(
 ) -> ImportResult:
     from app.domains.assurance.planning.models import EntityUnit, Location
 
-    rows, issues = _read_rows(await file.read(), "universe")
+    rows, issues = _read_rows(await file.read(), "universe", db=db, user=user, filename=file.filename)
     cols = TEMPLATES["universe"]
     locations = {loc.code.upper(): loc for loc in db.execute(select(Location)).scalars()}
     units = {(u.location_id, u.code.upper()): u for u in db.execute(select(EntityUnit)).scalars()}
@@ -332,7 +433,7 @@ async def import_universe(
         ],
     )
     if not commit or issues:
-        return result
+        return record_run(db, user, "universe", file.filename, result)
     for rec, unit in plan:
         lcode = str(rec["Location code"]).upper()
         loc = locations.get(lcode)
@@ -354,7 +455,7 @@ async def import_universe(
     )
     db.commit()
     result.committed = True
-    return result
+    return record_run(db, user, "universe", file.filename, result)
 
 
 @router.post("/api/import/orgunits", response_model=ImportResult)
@@ -370,7 +471,7 @@ async def import_org_units(
     from app.core.refs import next_reference
     from app.platform.organizations.models import Organization
 
-    rows, issues = _read_rows(await file.read(), "orgunits")
+    rows, issues = _read_rows(await file.read(), "orgunits", db=db, user=user, filename=file.filename)
     cols = TEMPLATES["orgunits"]
     types = {t.lower(): t for t in (cfg("org_structure_categories") or [])}
     existing = list(db.execute(select(Organization)).scalars())
@@ -388,6 +489,12 @@ async def import_org_units(
         parent = str(rec.get("Parent") or "").strip()
         if parent and parent.lower() not in by_name and parent.upper() not in by_ref and parent.lower() not in in_file:
             issues.append(RowIssue(row=r, field="Parent", message="is not an existing unit or one higher in the file"))
+        known = by_name.get(parent.lower()) or by_ref.get(parent.upper()) if parent else None
+        if known is not None and not known.is_active and parent.lower() not in in_file:
+            issues.append(RowIssue(row=r, field="Parent", message=f"{known.name} is deactivated: reactivate it first"))
+        same = by_name.get(name.lower())
+        if same is not None and not same.is_active:
+            issues.append(RowIssue(row=r, field="Name", message="is a deactivated unit: reactivate it before updating"))
         if name.lower() in in_file:
             issues.append(RowIssue(row=r, field="Name", message="appears twice in the file"))
         in_file.add(name.lower())
@@ -399,7 +506,7 @@ async def import_org_units(
                                     "parent": rec.get("Parent"), "action": "update" if o else "create"}
                                    for rec, o in plan[:50]])
     if not commit or issues:
-        return result
+        return record_run(db, user, "orgunits", file.filename, result)
     from app.core.enums import OrganizationStatus
 
     for rec, org in plan:
@@ -422,7 +529,7 @@ async def import_org_units(
                request=request)
     db.commit()
     result.committed = True
-    return result
+    return record_run(db, user, "orgunits", file.filename, result)
 
 
 @router.post("/api/import/processes", response_model=ImportResult)
@@ -438,7 +545,7 @@ async def import_processes(
     from app.domains.assurance.universe.models import Process, ProcessOrgUnit
     from app.domains.assurance.universe.router import OrgTree
 
-    rows, issues = _read_rows(await file.read(), "processes")
+    rows, issues = _read_rows(await file.read(), "processes", db=db, user=user, filename=file.filename)
     cols = TEMPLATES["processes"]
     tree = OrgTree(db)
     org_by = {o.name.strip().lower(): o.id for o in tree.nodes.values()} | {o.org_ref.upper(): o.id
@@ -472,7 +579,7 @@ async def import_processes(
                           preview=[{"row": rec["_row"], "process": rec.get("Process"), "org_units": len(orgs),
                                     "action": "update" if p else "create"} for rec, p, orgs in plan[:50]])
     if not commit or issues:
-        return result
+        return record_run(db, user, "processes", file.filename, result)
     for rec, proc, orgs in plan:
         name = str(rec["Process"]).strip()
         if proc is None:
@@ -496,7 +603,7 @@ async def import_processes(
                request=request)
     db.commit()
     result.committed = True
-    return result
+    return record_run(db, user, "processes", file.filename, result)
 
 
 @router.post("/api/audits/{audit_id}/import/findings", response_model=ImportResult)
@@ -512,7 +619,8 @@ async def import_findings(
     ensure_can_view(db, user, "audit", audit)
     if audit.status == AuditStatus.Closed:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The audit is closed")
-    rows, issues = _read_rows(await file.read(), "findings")
+    rows, issues = _read_rows(await file.read(), "findings", db=db, user=user, filename=file.filename,
+                              context=f"audit {audit_id}")
     cols = TEMPLATES["findings"]
     ratings = {r.value.lower(): r for r in RiskRating}
     for rec in rows:
@@ -538,7 +646,7 @@ async def import_findings(
         ],
     )
     if not commit or issues:
-        return result
+        return record_run(db, user, "findings", file.filename, result, context=f"audit {audit_id}")
     for rec in rows:
         f = Finding(
             audit_id=audit_id,
@@ -566,4 +674,4 @@ async def import_findings(
     )
     db.commit()
     result.committed = True
-    return result
+    return record_run(db, user, "findings", file.filename, result, context=f"audit {audit_id}")

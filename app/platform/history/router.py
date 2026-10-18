@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.access import ensure_can_view, is_privileged, load_record
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_role
+from app.core.deps import require_active_user, require_perm
 from app.core.enums import Role
 from app.core.paging import Page, PageParams, page_params, paginate_query
 from app.platform.approvals.models import ApprovalCycle
@@ -29,7 +29,7 @@ records_router = APIRouter(prefix="/api/records", tags=["record-history"])
 @router.get("", response_model=list[AuditLogOut])
 def list_audit_logs(
     db: DBSession = Depends(get_db),
-    _: User = Depends(require_role(Role.Admin)),
+    _: User = Depends(require_perm("system.technical")),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     user_id: int | None = Query(default=None),
@@ -54,6 +54,8 @@ class AuditLogRow(BaseModel):
     ip_address: str | None
     user_agent: str | None
     action_performed: str
+    event: str = ""
+    details: str = ""
 
 
 def _filtered(
@@ -95,6 +97,7 @@ def _filtered(
 
 def _rows(db: DBSession, entries: list[AuditLog]) -> list[AuditLogRow]:
     from app.core.audit import classify
+    from app.core.audit_describe import describe
 
     names = {u.id: (u.full_name or u.username) for u in db.execute(
         select(User).where(User.id.in_({r.user_id for r in entries if r.user_id} or {0}))).scalars()}
@@ -109,14 +112,41 @@ def _rows(db: DBSession, entries: list[AuditLog]) -> list[AuditLogRow]:
             user=names.get(r.user_id) or typed or (None if r.user_id else "System / anonymous"),
             username=typed, category=r.category or category, outcome=r.outcome or outcome,
             entity_type=r.entity_type or entity, entity_id=r.entity_id if r.entity_id is not None else entity_id,
-            ip_address=r.ip_address, user_agent=r.user_agent, action_performed=r.action_performed))
+            ip_address=r.ip_address, user_agent=r.user_agent, action_performed=r.action_performed,
+            event=describe(r.action_performed)[0], details=describe(r.action_performed)[1]))
     return out
+
+
+PROTECTED_TABLES = {"audit_logs": "Audit trail", "workflow_transitions": "Workflow status history",
+                    "app_config_history": "Settings history", "import_runs": "Import history",
+                    "backup_checks": "Backup checks"}
+
+
+@router.get("/integrity")
+def audit_integrity(db: DBSession = Depends(get_db), _: User = Depends(require_perm("system.technical"))) -> dict:
+    """Is the database still refusing changes to the protected records? Checks the triggers that block UPDATE
+    and DELETE, and reports how much the trail holds."""
+    from sqlalchemy import func, text
+
+    dialect = db.get_bind().dialect.name
+    if dialect == "mysql":
+        rows = db.execute(text("SELECT EVENT_OBJECT_TABLE, EVENT_MANIPULATION FROM information_schema.TRIGGERS "
+                               "WHERE TRIGGER_SCHEMA = DATABASE()")).all()
+        found = {(t, e.upper()) for t, e in rows}
+    else:  # SQLite: the event is part of the trigger's SQL
+        rows = db.execute(text("SELECT tbl_name, sql FROM sqlite_master WHERE type = 'trigger'")).all()
+        found = {(t, verb) for t, sql in rows for verb in ("UPDATE", "DELETE") if f"BEFORE {verb}" in (sql or "")}
+    tables = [{"table": t, "label": label, "update_blocked": (t, "UPDATE") in found,
+               "delete_blocked": (t, "DELETE") in found} for t, label in PROTECTED_TABLES.items()]
+    oldest, total = db.execute(select(func.min(AuditLog.timestamp), func.count(AuditLog.id))).one()
+    return {"protected": all(x["update_blocked"] and x["delete_blocked"] for x in tables), "tables": tables,
+            "entries": total, "oldest": oldest.isoformat() if oldest else None}
 
 
 @router.get("/register", response_model=Page[AuditLogRow])
 def audit_log_register(
     db: DBSession = Depends(get_db),
-    _: User = Depends(require_role(Role.Admin)),
+    _: User = Depends(require_perm("system.technical")),
     params: PageParams = Depends(page_params),
     user_id: int | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -153,7 +183,7 @@ class AuditSummary(BaseModel):
 @router.get("/summary", response_model=AuditSummary)
 def audit_summary(
     db: DBSession = Depends(get_db),
-    _: User = Depends(require_role(Role.Admin)),
+    _: User = Depends(require_perm("system.technical")),
     days: int = Query(default=7, ge=1, le=365),
 ) -> AuditSummary:
     """Sign-in and security activity for the last ``days`` days (the tiles above the audit trail)."""
@@ -191,7 +221,7 @@ def audit_summary(
 def audit_log_export(
     request: Request,
     db: DBSession = Depends(get_db),
-    user: User = Depends(require_role(Role.Admin)),
+    user: User = Depends(require_perm("system.technical")),
     q: str | None = Query(default=None, max_length=120),
     user_id: int | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -211,12 +241,14 @@ def audit_log_export(
     entries = list(db.execute(stmt.order_by(AuditLog.timestamp.desc(), AuditLog.id.desc()).limit(100000)).scalars())
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["Id", "Timestamp (UTC)", "User", "Username", "Category", "Outcome", "Record type", "Record id",
-                     "Action", "IP address", "Browser"])
+    from app.core.regional import fmt_datetime
+
+    writer.writerow(["Id", "Timestamp (UTC)", "Local time", "User", "Username", "Event", "Category", "Outcome",
+                     "Record type", "Record id", "Action (as recorded)", "IP address", "Browser"])
     for r in _rows(db, entries):
-        writer.writerow([r.id, f"{r.timestamp:%Y-%m-%d %H:%M:%S}", r.user or "", r.username or "", r.category,
-                         r.outcome, r.entity_type or "", r.entity_id or "", r.action_performed, r.ip_address or "",
-                         r.user_agent or ""])
+        writer.writerow([r.id, f"{r.timestamp:%Y-%m-%d %H:%M:%S}", fmt_datetime(r.timestamp), r.user or "",
+                         r.username or "", r.event, r.category, r.outcome, r.entity_type or "", r.entity_id or "",
+                         r.action_performed, r.ip_address or "", r.user_agent or ""])
     filters = ", ".join(f"{k}={v}" for k, v in {"q": q, "user": user_id, "from": date_from, "to": date_to,
                                                   "category": category, "outcome": outcome}.items() if v)
     log_action(db, user_id=user.id, request=request, commit=True,

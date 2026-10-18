@@ -38,57 +38,6 @@ function heat(score) {
   return el("span", { class: `badge badge-risk-${level.toLowerCase()}`, title: `Score ${score}` }, `${level} (${score})`);
 }
 
-// ==================================================================== universe (legacy forms; the screens are in universe.js)
-
-const CODE_RULE = { pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,19}$", patternMessage: "Use 1-20 letters, digits, '-' or '_' (e.g. TEMA, GJT-01)", maxLength: 20 };
-
-function locationForm() {
-  openForm({
-    title: "New location",
-    key: "location:new",
-    meta: { title: "New location" },
-    fields: [
-      { name: "code", label: "Code", required: true, ...CODE_RULE, help: "Short code, e.g. TEMA" },
-      { name: "name", label: "Name", required: true, maxLength: 255, singleLine: true },
-      { name: "description", label: "Description", type: "textarea", maxLength: 20000 },
-    ],
-    submitLabel: "Add location",
-    onSubmit: (v) => API.post("/api/locations", { ...v, code: v.code.toUpperCase() }),
-    onDone: () => { toast("Location added"); renderUniverse(); },
-  });
-}
-
-function editUnit(unit, locations = []) {
-  const scores = SCORES.map((n) => ({ value: n, label: `${n} - ${["Rare", "Unlikely", "Possible", "Likely", "Almost certain"][n - 1]}` }));
-  const impacts = SCORES.map((n) => ({ value: n, label: `${n} - ${["Minimal", "Minor", "Moderate", "Major", "Severe"][n - 1]}` }));
-  const fields = [
-    ...(unit ? [] : [
-      { name: "location_id", label: "Location", type: "select", required: true, options: locations.map((l) => ({ value: l.id, label: `${l.code} - ${l.name}` })) },
-      { name: "code", label: "Code", required: true, ...CODE_RULE, help: "e.g. GJT" },
-    ]),
-    { name: "name", label: "Name", required: true, maxLength: 255, singleLine: true },
-    { name: "owner_email", label: "Owner email", type: "email" },
-    { name: "risk_likelihood", label: "Likelihood", type: "select", required: true, options: scores },
-    { name: "risk_impact", label: "Impact", type: "select", required: true, options: impacts },
-    { name: "description", label: "Description", type: "textarea", maxLength: 20000 },
-  ];
-  openForm({
-    title: unit ? `Edit ${unit.name}` : "New entity unit",
-    key: unit ? `unit:edit:${unit.id}` : "unit:new",
-    meta: { title: unit ? `Edit entity unit ${unit.name}` : "New entity unit" },
-    fields,
-    initial: unit || { risk_likelihood: 3, risk_impact: 3 },
-    submitLabel: "Save",
-    onSubmit: (v) => {
-      const body = { name: v.name, owner_email: v.owner_email || null, description: v.description || "",
-        risk_likelihood: v.risk_likelihood, risk_impact: v.risk_impact };
-      return unit ? API.patch(`/api/entity-units/${unit.id}`, body)
-        : API.post("/api/entity-units", { ...body, location_id: v.location_id, code: v.code.toUpperCase() });
-    },
-    onDone: () => { toast("Entity unit saved"); renderUniverse(); },
-  });
-}
-
 // ==================================================================== assurance plan
 
 const PLAN_STATUSES = ["Draft", "In Review", "Submitted", "Returned", "Approved", "Distributed", "In Execution", "Revised", "Closed", "Archived"];
@@ -119,7 +68,7 @@ async function renderPlans(filter = state.planFilter || "") {
 }
 
 function planFields(withYear) {
-  const y = new Date().getFullYear();
+  const y = currentFiscalYear();
   return [
     ...(withYear ? [{ name: "fiscal_year", label: "Fiscal year", type: "number", required: true, min: y - 2, max: y + 10 }] : []),
     { name: "title", label: "Title", required: true, maxLength: 255, singleLine: true },
@@ -129,7 +78,7 @@ function planFields(withYear) {
 }
 
 function newPlanModal() {
-  const y = new Date().getFullYear() + 1;
+  const y = currentFiscalYear() + 1;
   openForm({
     title: "New Assurance Plan",
     key: "plan:new",

@@ -12,6 +12,9 @@ Usage:
     # Restore a mysqldump (.sql.enc) snapshot:
     #   uv run python -m scripts.restore_backup backups/backup_....sql.enc --decrypt-only
     #   mysql -u gpha -p gpha_workspace_restored < backups/backup_....sql
+    #
+    # Restore the attachments of the same backup set (files stay encrypted; existing files are kept):
+    #   uv run python -m scripts.restore_backup backups/backup_....files.tar.gz --yes
 
 The JSON restore never overwrites live data: it migrates the target schema and
 refuses to run unless every table is empty (the reference sequences seeded by
@@ -135,6 +138,32 @@ def restore_json(payload: dict, *, assume_yes: bool) -> None:
         db.close()
 
 
+def restore_attachments(archive: Path, *, assume_yes: bool) -> None:
+    """Unpack an attachments archive into the upload directory. Files already there are never overwritten."""
+    import tarfile
+
+    from app.core.config import settings
+
+    root = Path(settings.upload_dir).resolve()
+    if not assume_yes and input(f"Restore attachments into {root}? Type YES: ").strip() != "YES":
+        sys.exit("Cancelled.")
+    root.mkdir(parents=True, exist_ok=True)
+    added = kept = 0
+    with tarfile.open(archive, "r:gz") as tar:
+        for member in tar.getmembers():
+            if not member.isfile():
+                continue
+            target = (root / member.name).resolve()
+            if root not in target.parents:
+                sys.exit(f"Refusing unsafe path in archive: {member.name}")
+            if target.exists():
+                kept += 1
+                continue
+            tar.extract(member, root, filter="data")
+            added += 1
+    print(f"Attachments restored: {added} added, {kept} already present (kept).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("backup", type=Path)
@@ -142,6 +171,9 @@ def main() -> None:
     parser.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     args = parser.parse_args()
 
+    if args.backup.name.endswith(".files.tar.gz"):
+        restore_attachments(args.backup, assume_yes=args.yes)
+        return
     data = read_backup(args.backup)
     if args.decrypt_only:
         target = args.backup.with_suffix("") if args.backup.suffix == ".enc" else args.backup

@@ -75,10 +75,10 @@ function deniedState(text = "") {
 
 // ------------------------------------------------------------------ confirm dialog
 // Resolves { ok: true, reason } or { ok: false }. With reason: true a reason of at least 10 characters is required.
-function confirmDialog({ title = "Are you sure?", text = "", confirmLabel = "Confirm", danger = false, reason = false, reasonLabel = "Reason" } = {}) {
+function confirmDialog({ title = "Are you sure?", text = "", confirmLabel = "Confirm", danger = false, reason = false, reasonLabel = "Reason", maxLength = 2000 } = {}) {
   return new Promise((resolve) => {
     let done = false;
-    const box = reason ? el("textarea", { "aria-label": reasonLabel, maxlength: "2000", rows: "3" }) : null;
+    const box = reason ? el("textarea", { "aria-label": reasonLabel, maxlength: String(maxLength), rows: "3" }) : null;
     const err = el("div", { class: "field-error", role: "alert" });
     const finish = (result) => { if (done) return; done = true; instance.close(true); resolve(result); };
     const ok = el("button", { class: `btn ${danger ? "danger" : ""}`, type: "button", onclick: () => {
@@ -190,7 +190,7 @@ function serverTable(opts) {
   if (opts.values) q.values = { ...opts.values };
   const colsBtn = el("button", { class: "btn small secondary", type: "button", "aria-haspopup": "true", title: "Choose columns",
     onclick: () => openColumnChooser() }, el("i", { class: "bi bi-layout-three-columns" }), " Columns");
-  const exportBtns = exportName ? [
+  const exportBtns = exportName && hasPerm("data.export") ? [
     el("button", { class: "btn small secondary", type: "button", onclick: () => exportAll("xlsx") }, el("i", { class: "bi bi-file-earmark-excel" }), " Excel"),
     el("button", { class: "btn small secondary", type: "button", onclick: () => exportAll("csv") }, el("i", { class: "bi bi-filetype-csv" }), " CSV")] : [];
   fb.root.append(el("span", { class: "fb-tools" }, colsBtn, ...exportBtns));
@@ -428,24 +428,25 @@ async function initScopeChip() {
   }
 }
 
-// Date only, e.g. "15 Oct 2026". Plain dates ("2026-10-15") are shown as written, never shifted by time zone.
+// Date only, in the workspace's date format. Plain dates ("2026-10-15") are shown as written, never shifted.
 function fmtDay(value) {
   if (!value) return "-";
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
-  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  const w = parseWhen(value);
+  if (w.day) return formatDay(w.day);
+  if (Number.isNaN(w.date.getTime())) return String(value);
+  return formatDay(zonedParts(w.date));
 }
 
 // ------------------------------------------------------------------ merged apps (one sidebar entry, tabs on top)
 // Pages that live inside another app: the sidebar shows the host only; the others open as its tabs.
 const HOST_GROUPS = [
   { host: "portal", tabs: [["portal", "Priorities"], ["tasks", "To-dos"], ["evidence", "Requests"]] },
+  { host: "universe", tabs: [["universe", "Overview"], ["universe_units", "Units"], ["universe_processes", "Processes"], ["universe_entities", "Entities"]] },
   { host: "issues", tabs: [["issues", "Issues"], ["capa", "Actions"]] },
   { host: "committee", tabs: [["committee", "Committee pack"], ["governance", "Governance portal"], ["portfolio", "Port portfolio"]] },
   { host: "qaip", tabs: [["qaip", "Quality reviews"], ["practice", "Professional practice"], ["service-feedback", "Service feedback"]] },
   { host: "orgstructure", tabs: [["orgstructure", "Org Structure"], ["organizations", "Organizations"], ["stakeholders", "Contacts"]] },
-  { host: "configuration", tabs: [["configuration", "Business rules"], ["audittypes", "Audit types"], ["apps", "Apps & customization"], ["logs", "Audit trail"]] },
+  { host: "configuration", tabs: [["configuration", "Business rules"], ["audittypes", "Audit types"], ["apps", "Apps & customization"], ["imports", "Data import"], ["logs", "Audit trail"]] },
   { host: "robots", tabs: [["robots", "Robots"], ["automations", "Automations"]] },
 ];
 

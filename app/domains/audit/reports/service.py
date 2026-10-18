@@ -28,7 +28,9 @@ def _name(db: DBSession, user_id: int | None) -> str | None:
 
 
 def _fmt(dt: datetime | None) -> str:
-    return dt.strftime("%d %b %Y") if dt else ""
+    from app.core.regional import fmt_date
+
+    return fmt_date(dt) if dt else ""
 
 
 def live_findings(db: DBSession, audit_id: int) -> list[dict]:

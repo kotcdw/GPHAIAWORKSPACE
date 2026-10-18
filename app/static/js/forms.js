@@ -262,7 +262,7 @@ function mountForm(container, opts) {
   let dirty = false;
   let serverTimer = null;
   let saving = Promise.resolve();
-  const stamp = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const stamp = () => formatClock(zonedParts(new Date()));
 
   function saveDraft(now = false) {
     if (!draftable || !key) return Promise.resolve();
@@ -314,7 +314,7 @@ function mountForm(container, opts) {
     if (JSON.stringify(draft.payload) === baseline) return;
     fields.forEach((f) => { if (nodes[f.name] && f.type !== "password" && !f.noDraft && f.name in draft.payload) _setValue(f, nodes[f.name], draft.payload[f.name]); });
     dirty = true;
-    const when = new Date(draft.updated_at).toLocaleString();
+    const when = fmtDate(draft.updated_at);
     setBanner(`Restored your unsaved entries from ${when}.`, "info",
       el("button", { class: "btn small secondary", type: "button", onclick: async () => {
         await Drafts.discard(key);

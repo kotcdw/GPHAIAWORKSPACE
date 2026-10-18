@@ -7,7 +7,7 @@ const RATING_ORDER = ["High", "Medium", "Low"];
 const RATING_CLASS = { High: "r-high", Medium: "r-med", Low: "r-low" };
 
 function fySelect(current, onChange) {
-  const now = new Date().getFullYear();
+  const now = currentFiscalYear();
   const sel = el("select", { class: "compact", "aria-label": "Fiscal year" },
     ...[now + 1, now, now - 1, now - 2, now - 3].map((y) => el("option", { value: y, selected: y === current ? "1" : null }, `FY${y}`)));
   sel.addEventListener("change", () => onChange(Number(sel.value)));
@@ -21,7 +21,7 @@ function legend(items) {
 
 // ==================================================================== Analytics
 
-async function renderAnalytics(fy = new Date().getFullYear()) {
+async function renderAnalytics(fy = currentFiscalYear()) {
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(viewHeader("Analytics", fySelect(fy, (y) => renderAnalytics(y)),
@@ -105,7 +105,7 @@ async function renderAnalytics(fy = new Date().getFullYear()) {
 
 // ==================================================================== Quality (QAIP)
 
-async function renderQaipPage(fy = new Date().getFullYear()) {
+async function renderQaipPage(fy = currentFiscalYear()) {
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(viewHeader("Quality (QAIP)", el("div", { class: "actions" }, fySelect(fy, (y) => renderQaipPage(y)),
@@ -142,7 +142,7 @@ async function renderQaipPage(fy = new Date().getFullYear()) {
 
 // ==================================================================== Capacity & time sheets
 
-async function renderCapacity(tab = "team", fy = new Date().getFullYear()) {
+async function renderCapacity(tab = "team", fy = currentFiscalYear()) {
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(viewHeader("Timesheets & capacity", el("div", { class: "actions" }, fySelect(fy, (y) => renderCapacity(tab, y)),
@@ -320,11 +320,11 @@ function importDialog({ title, templateKind, path, intro, onDone }) {
     if (!r) return;
     const nodes = [el("p", null, `${r.total_rows} row(s): ${r.to_create} to create`, r.to_update ? `, ${r.to_update} to update` : "", ".")];
     if (r.errors.length) {
-      nodes.push(el("div", { class: "form-banner error" }, `${r.errors.length} problem(s) - fix them in Excel and choose the file again. Nothing has been imported.`),
-        el("div", { class: "table-wrap" }, el("table", null, el("thead", null, el("tr", null, el("th", null, "Row"), el("th", null, "Column"), el("th", null, "Problem"))),
-          el("tbody", null, ...r.errors.slice(0, 100).map((e) => el("tr", { class: "no-click" }, el("td", null, String(e.row)), el("td", null, e.field), el("td", null, e.message)))))));
+      nodes.push(el("div", { class: "form-banner error" }, "Fix these in Excel and choose the file again. Nothing has been imported."),
+        typeof importProblems === "function" ? importProblems(r.errors, r.errors.length, file.files[0] && file.files[0].name)
+          : el("div", { class: "table-wrap" }, el("table", null, el("tbody", null, ...r.errors.slice(0, 100).map((e) => el("tr", { class: "no-click" }, el("td", null, String(e.row)), el("td", null, e.field), el("td", null, e.message)))))));
     } else {
-      nodes.push(el("div", { class: "form-banner ok" }, "No problems found. Review the preview, then choose Import."),
+      nodes.push(el("div", { class: "form-banner ok" }, "No problems found. Check the preview, then choose Import."),
         el("div", { class: "table-wrap" }, el("table", null, el("thead", null, el("tr", null, ...Object.keys(r.preview[0] || {}).map((k) => el("th", null, k)))),
           el("tbody", null, ...r.preview.slice(0, 15).map((p) => el("tr", { class: "no-click" }, ...Object.values(p).map((v) => el("td", null, v === null ? "" : String(v)))))))));
       commitBtn.disabled = false;
@@ -336,13 +336,14 @@ function importDialog({ title, templateKind, path, intro, onDone }) {
     commitBtn.disabled = true;
     const r = await send(true);
     if (r && r.committed) { instance.close(true); toast(`Imported ${r.total_rows} row(s)`); if (onDone) onDone(r); }
+    else if (r && r.errors && r.errors.length) out.replaceChildren(el("div", { class: "form-banner error" }, "The import stopped; nothing was written."), importProblems(r.errors));
   });
   instance = modal({
     title, width: 720,
     body: el("div", null,
-      el("p", { class: "muted" }, intro),
+      intro ? el("p", { class: "muted small" }, intro) : null,
       el("p", null, el("a", { href: `/api/import/${templateKind}/template.xlsx`, class: "btn small secondary" }, el("i", { class: "bi bi-download" }), " Download the template")),
-      el("div", { class: "form-field" }, el("label", { for: "imp-file" }, "Excel file (.xlsx, up to 5 MB)"), file), out),
+      el("div", { class: "form-field" }, el("label", { for: "imp-file" }, "Excel file (.xlsx)"), file), out),
     footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", onclick: () => instance.close() }, "Cancel"), commitBtn),
   });
 }

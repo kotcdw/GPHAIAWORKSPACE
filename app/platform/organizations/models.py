@@ -35,6 +35,16 @@ class Organization(Base):
     # (e.g. "HQ", "PIA Tema"), and engagements can name it as their responsible site.
     plan_destination: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     destination_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Administration: who heads the unit, and whether it is still in use. A unit that is no longer used is
+    # deactivated (never deleted once approved), so the audits, plans and history that name it stay intact.
+    head_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL", use_alter=True, name="fk_organizations_head_user"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deactivated_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL", use_alter=True, name="fk_organizations_deactivated_by"),
+        nullable=True)
+    deactivation_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Values of admin-defined custom fields, JSON {field_key: value}.
     custom_fields: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

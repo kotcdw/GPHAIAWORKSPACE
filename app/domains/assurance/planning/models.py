@@ -66,6 +66,15 @@ class EntityUnit(Base):
     assessed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     assessment_id: Mapped[int | None] = mapped_column(ForeignKey("audit_risk_assessments.id", ondelete="SET NULL"),
                                                       nullable=True)
+    # Universe definition (Audit universe > Entities). Status is about the definition, never about risk:
+    # Draft -> Needs review -> Ready (offered to the audit risk assessment) -> Retired (= archived).
+    entity_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    definition_status: Mapped[str] = mapped_column(String(20), nullable=False, default="Ready")
+    scope: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    objectives: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    rationale: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 

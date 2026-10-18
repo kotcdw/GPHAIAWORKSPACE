@@ -374,7 +374,9 @@ def capacity_summary(db: DBSession, fy: int) -> CapacitySummary:
 
 @router.get("/summary", response_model=CapacitySummary)
 def get_summary(fiscal_year: int | None = None, db: DBSession = Depends(get_db), user: User = Staff) -> CapacitySummary:
-    return capacity_summary(db, fiscal_year or utcnow().year)
+    from app.core.regional import current_fiscal_year
+
+    return capacity_summary(db, fiscal_year or current_fiscal_year())
 
 
 @router.get("/categories")

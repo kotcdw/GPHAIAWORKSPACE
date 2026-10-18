@@ -333,25 +333,39 @@ def test_workplan_execute_and_issue_tracker(browser, base_url):
 
 
 def test_org_structure_define_universe_and_risk_assessment(browser, base_url):
-    """Org Structure -> Define audit universe (coverage) -> Audit risk assessment scoring matrix."""
+    """Org Structure -> Audit universe (units, processes, new entity) -> Audit risk assessment settings."""
     ctx, page, watch = _signed_in(browser, base_url)
     ids = page.evaluate("""async () => {
         const tag = Math.random().toString(36).slice(2, 7);
         const port = await API.post('/api/organizations', {name: `UI Port ${tag}`, category: 'Port'});
         const dept = await API.post('/api/organizations',
             {name: `UI Finance ${tag}`, category: 'Department', parent_id: port.id});
-        await API.post('/api/processes', {name: `UI Revenue ${tag}`, org_ids: [dept.id]});
-        return {port: port.id, dept: dept.id, tag};
+        const proc = await API.post('/api/processes', {name: `UI Revenue ${tag}`, org_ids: [dept.id]});
+        return {port: port.id, dept: dept.id, proc: proc.id, tag};
     }""")
     page.evaluate("navigate('orgstructure')")
     page.wait_for_selector(".tree-table tbody tr")
     assert f"UI Finance {ids['tag']}" in page.inner_text(".tree-table")
-    page.evaluate("renderDefineUniverse()")
-    page.wait_for_selector(".define-tree .define-node")
-    page.check(f"#def-{ids['dept']}")
-    _wait_for(page, "document.querySelectorAll('.define-entities li').length > 0")
-    _wait_for(page, "document.querySelector('.cov-meter') !== null")
-    _shot(page, "desktop-define-universe")
+    page.evaluate("navigate('universe')")
+    page.wait_for_selector(".u-flow .u-step")
+    assert page.locator(".host-tabs .tab").count() == 4
+    page.evaluate("navigate('universe_units')")
+    page.wait_for_selector(".u-table tbody tr")
+    page.fill(".fb-search", f"UI Finance {ids['tag']}")
+    _wait_for(page, "document.querySelectorAll('.u-table tbody tr').length === 1")
+    page.locator(".u-table tbody tr input[type=checkbox]").check()
+    page.click("button:has-text('Include selected')")
+    _wait_for(page, "(document.querySelector('.u-table') || {innerText: ''}).innerText.includes('Included')")
+    page.evaluate("navigate('universe_processes')")
+    page.wait_for_selector(".u-table tbody tr")
+    page.evaluate(f"openEntityForm(null, {{process_ids: [{ids['proc']}]}})")
+    page.wait_for_selector(".u-form input[name=name]")
+    page.fill(".u-form input[name=name]", f"UI entity {ids['tag']}")
+    _wait_for(page, f"document.querySelector('.u-preview').innerText.includes('UI Finance {ids['tag']}')")
+    _shot(page, "desktop-new-entity")
+    page.click("button:has-text('Save entity')")
+    page.wait_for_selector(".record .rec-title")
+    assert f"UI entity {ids['tag']}" in page.inner_text(".rec-title")
     # Leave the rest of the suite's universe as it was: no Define here, only the scoring matrix of a fresh assessment.
     page.evaluate("navigate('riskassess')")
     page.wait_for_selector("#viewRoot h2")

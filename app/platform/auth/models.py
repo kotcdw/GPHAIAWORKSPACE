@@ -33,6 +33,8 @@ class Session(Base):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Last request the person made (background refreshes excluded); drives the idle sign-out.
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped[User] = relationship("User", back_populates="sessions")
 

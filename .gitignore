@@ -38,3 +38,7 @@ cov-report/
 
 # Security scan reports (regenerate; never commit)
 bandit.json
+
+# Local screenshots and design references (not part of the application)
+/Claude outputs/
+/uxuiimages/

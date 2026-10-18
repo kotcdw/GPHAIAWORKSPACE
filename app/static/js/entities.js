@@ -42,13 +42,13 @@ async function prepareOrganizations(m, fresh = false) {
       ...ports.map((p) => ({ value: p.id, label: p.name }))],
     apply: (params, v) => { if (v === "mine") params.set("mine", "true"); else params.set("port_id", v); } },
     { param: "status", label: "Status", options: ["Pending", "Approved"] },
+    { param: "active", label: "In use", options: [{ value: "true", label: "Active" }, { value: "false", label: "Deactivated" }] },
   ];
   m.fields = [
     { key: "name", label: "Name", required: true },
-    { key: "category", label: "Type", type: "select", options: types.categories,
-      help: `${types.port_categories.join(" and ")} count as ports / sites` },
-    { key: "parent_id", label: "Part of", type: "select", options: entities.map((e) => ({ value: e.id, label: entityLabel(e) })),
-      help: "The port, office or department this entity sits under", display: (r) => (r.parent_name ? entityLink(r.parent_id, r.parent_name) : el("span", { class: "muted" }, "-")) },
+    { key: "category", label: "Type", type: "select", options: types.categories },
+    { key: "parent_id", label: "Part of", type: "select", options: entities.map((e) => ({ value: e.id, label: entityLabel(e) + (e.is_active === false ? " (deactivated)" : "") })),
+      display: (r) => (r.parent_name ? entityLink(r.parent_id, r.parent_name) : el("span", { class: "muted" }, "-")) },
     { key: "contact_name", label: "Contact name" },
     { key: "contact_email", label: "Contact email", type: "email" },
     { key: "contact_phone", label: "Contact phone" },
@@ -56,10 +56,9 @@ async function prepareOrganizations(m, fresh = false) {
     { key: "address", label: "Address / location", type: "textarea", maxLength: 2000 },
     ...(hasPerm("system.reference") ? [
       { key: "plan_destination", label: "Receives the approved Assurance Plan (distribution destination)", type: "checkbox",
-        help: "Set up by administrators. Engagements can name this entity as their responsible site, and the GM Audit distributes its copy here.",
         display: (r) => (r.plan_destination ? `Yes - as "${r.destination_label || r.name}"` : "No") },
       { key: "destination_label", label: "Destination label", maxLength: 60,
-        help: "How the destination appears in distribution, e.g. HQ, PIA Tema, PIA Takoradi. Leave blank to use the name." },
+        help: "e.g. HQ, PIA Tema" },
     ] : []),
     { key: "notes", label: "Notes", type: "textarea" },
   ];
@@ -69,8 +68,9 @@ async function prepareOrganizations(m, fresh = false) {
 // until any are marked, the configured port / site types.
 async function planSites() {
   const { entities } = await loadEntityConfig();
-  const flagged = entities.filter((e) => e.plan_destination);
-  return (flagged.length ? flagged : entities.filter((e) => e.is_port))
+  const live = entities.filter((e) => e.is_active !== false);
+  const flagged = live.filter((e) => e.plan_destination);
+  return (flagged.length ? flagged : live.filter((e) => e.is_port))
     .map((e) => ({ value: e.id, label: e.destination_label ? `${e.destination_label} (${e.name})` : e.name }));
 }
 
@@ -122,8 +122,10 @@ async function renderWorkplaceCard(container) {
       canWriteModule("organizations") ? el("button", { class: "btn small", onclick: () => createModal("organizations", { category: cfgData.types.port_categories[0] }) }, "Create a port") : null);
     return;
   }
-  const ports = ents.filter((e) => e.is_port);
-  const others = ents.filter((e) => !e.is_port);
+  // Deactivated units are not offered, except the one already chosen (shown so the choice is visible).
+  const offer = ents.filter((e) => e.is_active !== false || e.id === state.user.work_entity_id);
+  const ports = offer.filter((e) => e.is_port);
+  const others = offer.filter((e) => !e.is_port);
   const sel = el("select", { id: "workplace", "aria-describedby": "workplace-help" },
     el("option", { value: "" }, "- not set -"),
     ports.length ? el("optgroup", { label: "Ports and sites" }, ...ports.map((e) => el("option", { value: e.id }, e.name))) : null,
@@ -131,8 +133,7 @@ async function renderWorkplaceCard(container) {
   sel.value = state.user.work_entity_id ? String(state.user.work_entity_id) : "";
   const current = ents.find((e) => e.id === state.user.work_entity_id);
   const note = el("div", { class: "help muted", id: "workplace-help" }, current
-    ? `Port / site: ${current.is_port ? current.name : current.port_name || "not under a port"}. Lists can then be filtered to "My port".`
-    : "Choose your port or office (or your department). Lists can then be filtered to \"My port\".");
+    ? `Port: ${current.is_port ? current.name : current.port_name || "none"}` : "");
   const save = el("button", { class: "btn", onclick: async () => {
     try {
       const res = await API.patch("/api/auth/me", { work_entity_id: sel.value ? Number(sel.value) : null });
@@ -153,7 +154,7 @@ async function renderCustomFieldsCard(container) {
   card.append(el("div", { class: "card-head" },
     el("h3", null, el("i", { class: "bi bi-input-cursor-text" }), " Organization fields"),
     el("button", { class: "btn small", onclick: () => customFieldForm(null, repaint) }, el("i", { class: "bi bi-plus-lg" }), " Add field")),
-  el("p", { class: "muted small" }, "Extra inputs on every organization / entity form (for example TIN, region, staff count, contract end date). Retired fields stop appearing; values already entered are kept."));
+  );
   let defs = [];
   try { defs = await API.get("/api/custom-fields?module=organizations&include_inactive=true"); } catch (err) { card.append(el("div", { class: "muted" }, err.message)); return; }
   card.append(dataTable(defs, [

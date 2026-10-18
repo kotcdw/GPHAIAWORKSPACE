@@ -17,10 +17,10 @@ def safe_name(name: str | None) -> str:
 
 
 def check_extension(filename: str) -> None:
-    suffix = Path(filename).suffix.lower()
-    if suffix not in settings.allowed_extensions:
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                            detail=f"File type '{suffix or 'none'}' is not allowed")
+    """The type must be allowed by the upload policy (Configuration > Data & attachments)."""
+    from app.core.upload_policy import check_name
+
+    check_name(filename)
 
 
 def store_encrypted(data: bytes, folder: str, filename: str) -> tuple[str, str]:

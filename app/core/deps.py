@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import timedelta
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -21,13 +22,43 @@ CSRF_HEADER = "x-csrf-token"
 _UNAUTHORIZED = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
 
+_IDLE = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                      detail="You were signed out after a period of inactivity. Sign in again to continue.")
+# Requests the web app sends on a timer (notification counts) carry this header: they do not count as activity.
+BACKGROUND_HEADER = "x-background"
+
+
+def idle_minutes() -> int:
+    from app.core.appconfig import cfg
+
+    try:
+        return int(cfg("session_idle_minutes") or 0)
+    except Exception:  # noqa: BLE001 - configuration unavailable: no idle limit rather than locking everyone out
+        return 0
+
+
 def get_current_session(request: Request, db: DBSession = Depends(get_db)) -> UserSession | None:
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         return None
     session = db.execute(select(UserSession).where(UserSession.token_hash == hash_token(token))).scalar_one_or_none()
-    if session is None or session.revoked or session.expires_at < utcnow():
+    now = utcnow()
+    if session is None or session.revoked or session.expires_at < now:
         return None
+    idle = idle_minutes()
+    last = session.last_activity_at or session.created_at
+    if idle and now - last > timedelta(minutes=idle):
+        # Idle too long: end the session for good (a later request cannot revive it) and record why.
+        session.revoked = True
+        from app.core.audit import log_action
+
+        log_action(db, user_id=session.user_id, request=request, action=f"SESSION_IDLE_TIMEOUT after={idle}min")
+        db.commit()
+        request.state.idle_timeout = True
+        return None
+    if request.headers.get(BACKGROUND_HEADER) != "1" and now - last > timedelta(seconds=20):
+        session.last_activity_at = now  # throttled: at most one write per 20 s per session
+        db.commit()
     return session
 
 
@@ -37,16 +68,32 @@ def get_current_user(
     db: DBSession = Depends(get_db),
 ) -> User:
     if session is None:
-        raise _UNAUTHORIZED
+        raise _IDLE if getattr(request.state, "idle_timeout", False) else _UNAUTHORIZED
     user = db.get(User, session.user_id)
     if user is None:
         raise _UNAUTHORIZED
+    _refuse_writes_for_read_only(request, user)
     # Who is acting: the workflow engine records it with every status change made in this request.
     from app.core.audit import client_ip
     from app.platform.workflow.engine import set_actor
 
     set_actor(db, user.id, client_ip(request))
     return user
+
+
+# A read-only account may still manage its own sign-in, notifications, drafts and saved views.
+_READ_ONLY_ALLOWED = ("/api/auth/", "/api/notifications", "/api/drafts", "/api/views", "/api/export.")
+
+
+def _refuse_writes_for_read_only(request: Request, user: User) -> None:
+    """Server-side guarantee: a Read-only User cannot change anything, whatever a screen offers."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    from app.core.permissions import is_read_only
+
+    if is_read_only(user) and not request.url.path.startswith(_READ_ONLY_ALLOWED):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Your account is read-only: it can view records but not change them")
 
 
 def mfa_enforced() -> bool:

@@ -14,7 +14,6 @@ Evidence handling:
 
 from __future__ import annotations
 
-import hashlib
 import uuid
 from pathlib import Path
 from urllib.parse import quote
@@ -56,27 +55,10 @@ def _safe_name(name: str) -> str:
 
 
 async def _read_upload(file: UploadFile) -> tuple[bytes, str, str]:
-    """Stream an upload (allow-listed type, size limit). Returns (data, sha256, safe original name)."""
-    original = _safe_name(file.filename or "upload.bin")
-    suffix = Path(original).suffix.lower()
-    if suffix not in settings.allowed_extensions:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"File type '{suffix or 'none'}' is not allowed",
-        )
-    limit = _max_bytes()
-    digest = hashlib.sha256()
-    chunks: list[bytes] = []
-    size = 0
-    while chunk := await file.read(_CHUNK):
-        size += len(chunk)
-        if size > limit:
-            raise HTTPException(status_code=413, detail=f"File exceeds the {settings.max_upload_mb} MB limit")
-        digest.update(chunk)
-        chunks.append(chunk)
-    if size == 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty")
-    return b"".join(chunks), digest.hexdigest(), original
+    """Read an upload under the upload policy (type, size, content). Returns (data, sha256, safe original name)."""
+    from app.core.upload_policy import read_upload
+
+    return await read_upload(file)
 
 
 def _get_audit_or_404(db: DBSession, audit_id: int) -> Audit:

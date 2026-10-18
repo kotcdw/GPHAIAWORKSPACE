@@ -9,7 +9,7 @@ generated for the prioritised entities) -> audits -> findings and actions shown 
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -71,11 +71,13 @@ def _names(db: DBSession, ids) -> dict[int, str]:  # noqa: ANN001
 class OrgTree:
     """The internal organisation (types listed under Configuration > Organizations > Org Structure types)."""
 
-    def __init__(self, db: DBSession) -> None:
+    def __init__(self, db: DBSession, include_inactive: bool = False) -> None:
         types = {t.lower() for t in (cfg("org_structure_categories") or [])}
         rows = list(db.execute(select(Organization).order_by(Organization.name)).scalars())
         self.all = {o.id: o for o in rows}
-        self.nodes = {o.id: o for o in rows if (o.category or "").lower() in types and o.status.value != "Inactive"}
+        # Deactivated units leave the tree (coverage, pickers) but keep their names on the records that use them.
+        self.typed = {o.id: o for o in rows if (o.category or "").lower() in types}
+        self.nodes = {i: o for i, o in self.typed.items() if include_inactive or o.is_active}
         self.kids: dict[int | None, list[int]] = defaultdict(list)
         for o in self.nodes.values():
             parent = o.parent_id if o.parent_id in self.nodes else None
@@ -97,10 +99,10 @@ class OrgTree:
 
     def path(self, oid: int) -> list[Organization]:
         out, cur, seen = [], oid, set()
-        while cur and cur in self.nodes and cur not in seen:
+        while cur and cur in self.typed and cur not in seen:
             seen.add(cur)
-            out.append(self.nodes[cur])
-            cur = self.parent(cur)
+            out.append(self.typed[cur])
+            cur = self.typed[cur].parent_id
         return list(reversed(out))
 
     def ordered(self) -> list[tuple[int, int]]:
@@ -127,9 +129,14 @@ def _pairs(db: DBSession, tree: OrgTree) -> dict[int, list[int]]:
 
 
 @router.get("/api/org-structure")
-def org_structure(db: DBSession = Depends(get_db), _: User = Staff) -> dict:
-    """Org Structure as a tree, with each unit's processes and auditable entities."""
-    tree = OrgTree(db)
+def org_structure(include_inactive: bool = False, db: DBSession = Depends(get_db), _: User = Staff) -> dict:
+    """Org Structure as a tree, with each unit's head, people, processes and auditable entities."""
+    tree = OrgTree(db, include_inactive=include_inactive)
+    people: dict[int, int] = defaultdict(int)
+    for wid, in db.execute(select(User.work_entity_id).where(User.work_entity_id.is_not(None),
+                                                             User.is_active.is_(True))).all():
+        people[wid] += 1
+    heads = _names(db, [o.head_user_id for o in tree.nodes.values()])
     pairs = _pairs(db, tree)
     entities: dict[int, int] = defaultdict(int)
     for oid, in db.execute(select(EntityOrgUnit.org_id).join(EntityUnit, EntityUnit.id == EntityOrgUnit.entity_id)
@@ -142,8 +149,11 @@ def org_structure(db: DBSession = Depends(get_db), _: User = Staff) -> dict:
         rows.append({"id": o.id, "org_ref": o.org_ref, "name": o.name, "category": o.category, "depth": depth,
                      "parent_id": tree.parent(oid), "children": len(tree.kids.get(oid, [])),
                      "processes": [{"id": p, "name": procs.get(p, "")} for p in pairs.get(oid, [])],
-                     "entities": entities.get(oid, 0), "status": o.status.value})
-    return {"types": cfg("org_structure_categories"), "items": rows}
+                     "entities": entities.get(oid, 0), "status": o.status.value, "is_active": o.is_active,
+                     "head_user_id": o.head_user_id, "head_name": heads.get(o.head_user_id),
+                     "people": people.get(oid, 0)})
+    inactive = sum(1 for o in tree.typed.values() if not o.is_active)
+    return {"types": cfg("org_structure_categories"), "items": rows, "inactive_count": inactive}
 
 
 # ==================================================================== Process library
@@ -186,7 +196,8 @@ def _link_counts(p: Process) -> dict:
 
 def _set_orgs(db: DBSession, p: Process, org_ids: list[int]) -> None:
     tree = OrgTree(db)
-    bad = [i for i in org_ids if i not in tree.nodes]
+    kept = {o.id for o in p.org_units}  # a link to a unit deactivated since may stay; new links need an active unit
+    bad = [i for i in org_ids if i not in tree.nodes and i not in kept]
     if bad:
         raise field_error("org_ids", f"not org units of the Org Structure: {bad}")
     db.execute(delete(ProcessOrgUnit).where(ProcessOrgUnit.process_id == p.id))
@@ -441,7 +452,19 @@ def _entity_row(e: EntityUnit, tree: OrgTree, procs: dict[int, str], links: dict
         "planned_audits": planned.get(e.id, 0), "open_findings": findings.get(e.id, 0),
         "mapped": bool(org_ids), "archived_at": e.archived_at.isoformat() if e.archived_at else None,
         "owner_email": e.owner_email, "description": e.description,
+        "entity_type": _type_of(e, org_ids, proc_ids),
+        "definition_status": "Retired" if not e.is_active else (e.definition_status or "Ready"),
+        "scope": e.scope or "", "objectives": e.objectives or "", "rationale": e.rationale or "",
+        "effective_from": e.effective_from.isoformat() if e.effective_from else None,
+        "effective_to": e.effective_to.isoformat() if e.effective_to else None,
+        "updated_at": e.updated_at.isoformat() if e.updated_at else None,
     }
+
+
+def _type_of(e: EntityUnit, org_ids: list[int], proc_ids: list[int]) -> str:
+    if e.entity_type:
+        return e.entity_type
+    return "Process + unit" if proc_ids and org_ids else ("Process" if proc_ids else "Org unit")
 
 
 def _links(db: DBSession, ids: list[int]) -> dict:
@@ -643,7 +666,7 @@ def define_universe(payload: DefineIn, request: Request, db: DBSession = Depends
     archived = 0
     for e in active:
         if e.id not in kept:
-            e.is_active, e.archived_at = False, now
+            e.is_active, e.archived_at, e.definition_status = False, now, "Retired"
             archived += 1
     db.flush()
     log_action(db, user_id=user.id, action=f"UNIVERSE_DEFINE kept={len(kept)} created={len(created)} "
@@ -672,6 +695,18 @@ def get_entity(entity_id: int, db: DBSession = Depends(get_db), _: User = Staff)
     own = _object_links(db, "unit", e.id)
     via = [{"process": pr.name, **_object_links(db, "process", pr.id)} for pr in entity_processes(db, e)]
     row["links"] = {"own": own, "processes": via}
+    from app.domains.assurance.universe.workspace import entity_risk_counts, entity_usage
+
+    row["usage"] = entity_usage(db, e)
+    row["risk_counts"] = entity_risk_counts(db, [e.id], {e.id: [p["id"] for p in row["processes"]]})[e.id]
+    owner = db.execute(select(User).where(func.lower(User.email) == (e.owner_email or "").lower())).scalars().first() \
+        if e.owner_email else None
+    row["owner"] = (owner.full_name or owner.username) if owner else e.owner_email
+    open_ara = db.execute(select(AuditRiskAssessment).join(AraEntity, AraEntity.ara_id == AuditRiskAssessment.id)
+                          .where(AraEntity.entity_id == e.id, AuditRiskAssessment.status != "Completed")
+                          .order_by(AuditRiskAssessment.created_at.desc())).scalars().first()
+    row["open_assessment"] = {"id": open_ara.id, "ref": open_ara.ref, "name": open_ara.name,
+                              "status": open_ara.status} if open_ara else None
     row.update({"created_at": e.created_at.isoformat(),
                 "defined_at": e.defined_at.isoformat() if e.defined_at else None,
                 "risk_likelihood": e.risk_likelihood, "risk_impact": e.risk_impact,
@@ -684,42 +719,121 @@ class EntityUpdate(BaseModel):
     audit_frequency_months: int | None = None  # 0 = back to the default for its rating
     owner_email: OptEmail = None
     description: str | None = Field(None, max_length=20000)
-    status: str | None = None
-    org_ids: list[int] | None = Field(None, max_length=50)
+    status: str | None = None  # Active | Archived (kept for older screens: Ready | Retired)
+    org_ids: list[int] | None = Field(None, max_length=200)
+    process_ids: list[int] | None = Field(None, max_length=200)
+    entity_type: str | None = Field(None, max_length=40)
+    definition_status: str | None = None
+    scope: str | None = Field(None, max_length=20000)
+    objectives: str | None = Field(None, max_length=20000)
+    rationale: str | None = Field(None, max_length=20000)
+    effective_from: date | None = None
+    effective_to: date | None = None
+    allow_duplicate: bool = False
+
+
+LABELS = {"name": "Name", "entity_type": "Type", "definition_status": "Status", "owner_email": "Business owner",
+          "audit_frequency_months": "Audit frequency", "effective_from": "Effective from",
+          "effective_to": "Effective to"}
+TEXTS = {"scope": "Scope", "objectives": "Objectives", "rationale": "Rationale", "description": "Description"}
 
 
 @router.patch("/api/auditable-entities/{entity_id}")
 def update_entity(entity_id: int, payload: EntityUpdate, request: Request, db: DBSession = Depends(get_db),
                   user: User = Staff) -> dict:
+    from app.domains.assurance.universe.workspace import (
+        check_definition,
+        check_duplicate,
+        history,
+        resolve_links,
+        write_links,
+    )
+
     ensure_perm(user, *LIBRARY)
     e = _entity(db, entity_id)
-    sent = payload.model_fields_set
-    if payload.name is not None:
-        e.name = payload.name.strip()
+    sent = payload.model_fields_set - {"allow_duplicate"}
+    before = {k: getattr(e, k) for k in (*LABELS, *TEXTS)}
+    before["definition_status"] = e.definition_status if e.is_active else "Retired"
+    was_active = e.is_active
+    if payload.status is not None:  # older screens: Active / Archived
+        if payload.status not in ("Active", "Archived"):
+            raise field_error("status", "must be Active or Archived")
+        payload.definition_status = "Draft" if payload.status == "Active" else "Retired"
+        sent = sent | {"definition_status"}
+    links_before = _links(db, [e.id])
+    old_orgs, old_procs = links_before["orgs"].get(e.id, []), links_before["procs"].get(e.id, [])
+    name = payload.name.strip() if payload.name is not None else e.name
+    etype = payload.entity_type if payload.entity_type is not None else _type_of(e, old_orgs, old_procs)
+    status_ = payload.definition_status if "definition_status" in sent else before["definition_status"]
+    owner = (str(payload.owner_email) if payload.owner_email else None) if "owner_email" in sent else e.owner_email
+    scope = payload.scope if payload.scope is not None else (e.scope or "")
+    eff_from = payload.effective_from if "effective_from" in sent else e.effective_from
+    eff_to = payload.effective_to if "effective_to" in sent else e.effective_to
+    if sent & {"name", "entity_type", "definition_status", "owner_email", "scope", "effective_from", "effective_to"}:
+        check_definition(db, name=name, entity_type=etype, status_=status_, owner=owner, scope=scope,
+                         effective_from=eff_from, effective_to=eff_to, exclude_id=e.id,
+                         check_name=name.lower() != (e.name or "").lower() or (not was_active and status_ != "Retired"),
+                         check_type=payload.entity_type is not None and payload.entity_type != e.entity_type)
     if "audit_frequency_months" in sent:
         m = payload.audit_frequency_months or None
         if m is not None and m not in FREQUENCIES:
             raise field_error("audit_frequency_months", "choose every 1, 2, 3, 4 or 5 years")
         e.audit_frequency_months = m
-    if "owner_email" in sent:
-        e.owner_email = str(payload.owner_email) if payload.owner_email else None
-    if payload.description is not None:
-        e.description = payload.description
-    if payload.status is not None:
-        if payload.status not in ("Active", "Archived"):
-            raise field_error("status", "must be Active or Archived")
-        e.is_active = payload.status == "Active"
-        e.archived_at = None if e.is_active else utcnow()
-    if payload.org_ids is not None:  # map an entity carried over from the old universe onto the Org Structure
+    e.name, e.owner_email = name, owner
+    if payload.entity_type is not None:
+        e.entity_type = etype
+    for key in ("scope", "objectives", "rationale", "description"):
+        value = getattr(payload, key)
+        if value is not None:
+            setattr(e, key, value.strip() if key != "description" else value)
+    e.effective_from, e.effective_to = eff_from, eff_to
+    if "definition_status" in sent:
+        e.definition_status = status_
+        e.is_active = status_ != "Retired"
+        e.archived_at = None if e.is_active else (e.archived_at or utcnow())
+    if payload.org_ids is not None or payload.process_ids is not None:
         tree = OrgTree(db)
-        bad = [i for i in payload.org_ids if i not in tree.nodes]
-        if bad or not payload.org_ids:
-            raise field_error("org_ids", "choose at least one org unit of the Org Structure")
-        db.execute(delete(EntityOrgUnit).where(EntityOrgUnit.entity_id == e.id))
-        for oid in dict.fromkeys(payload.org_ids):
-            db.add(EntityOrgUnit(entity_id=e.id, org_id=oid))
-        e.org_unit_id = payload.org_ids[0]
-    log_action(db, user_id=user.id, action=f"ENTITY_UPDATE {e.code} [{', '.join(sorted(sent))}]", request=request)
+        orgs_in = payload.org_ids if payload.org_ids is not None else old_orgs
+        procs_in = payload.process_ids if payload.process_ids is not None else old_procs
+        orgs, pairs = resolve_links(db, tree, orgs_in, procs_in, keep_orgs=set(old_orgs), keep_procs=set(old_procs))
+        if e.is_active:
+            check_duplicate(db, orgs, pairs, payload.allow_duplicate, exclude_id=e.id)
+        write_links(db, e, orgs, pairs)
+        if orgs[0] in tree.nodes:  # the entity category follows its first unit's port or office
+            e.location_id = _location_for(db, tree, orgs[0]).id
+        names = {o.id: o.name for o in db.execute(select(Organization).where(
+            Organization.id.in_(set(orgs) | set(old_orgs) or {0}))).scalars()}
+        pnames = {p.id: p.name for p in db.execute(select(Process).where(
+            Process.id.in_({p for p, _ in pairs} | set(old_procs) or {0}))).scalars()}
+        added = [names.get(o, "") for o in orgs if o not in old_orgs] + \
+            [pnames.get(p, "") for p, _ in pairs if p not in old_procs]
+        removed = [names.get(o, "") for o in old_orgs if o not in orgs] + \
+            [pnames.get(p, "") for p in old_procs if p not in {x for x, _ in pairs}]
+        if added or removed:
+            history(db, e, user, "Links: " + "; ".join(
+                ([f"added {', '.join(added)}"] if added else []) + ([f"removed {', '.join(removed)}"] if removed
+                                                                    else []))[:480], request)
+    elif e.is_active and not was_active:  # reactivated: must not duplicate an active entity
+        check_duplicate(db, old_orgs, [(p, 0) for p in old_procs], payload.allow_duplicate, exclude_id=e.id)
+    if not before["entity_type"]:
+        before["entity_type"] = _type_of(e, old_orgs, old_procs)
+    changes = []
+    for key, label in LABELS.items():
+        now_val = e.definition_status if key == "definition_status" and e.is_active else (
+            "Retired" if key == "definition_status" else getattr(e, key))
+        if key in sent and before[key] != now_val:
+            old_txt, new_txt = before[key], now_val
+            if key == "owner_email":
+                names = {(u.email or "").lower(): u.full_name or u.username for u in db.execute(select(User).where(
+                    func.lower(User.email).in_([(x or "").lower() for x in (old_txt, new_txt)]))).scalars()}
+                old_txt, new_txt = (names.get((x or "").lower(), x) for x in (old_txt, new_txt))
+            changes.append(f"{label}: {old_txt or '-'} -> {new_txt or '-'}")
+    changes += [f"Changed {label.lower()}" for key, label in TEXTS.items()
+                if key in sent and (before[key] or "") != (getattr(e, key) or "")]
+    if changes:
+        history(db, e, user, "; ".join(changes)[:490], request)
+    log_action(db, user_id=user.id, action=f"ENTITY_UPDATE {e.code} [{', '.join(sorted(sent))}]", request=request,
+               entity_type="auditable_entity", entity_id=e.id)
     db.commit()
     return get_entity(entity_id, db, user)
 
@@ -972,12 +1086,14 @@ def _ara_out(db: DBSession, a: AuditRiskAssessment, full: bool = False) -> dict:
     return out
 
 
-def _check_members(db: DBSession, entity_ids: list[int] | None, factor_ids: list[int] | None) -> None:
+def _check_members(db: DBSession, entity_ids: list[int] | None, factor_ids: list[int] | None,
+                   current: set[int] | None = None) -> None:
     if entity_ids is not None:
-        found = {e for (e,) in db.execute(select(EntityUnit.id).where(EntityUnit.id.in_(entity_ids),
-                                                                       EntityUnit.is_active.is_(True))).all()}
-        if set(entity_ids) - found:
-            raise field_error("entity_ids", "include active auditable entities only")
+        found = {e for (e,) in db.execute(select(EntityUnit.id).where(
+            EntityUnit.id.in_(entity_ids), EntityUnit.is_active.is_(True),
+            EntityUnit.definition_status == "Ready")).all()}
+        if set(entity_ids) - found - (current or set()):
+            raise field_error("entity_ids", "include Ready auditable entities only (Audit universe > Entities)")
     if factor_ids is not None:
         found = {f for (f,) in db.execute(select(AssessmentFactor.id).where(
             AssessmentFactor.id.in_(factor_ids), AssessmentFactor.is_active.is_(True))).all()}
@@ -1125,7 +1241,8 @@ def configure_ara(ara_id: int, payload: AraConfig, request: Request, db: DBSessi
         if db.execute(select(AuditRiskAssessment.id).where(AuditRiskAssessment.name == payload.name.strip())).first():
             raise field_error("name", "another assessment already has this name")
         a.name = payload.name.strip()
-    _check_members(db, payload.entity_ids, payload.factor_ids)
+    current = {e for (e,) in db.execute(select(AraEntity.entity_id).where(AraEntity.ara_id == a.id)).all()}
+    _check_members(db, payload.entity_ids, payload.factor_ids, current)
     _set_members(db, a, payload.entity_ids, payload.factor_ids)
     log_action(db, user_id=user.id, action=f"ARA_CONFIGURE {a.ref}", request=request)
     db.commit()

@@ -595,8 +595,9 @@ def sites(db: DBSession) -> list[dict]:
     from app.platform.organizations.router import Index
 
     idx = Index(db)
-    flagged = [o for o in idx.rows.values() if o.plan_destination]
-    rows = flagged or [o for o in idx.rows.values() if idx.is_port(o)]
+    live = [o for o in idx.rows.values() if o.is_active]  # deactivated units no longer receive the plan
+    flagged = [o for o in live if o.plan_destination]
+    rows = flagged or [o for o in live if idx.is_port(o)]
     out = [{"id": o.id, "name": o.name, "destination": o.destination_label or o.name, "configured": bool(flagged)}
            for o in rows]
     return sorted(out, key=lambda x: x["destination"].lower())

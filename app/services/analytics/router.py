@@ -360,7 +360,9 @@ def analytics(db: DBSession, fy: int) -> Analytics:
 def get_analytics(
     fiscal_year: int | None = None, db: DBSession = Depends(get_db), user: User = Governance
 ) -> Analytics:
-    return analytics(db, fiscal_year or utcnow().year)
+    from app.core.regional import current_fiscal_year
+
+    return analytics(db, fiscal_year or current_fiscal_year())
 
 
 # ------------------------------------------------------------------ global search

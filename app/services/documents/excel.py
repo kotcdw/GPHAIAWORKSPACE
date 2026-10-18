@@ -40,7 +40,9 @@ def workbook(sheets: Iterable[tuple[str, Sequence[str], Iterable[Sequence]]], *,
         for r, row in enumerate(rows, start + 1):
             for col, value in enumerate(row, 1):
                 if isinstance(value, datetime):
-                    value = value.strftime("%d %b %Y")
+                    from app.core.regional import fmt_date
+
+                    value = fmt_date(value)
                 cell = ws.cell(row=r, column=col, value=value)
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
                 widths[col - 1] = max(widths[col - 1], min(len(str(value or "")), 60))

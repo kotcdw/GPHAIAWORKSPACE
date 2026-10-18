@@ -42,6 +42,24 @@ def _counts(engine) -> dict[str, int]:  # noqa: ANN001
     return out
 
 
+def _record(snapshot: str, ok: bool, checks: list[dict]) -> None:
+    """Keep the result in the backup check history (Administration > Backups) and the audit trail."""
+    from app.core.audit import log_action
+    from app.platform.backups.service import record_check
+
+    db = SessionLocal()
+    try:
+        record_check(db, snapshot, {"ok": ok, "checks": checks}, kind="restore_test")
+        log_action(db, user_id=None, outcome="success" if ok else "failure",
+                   action=f"BACKUP_RESTORE_TEST snapshot={snapshot} result={'passed' if ok else 'failed'}")
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 - the printed result still stands
+        db.rollback()
+        print(f"      (The result could not be recorded in the application: {exc.__class__.__name__})")
+    finally:
+        db.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--target-db", help="empty database to restore into (default: <live>_restore_test)")
@@ -88,6 +106,8 @@ def main() -> int:
         lines = [ln for ln in (result.stdout + result.stderr).splitlines()
                  if "Error" in ln or "Refusing" in ln or "Cannot" in ln][-3:]
         print("[2/3] Restore FAILED:\n      " + "\n      ".join(ln[:300] for ln in lines))
+        _record(enc.name, False, [{"name": "Decrypts with the current key", "ok": True, "detail": ""},
+                                  {"name": "Restores into a test database", "ok": False, "detail": target_name}])
         return 1
     print(f"[2/3] Restored into {target_name}")
 
@@ -105,10 +125,17 @@ def main() -> int:
         print("[3/3] MISMATCH (rows may have been added while the check ran - run it again at a quiet time):")
         for t, n, r in bad:
             print(f"      {t}: live {n}, restored {r}")
+        _record(enc.name, False, [{"name": "Restores into a test database", "ok": True, "detail": target_name},
+                                  {"name": "Row counts match the live database", "ok": False,
+                                   "detail": ", ".join(t for t, _, _ in bad[:5])}])
         return 1
     print(f"[3/3] All {len(live)} tables match ({total} rows). Backup and restore verified "
           f"{datetime.now():%d %b %Y %H:%M}.")
     print(f"      You can now drop the test database {target_name}.")
+    _record(enc.name, True, [{"name": "Decrypts with the current key", "ok": True, "detail": ""},
+                             {"name": "Restores into a test database", "ok": True, "detail": target_name},
+                             {"name": "Row counts match the live database", "ok": True,
+                              "detail": f"{total} rows in {len(live)} tables"}])
     return 0
 
 

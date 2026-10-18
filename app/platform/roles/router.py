@@ -163,8 +163,11 @@ def assign_job_role(user_id: int, payload: AssignIn, request: Request, db: DBSes
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     service.check_can_manage(actor, target, code)
     service.guard_last_super_admin(db, target, code)
+    old_code = perms.job_role_of(target)
     tier_changed = service.apply_role(target, code, payload.approval_level)
-    revoked = revoke_sessions(db, target.id) if tier_changed and target.id != actor.id else 0
+    # Any change of role signs the person out, so the new access applies at once (e.g. Auditor -> Read-only User).
+    changed = tier_changed or old_code != code
+    revoked = revoke_sessions(db, target.id) if changed and target.id != actor.id else 0
     role = perms.JOB_ROLES_BY_CODE[code]
     log_action(db, user_id=actor.id, request=request,
                action=f"JOB_ROLE user={target.id} role={code} tier={role.tier.value} "
@@ -172,3 +175,33 @@ def assign_job_role(user_id: int, payload: AssignIn, request: Request, db: DBSes
     db.commit()
     return {"user_id": target.id, "job_role": code, "job_role_name": role.name, "role": role.tier.value,
             "review_level": target.review_level.value if target.review_level else None, "sessions_ended": revoked}
+
+
+@router.get("/api/roles/matrix")
+def access_matrix(_: User = CanView) -> dict:
+    """Module x action view of every role's effective permissions (defaults with saved changes applied)."""
+    from app.platform.roles import matrix as access
+
+    current = perms.matrix()
+    columns = []
+    for r in perms.JOB_ROLES:
+        have = current.get(r.code, set())
+        variants = [(r.code, r.name, have)]
+        if r.code == "manager":
+            variants = [("manager", "Manager (Unit Head, Audit Manager, PIA)", have - perms.CAE_ONLY),
+                        ("manager_cae", "Manager at GM Audit (CAE) level", have)]
+        for code, name, granted in variants:
+            columns.append({"code": code, "name": name, "tier": r.tier.value, "read_only": r.code == "read_only",
+                            "granted": granted})
+    rows = []
+    for row in access.ROWS:
+        cells = {}
+        for action in access.ACTIONS:
+            tokens = row[action]
+            cells[action] = {"permissions": tokens, "roles": [
+                c["code"] for c in columns
+                if tokens and access.cell_granted(tokens, c["granted"], c["tier"], c["read_only"], action)]}
+        rows.append({"module": row["module"], "cells": cells, "delete": row["delete"]})
+    return {"actions": list(access.ACTIONS),
+            "roles": [{k: v for k, v in c.items() if k != "granted"} for c in columns],
+            "rows": rows, "labels": {p: label for p, (_, label) in perms.PERMISSIONS.items()}}

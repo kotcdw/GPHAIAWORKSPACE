@@ -82,6 +82,8 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     "grc.policy": ("Risk & compliance", "Policy Manager: draft and publish policies, run attestations"),
     "grc.policy_approve": ("Risk & compliance", "Approve policies (never one's own draft)"),
     "grc.assets": ("Risk & compliance", "Asset Inventory: assets, systems and third parties"),
+    # data
+    "data.export": ("Data", "Export lists and registers to Excel or CSV"),
     # services
     "ai.use": ("Services", "Use AI drafting assistance (only when an administrator has enabled the AI Service)"),
 }
@@ -113,7 +115,7 @@ class JobRole:
     locked: bool = False  # permissions cannot be changed (the Super Administrator always holds everything)
 
 
-# The five standard roles (role-based access control). The Super Administrator can change what Administrator,
+# The standard roles (role-based access control). The Super Administrator can change what Administrator,
 # Manager, Auditor and Audit Client may do on the Roles & permissions screen; their own role is fixed.
 JOB_ROLES: list[JobRole] = [
     JobRole("super_admin", "Super Administrator", Role.Admin, None,
@@ -124,7 +126,8 @@ JOB_ROLES: list[JobRole] = [
             "Runs the platform day to day: user accounts, configuration, reference data, workflow rules, "
             "methodology libraries, backups and the audit log. Does not perform or approve audit work.",
             frozenset((_PLATFORM - SUPER_ONLY) | _METHOD | {"committee.record", "followup.report", "governance.view",
-                                                            "governance.charter", "grc.view", "grc.manage"}),
+                                                            "governance.charter", "grc.view", "grc.manage",
+                                                            "data.export"}),
             icon="gear-fill"),
     JobRole("manager", "Manager", Role.Auditor, ReviewLevel.Manager,
             "Unit Heads, Audit Managers, Port Internal Auditors and the GM Audit, each with that approval level. "
@@ -135,17 +138,22 @@ JOB_ROLES: list[JobRole] = [
                 "oversight.resources", "oversight.qaip", "oversight.reporting", "audit.create", "audit.memo_approve",
                 "audit.close", "report.review", "report.approve", "quality.review", "followup.manage",
                 "followup.validate", "governance.view", "committee.record", "followup.report",
-                "governance.charter", "proficiency.manage", "grc.view", "grc.risk"}),
+                "governance.charter", "proficiency.manage", "grc.view", "grc.risk", "data.export"}),
             icon="person-badge-fill"),
     JobRole("auditor", "Auditor", Role.Auditor, None,
             "Senior Auditors, Auditors and Audit Clerks: plan and perform assigned engagements, test controls, "
             "file working papers and evidence, raise findings and validate remediation.",
-            frozenset(_FIELD | _REVIEW | {"audit.create", "followup.validate", "grc.view"}),
+            frozenset(_FIELD | _REVIEW | {"audit.create", "followup.validate", "grc.view", "data.export"}),
             icon="clipboard-check-fill"),
+    JobRole("read_only", "Read-only User", Role.Auditor, None,
+            "Sees audit work in their scope (plans, audits, findings, reports, follow-up and registers) but cannot "
+            "create, change, approve or delete anything. For observers, inspectors and staff who only need to read. "
+            "Exporting is off unless an administrator grants it.",
+            frozenset({"governance.view", "grc.view"}), icon="eye-fill"),
     JobRole("audit_client", "Audit Client", Role.Auditee, None,
             "Management and staff of audited units (auditees): answer evidence requests, respond to findings, "
             "agree and update actions, attest to policies and keep their own risks and controls current.",
-            frozenset({"auditee.respond"}), icon="building"),
+            frozenset({"auditee.respond", "data.export"}), icon="building"),
 ]
 JOB_ROLE_CODES = [r.code for r in JOB_ROLES]
 # Job roles used before the five standard roles; old accounts and links keep working.
@@ -179,6 +187,11 @@ def job_role_of(user) -> str:  # noqa: ANN001
 
 def is_super_admin(user) -> bool:  # noqa: ANN001
     return user is not None and job_role_of(user) == "super_admin"
+
+
+def is_read_only(user) -> bool:  # noqa: ANN001
+    """Read-only accounts may sign in and read, but every change is refused by the server."""
+    return user is not None and job_role_of(user) == "read_only"
 
 
 def is_cae(user) -> bool:  # noqa: ANN001

@@ -32,6 +32,22 @@ class AppConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class AppConfigHistory(Base):
+    """Every change to a setting: old and new value (JSON), who, when and why. Append-only (database triggers)."""
+
+    __tablename__ = "app_config_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(10), nullable=False)  # update | reset
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    changed_by: Mapped[int | None] = mapped_column(nullable=True)
+    changed_by_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, index=True)
+
+
 @dataclass(frozen=True)
 class Rule:
     key: str
@@ -55,7 +71,50 @@ class Rule:
         return self.default
 
 
+# Regional settings: chosen lists (never free text) so every screen, export and report can rely on them.
+TIME_ZONES = ["Africa/Accra", "Africa/Abidjan", "Africa/Lagos", "Africa/Lome", "Africa/Johannesburg",
+              "Africa/Nairobi", "Europe/London", "UTC"]
+DATE_FORMATS = ["DD/MM/YYYY", "DD MMM YYYY", "DD-MM-YYYY", "YYYY-MM-DD", "MM/DD/YYYY"]
+WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
 RULES: list[Rule] = [
+    # --- regional settings
+    Rule("time_zone", "Time zone", "Regional", "text",
+         "Used for every date and time shown in the workspace, in exports and in reports. Ghana: Africa/Accra "
+         "(GMT, no daylight saving).", default="Africa/Accra", options=TIME_ZONES),
+    Rule("date_format", "Date format", "Regional", "text",
+         "How dates are written everywhere, e.g. 18/10/2026 (DD/MM/YYYY) or 18 Oct 2026 (DD MMM YYYY).",
+         default="DD/MM/YYYY", options=DATE_FORMATS),
+    Rule("time_format", "Time format", "Regional", "text", "24-hour (14:30) or 12-hour (2:30 PM).",
+         default="24-hour", options=["24-hour", "12-hour"]),
+    Rule("fiscal_year_start_month", "First month of the fiscal year", "Regional", "int",
+         "1 = January. GPHA follows the calendar year (January to December). A fiscal year is named after the "
+         "calendar year in which it starts.", default=1, min=1, max=12),
+    Rule("working_days", "Working days", "Regional", "list",
+         "Days counted for working-day deadlines and SLA time limits (public holidays are listed under Follow-up "
+         "& reporting).", default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], options=WEEKDAYS),
+    Rule("language", "Language", "Regional", "text", "The workspace is available in English.",
+         default="English", options=["English"]),
+    # --- data and attachments (the server settings in .env remain the ceiling; administrators can tighten them)
+    Rule("attachment_max_mb", "Largest file that can be attached (MB)", "Data & attachments", "int",
+         "Working papers, evidence, remediation evidence and policy files. Cannot exceed the server limit.",
+         default_attr="max_upload_mb", min=1, max=500),
+    Rule("attachment_file_types", "File types that can be attached", "Data & attachments", "list",
+         "Only these types are accepted. Programs and scripts are never accepted.",
+         default_attr="upload_allowed_extensions", options=sorted(settings.allowed_extensions)),
+    Rule("attachment_check_content", "Check that each file's content matches its type", "Data & attachments", "bool",
+         "Refuses, for example, a program renamed to .pdf.", default=True),
+    Rule("import_max_rows", "Most rows in one import file", "Data & attachments", "int", default=2000, min=10,
+         max=5000),
+    Rule("import_max_mb", "Largest import file (MB)", "Data & attachments", "int", default=5, min=1, max=20),
+    # --- backups (the server setting GPHA_BACKUP_INTERVAL_HOURS=0 switches the schedule off entirely)
+    Rule("backup_interval_hours", "Hours between automatic backups (0 = paused)", "Backups", "int",
+         "Each backup is checked automatically when it finishes.", default_attr="backup_interval_hours", min=0,
+         max=168),
+    Rule("backup_retention", "Backups to keep", "Backups", "int", "Older backups are removed automatically.",
+         default_attr="backup_retention", min=1, max=90),
+    Rule("backup_include_attachments", "Include attachments", "Backups", "bool",
+         "Working papers, evidence and other uploaded files. They stay encrypted in the backup.", default=True),
     # --- audit workflow
     Rule("require_report_to_close", "Require an issued report before an audit can be closed", "Audit workflow", "bool",
          "IIA GIAS 15.1: every engagement ends with a final communication.", default_attr="require_report_to_close"),
@@ -178,6 +237,9 @@ RULES: list[Rule] = [
          "One per line. Organizations of these types form the org tree used to define the audit universe; the rest "
          "(vendors, regulators and other external parties) stay out of it.",
          default=["Port", "Head Office", "Department", "Unit", "Section"]),
+    Rule("universe_entity_types", "Auditable entity types", "Audit methodology", "list",
+         "One per line. Offered when an auditable entity is defined.",
+         default=["Org unit", "Process", "Process + unit", "IT system", "Third party", "Project / programme"]),
     Rule("port_categories", "Entity types that count as a port or site", "Organizations", "list",
          "One per line. Users pick one of these as where they work; every entity is filed under the port it sits in.",
          default=["Port", "Head Office"]),
@@ -199,6 +261,16 @@ RULES: list[Rule] = [
          "on for themselves in their profile.", default_attr="mfa_enforced"),
     Rule("login_rate_limit_per_minute", "Sign-in attempts allowed per computer per minute (0 = no limit)",
          "Security", "int", default_attr="login_rate_limit_per_minute", min=0, max=1000),
+    Rule("session_max_hours", "Longest sign-in session (hours)", "Security", "int",
+         "After this, everyone signs in again even when active.", default_attr="session_ttl_hours", min=1, max=72),
+    Rule("login_max_attempts", "Failed sign-ins before an account locks", "Security", "int",
+         default_attr="login_max_attempts", min=3, max=20),
+    Rule("login_lockout_minutes", "Lockout period (minutes)", "Security", "int",
+         default_attr="login_lockout_minutes", min=1, max=1440),
+    Rule("password_min_length", "Shortest password allowed", "Security", "int", default=8, min=8, max=64),
+    Rule("session_idle_minutes", "Sign users out after this many minutes without activity (0 = never)", "Security",
+         "int", "Applies to every account. A warning appears one minute before the sign-out. Background refreshes "
+         "(notification counts) do not count as activity.", default=10, min=0, max=480),
     Rule("framework_types", "Kinds of framework in the Frameworks & controls library", "Audit methodology", "list",
          default=["Control framework (e.g. COSO)", "Risk management standard (e.g. ISO 31000)",
                   "IT governance framework (e.g. COBIT)", "Law or regulation", "GPHA policy or procedure"]),

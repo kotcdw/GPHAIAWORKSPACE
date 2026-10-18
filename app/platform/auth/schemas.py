@@ -39,6 +39,9 @@ class MeOut(BaseModel):
     mfa_setup_required: bool = False
     # Fine-grained permissions of the user's job role (drive what the screens offer).
     permissions: list[str] = []
+    # Minutes without activity before the session ends (0 = no limit); the web app warns a minute before.
+    idle_timeout_minutes: int = 0
+    regional: dict = {}
 
 
 class MfaCode(BaseModel):

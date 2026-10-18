@@ -57,7 +57,7 @@ async function renderAppsPage() {
   viewRoot.append(viewHeader("Apps & customization", [
     el("button", { class: "btn small secondary", onclick: () => renderAppsPage() }, "Discard changes"),
     el("button", { class: "btn small", onclick: save }, el("i", { class: "bi bi-check2" }), " Save"),
-  ], { sub: "Full control for Super Administrators: switch apps on or off for everyone, rename them and set the workspace branding. Core apps stay on because the rest of the workspace depends on them." }), msg);
+  ]), msg);
 
   const input = (key, label, help) => {
     const i = el("input", { type: "text", value: brand[key] || "", maxlength: "80", "aria-label": label });
@@ -77,7 +77,7 @@ async function renderAppsPage() {
       const label = el("input", { type: "text", class: "compact", value: work[a.key].label, placeholder: a.name, maxlength: "60", "aria-label": `Name shown for ${a.name}` });
       const row = el("div", { class: `app-row ${work[a.key].enabled ? "" : "off"}` },
         el("span", { class: "app-icon" }, el("i", { class: `bi bi-${a.icon}` })),
-        el("div", { class: "pi-main" }, el("strong", null, a.name), el("div", { class: "muted small" }, a.description)),
+        el("div", { class: "pi-main", title: a.description }, el("strong", null, a.name)),
         label,
         el("label", { class: "switch", title: a.core ? "Core app: always on" : "Switch on or off" }, toggle, el("span", { class: "slider" })),
         a.core ? el("span", { class: "chip-mini" }, el("i", { class: "bi bi-lock-fill" }), " Core") : el("span", { class: "chip-mini" }, work[a.key].enabled ? "On" : "Off"));

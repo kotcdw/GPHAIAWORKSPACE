@@ -69,11 +69,19 @@ def _throttle(request: Request, db: DBSession | None = None, username: str | Non
         window.append(now)
 
 
+def _regional() -> dict:
+    from app.platform.configuration.router import REGIONAL
+
+    return {key: cfg(key) for key in REGIONAL}
+
+
 def _me(user: User, csrf_token: str) -> MeOut:
+    from app.core.deps import idle_minutes
     from app.core.permissions import permissions_of
 
     return MeOut(user=UserOut.model_validate(user), csrf_token=csrf_token,
-                 mfa_setup_required=mfa_setup_required(user), permissions=sorted(permissions_of(user)))
+                 mfa_setup_required=mfa_setup_required(user), permissions=sorted(permissions_of(user)),
+                 idle_timeout_minutes=idle_minutes(), regional=_regional())
 
 
 def _set_auth_cookies(response: Response, raw_token: str, csrf_token: str, max_age: int) -> None:
@@ -173,10 +181,11 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DBSes
                           f"username={payload.username[:64]}")
         if user is not None:
             user.failed_login_count = (user.failed_login_count or 0) + 1
-            if user.failed_login_count >= settings.login_max_attempts:
-                user.locked_until = now + timedelta(minutes=settings.login_lockout_minutes)
+            if user.failed_login_count >= int(cfg("login_max_attempts")):
+                user.locked_until = now + timedelta(minutes=int(cfg("login_lockout_minutes")))
                 user.failed_login_count = 0
                 log_action(db, user_id=user.id, action="ACCOUNT_LOCKED too_many_failed_logins", request=request)
+                _alert_lockout(db, user)
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
     if user.mfa_enabled and user.mfa_secret:
@@ -187,10 +196,11 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DBSes
         if not totp.verify(totp.unseal(user.mfa_secret), payload.otp):
             log_action(db, user_id=user.id, action="LOGIN_FAILED bad_mfa_code", request=request)
             user.failed_login_count = (user.failed_login_count or 0) + 1
-            if user.failed_login_count >= settings.login_max_attempts:
-                user.locked_until = now + timedelta(minutes=settings.login_lockout_minutes)
+            if user.failed_login_count >= int(cfg("login_max_attempts")):
+                user.locked_until = now + timedelta(minutes=int(cfg("login_lockout_minutes")))
                 user.failed_login_count = 0
                 log_action(db, user_id=user.id, action="ACCOUNT_LOCKED too_many_failed_logins", request=request)
+                _alert_lockout(db, user)
             db.commit()
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication code")
     user.failed_login_count = 0
@@ -205,12 +215,12 @@ def login(payload: LoginRequest, request: Request, response: Response, db: DBSes
 
     raw_token = new_token()
     csrf_token = new_csrf_token()
-    ttl_seconds = settings.session_ttl_hours * 3600
+    ttl_seconds = int(cfg("session_max_hours")) * 3600
     session = UserSession(
         user_id=user.id,
         token_hash=hash_token(raw_token),
         csrf_token=csrf_token,
-        expires_at=utcnow() + timedelta(hours=settings.session_ttl_hours),
+        expires_at=utcnow() + timedelta(hours=int(cfg("session_max_hours"))),
         ip_address=request.client.host if request.client else None,
         user_agent=(request.headers.get("user-agent") or "")[:500],
     )
@@ -237,6 +247,44 @@ def logout(
     return MessageOut(message="Signed out")
 
 
+def _alert_lockout(db: DBSession, locked: User) -> None:
+    """Tell the people who manage accounts that one was locked after repeated failed sign-ins."""
+    from app.core.permissions import has_perm
+    from app.platform.notifications.service import notify
+
+    name = locked.full_name or locked.username
+    for admin in db.execute(select(User).where(User.is_active.is_(True), User.id != locked.id)).scalars():
+        if has_perm(admin, "system.users"):
+            notify(db, admin.id, f"Account locked: {name}",
+                   f"{name} ({locked.username}) was locked after repeated failed sign-ins. It unlocks automatically "
+                   f"after {int(cfg('login_lockout_minutes'))} minutes, or an administrator can unlock it now.",
+                   link_type="user", link_id=locked.id)
+
+
+@router.get("/me/activity")
+def my_activity(user: User = Depends(get_current_user), db: DBSession = Depends(get_db)) -> dict:
+    """Your own recent sign-ins (including failed attempts on your account) and changes made to your account, so
+    you can spot activity you do not recognise."""
+    from sqlalchemy import or_
+
+    from app.core.audit_describe import describe
+    from app.platform.history.models import AuditLog
+
+    rows = db.execute(select(AuditLog).where(
+        or_(AuditLog.user_id == user.id, AuditLog.username == user.username,
+            AuditLog.action_performed.like(f"% username={user.username}%")),
+        or_(AuditLog.category.in_(("authentication", "user_admin")),
+            AuditLog.category.is_(None) & or_(AuditLog.action_performed.like("LOGIN%"),
+                                              AuditLog.action_performed.like("LOGOUT%"))),
+    ).order_by(AuditLog.timestamp.desc(), AuditLog.id.desc()).limit(30)).scalars().all()
+    # Changes made by someone else to this account (category user_admin, actor is the administrator).
+    items = [r for r in rows if r.category != "user_admin" or f"username={user.username}" in r.action_performed]
+    return {"items": [{"at": r.timestamp.isoformat(), "event": describe(r.action_performed)[0],
+                       "outcome": r.outcome or ("failure" if "FAILED" in r.action_performed else "success"),
+                       "ip": r.ip_address, "browser": (r.user_agent or "")[:120],
+                       "by_someone_else": r.user_id not in (None, user.id)} for r in items[:20]]}
+
+
 @router.get("/me", response_model=MeOut)
 def me(
     user: User = Depends(get_current_user),
@@ -260,10 +308,13 @@ def update_profile(
     if "work_entity_id" in payload.model_fields_set:
         from app.platform.organizations.models import Organization
 
-        if payload.work_entity_id is not None and db.get(Organization, payload.work_entity_id) is None:
+        unit = db.get(Organization, payload.work_entity_id) if payload.work_entity_id is not None else None
+        if payload.work_entity_id is not None and (unit is None or (not unit.is_active
+                                                                    and unit.id != user.work_entity_id)):
             from app.core.errors import field_error
 
-            raise field_error("work_entity_id", "is not a known entity")
+            raise field_error("work_entity_id", "is not a known entity" if unit is None
+                              else f"{unit.name} is deactivated: choose an active unit")
         user.work_entity_id = payload.work_entity_id
     log_action(db, user_id=user.id, action="PROFILE_UPDATE", request=request)
     db.commit()

@@ -29,8 +29,11 @@ function viewAllowed(view) {
     apps: ["system.superadmin"],
     risk: GRC_VIEW_PERMS, compliance: GRC_VIEW_PERMS, policies: GRC_VIEW_PERMS, assets: GRC_VIEW_PERMS,
   };
-  if (["programs", "practice", "library", "scheduler", "issues", "orgstructure", "processes", "riskassess", "statustracker", "results", "robots", "audittypes"].includes(view)) return state.user.role !== "Auditee";
-  if (view === "logs" || view === "backups") return isAdmin() && hasPerm("system.technical");
+  if (["programs", "practice", "library", "scheduler", "issues", "orgstructure", "processes", "riskassess", "statustracker", "results", "robots", "audittypes", "universe", "universe_units", "universe_processes", "universe_entities"].includes(view)) return state.user.role !== "Auditee";
+  if (view === "logs" || view === "backups") return hasPerm("system.technical");
+  if (view === "imports") return hasPerm("system.users", "system.reference", "method.library", "followup.manage", "grc.risk");
+  if (view === "users") return hasPerm("system.users");
+  if (view === "admin") return typeof adminAreasAllowed === "function" && adminAreasAllowed().length > 0;
   return rules[view] ? hasPerm(...rules[view]) : true;
 }
 
@@ -57,23 +60,24 @@ async function renderRolesPage(tab = state.rolesTab || "matrix") {
   let cat;
   try { cat = await API.get("/api/roles"); } catch (err) { viewRoot.append(viewHeader("Roles & permissions"), msg); notify(msg, err.message, "error"); return; }
   const canEdit = cat.can_edit;
-  viewRoot.append(viewHeader("Roles & permissions", null, {
-    sub: canEdit ? "Five standard roles. As Super Administrator you decide what each role may do; your own role always has full control."
-      : "Five standard roles and what each may do. Only a Super Administrator can change the matrix." }), msg);
+  viewRoot.append(viewHeader("Roles & permissions"), msg);
 
-  viewRoot.append(el("div", { class: "role-cards rbac" }, ...cat.roles.map((r) => el("div", { class: `card role-card role-${r.code}` },
-    el("div", { class: "role-card-head" }, el("span", { class: "role-icon" }, el("i", { class: `bi bi-${r.icon}` })),
-      el("div", null, el("h3", null, r.name), el("div", { class: "muted small" }, `${r.users} active user${r.users === 1 ? "" : "s"} · ${r.permissions.length} permissions`))),
-    el("p", { class: "small", title: r.description }, r.description),
-    el("div", { class: "chips" }, r.locked ? el("span", { class: "chip-mini ok" }, el("i", { class: "bi bi-lock-fill" }), " Full control") : null,
-      r.customised ? el("span", { class: "chip-mini warn" }, "Customised") : null,
-      el("span", { class: "chip-mini" }, `${r.tier} access`))))));
+  // Compact role tiles: name, people and permissions; the full description is on hover.
+  viewRoot.append(el("div", { class: "role-tiles" }, ...cat.roles.map((r) => el("div", { class: `role-tile role-${r.code}`, title: r.description },
+    el("span", { class: "role-icon" }, el("i", { class: `bi bi-${r.icon}` })),
+    el("div", { class: "role-tile-text" },
+      el("strong", null, r.name, r.locked ? el("i", { class: "bi bi-lock-fill role-lock", title: "Fixed: always every permission" }) : null),
+      el("span", { class: "muted small role-counts" },
+        el("span", { title: `${r.users} active user${r.users === 1 ? "" : "s"}` }, el("i", { class: "bi bi-person", "aria-hidden": "true" }), ` ${r.users}`),
+        el("span", { title: `${r.permissions.length} permissions` }, el("i", { class: "bi bi-key", "aria-hidden": "true" }), ` ${r.permissions.length}`))),
+    r.customised ? el("span", { class: "cfg-dot", title: "Changed from the standard permissions" }) : null))));
 
-  viewRoot.append(tabBar([{ key: "matrix", label: "Permission matrix" }, { key: "people", label: "People by role" }], tab, (k) => renderRolesPage(k)));
+  viewRoot.append(tabBar([{ key: "matrix", label: "Permission matrix" }, { key: "modules", label: "Access by module" }, { key: "people", label: "People by role" }], tab, (k) => renderRolesPage(k)));
   if (tab === "people") return rolesPeople(cat);
+  if (tab === "modules") return renderAccessMatrix();
 
   const work = Object.fromEntries(cat.roles.map((r) => [r.code, new Set(r.permissions)]));
-  const saveRow = el("tr", { class: "no-click" }, el("td", null, canEdit ? el("span", { class: "muted small" }, "Save or reset a role") : ""),
+  const saveRow = el("tr", { class: "no-click" }, el("td", null, ""),
     ...cat.roles.map((r) => el("td", { class: "center" }, canEdit && !r.locked ? el("div", { class: "actions center" },
       el("button", { class: "btn small", "data-save": r.code, disabled: "1", title: `Save ${r.name}`, onclick: async () => {
         try { await API.put(`/api/roles/${r.code}/permissions`, { permissions: [...work[r.code]] }); toast(`${r.name} saved`); renderRolesPage("matrix"); }
@@ -90,9 +94,9 @@ async function renderRolesPage(tab = state.rolesTab || "matrix") {
     body.append(el("tr", { class: "no-click group-row", "data-group": g }, el("th", { colspan: String(cat.roles.length + 1) }, g)));
     cat.permissions.filter((p) => p.group === g).forEach((p) => {
       body.append(el("tr", { class: "no-click perm-row", "data-text": `${p.label} ${p.code}`.toLowerCase(), "data-group": g },
-        el("td", null, p.label, el("div", { class: "muted small mono" }, p.code,
-          p.super_only ? el("span", { class: "chip-mini" }, " Super Administrator only") : null,
-          p.cae_only ? el("span", { class: "chip-mini", title: "Managers exercise it only with the CAE approval level (GM Audit)" }, " GM Audit (CAE) only") : null)),
+        el("td", null, p.label,
+          p.super_only ? el("i", { class: "bi bi-lock-fill perm-flag", title: "Super Administrator only" }) : null,
+          p.cae_only ? el("i", { class: "bi bi-star-fill perm-flag", title: "Managers only with the GM Audit (CAE) approval level" }) : null),
         ...cat.roles.map((r) => {
           const fixed = r.locked || p.super_only || !canEdit;
           const box = el("input", { type: "checkbox", "aria-label": `${r.name}: ${p.label}`, checked: work[r.code].has(p.code) ? "1" : null, disabled: fixed ? "1" : null });
@@ -445,4 +449,40 @@ async function showPort(portId, holder) {
     { key: "status", label: "Status", render: (a) => badge(a.status) }, { key: "open_findings", label: "Open findings", num: true },
   ], { onRow: isCommittee() ? null : (a) => openAudit(a.id), emptyText: "No audits for this port yet." })));
   holder.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+
+// Access by module: who may view, create, edit, approve, export and configure each part of the workspace.
+async function renderAccessMatrix() {
+  const host = el("div", { class: "card" });
+  viewRoot.append(host);
+  host.append(loadingState("Building the access matrix…"));
+  let m;
+  try { m = await API.get("/api/roles/matrix"); } catch (err) { clear(host); host.append(errorState(err, () => renderRolesPage("modules"))); return; }
+  clear(host);
+  const ACT = { view: "View", create: "Create", edit: "Edit", approve: "Approve / sign", export: "Export", configure: "Configure" };
+  let role = state.matrixRole && m.roles.some((r) => r.code === state.matrixRole) ? state.matrixRole : m.roles[0].code;
+  const sel = el("select", { class: "compact", "aria-label": "Role" }, ...m.roles.map((r) => el("option", { value: r.code, selected: r.code === role ? "1" : null }, r.name)));
+  const table = el("div");
+  host.append(el("div", { class: "card-head" }, el("h3", null, "Access by module"), el("label", { class: "inline-row" }, el("span", { class: "muted small" }, "Role "), sel)),
+    table);
+  const paint = () => {
+    clear(table);
+    table.append(el("div", { class: "table-wrap" }, el("table", { class: "access-matrix" },
+      el("thead", null, el("tr", null, el("th", null, "Module"), ...m.actions.map((a) => el("th", { class: "center" }, ACT[a])), el("th", null, "Delete"))),
+      el("tbody", null, ...m.rows.map((r) => el("tr", { class: "no-click" },
+        el("th", { scope: "row" }, r.module),
+        ...m.actions.map((a) => {
+          const c = r.cells[a];
+          if (!c.permissions.length) return el("td", { class: "center muted", title: "Not applicable" }, "–");
+          const yes = c.roles.includes(role);
+          const why = c.permissions.map((p) => (p === "tier:staff" ? "every internal audit account" : p === "tier:all" ? "every account" : (m.labels[p] || p))).join("; ");
+          return el("td", { class: `center ${yes ? "am-yes" : "am-no"}`, title: `Granted by: ${why}` },
+            el("i", { class: `bi ${yes ? "bi-check-circle-fill" : "bi-x-circle"}`, "aria-hidden": "true" }),
+            el("span", { class: "sr-only" }, yes ? "Allowed" : "Not allowed"));
+        }),
+        el("td", { class: "center" }, el("i", { class: "bi bi-info-circle am-info", title: r.delete, "aria-label": r.delete, tabindex: "0" }))))))));
+  };
+  sel.addEventListener("change", () => { role = sel.value; state.matrixRole = role; paint(); });
+  paint();
 }

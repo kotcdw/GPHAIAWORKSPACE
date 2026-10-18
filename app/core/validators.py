@@ -83,8 +83,14 @@ _COMMON_PASSWORDS = {
 
 def password_problems(password: str, username: str | None = None) -> str | None:
     """Return why ``password`` is too weak, or None. Matches the sign-up hints."""
-    if len(password) < 8:
-        return "must be at least 8 characters"
+    try:
+        from app.core.appconfig import cfg
+
+        shortest = max(8, int(cfg("password_min_length")))
+    except Exception:  # noqa: BLE001 - settings unavailable (e.g. before the database exists)
+        shortest = 8
+    if len(password) < shortest:
+        return f"must be at least {shortest} characters"
     if password.isdigit():
         return "must not be entirely numeric"
     if password.lower() in _COMMON_PASSWORDS:

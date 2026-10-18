@@ -19,8 +19,8 @@ from app.core.appconfig import cfg
 from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier
-from app.core.enums import OrganizationStatus, Role
+from app.core.deps import ensure_perm, require_active_user, require_module_tier, require_role
+from app.core.enums import AuditStatus, OrganizationStatus, Role, utcnow
 from app.core.errors import field_error
 from app.core.history import log_record_history
 from app.core.refs import next_reference
@@ -29,6 +29,7 @@ from app.domains.audit.audits.models import Audit
 from app.platform.customfields.router import clean_values
 from app.platform.organizations.models import Organization
 from app.platform.organizations.schemas import (
+    DeactivateRequest,
     EntityLite,
     OrganizationCreate,
     OrganizationList,
@@ -41,6 +42,7 @@ router = APIRouter(prefix="/api/organizations", tags=["organizations"])
 
 WriteOrg = Depends(require_module_tier("organizations", Role.Admin, Role.Auditor))
 AdminOrg = Depends(require_module_tier("organizations", Role.Admin))
+StaffOnly = Depends(require_role(Role.Admin, Role.Auditor))
 MAX_DEPTH = 25
 
 
@@ -54,6 +56,9 @@ class Index:
         for o in self.rows.values():
             if o.parent_id:
                 self.children[o.parent_id] = self.children.get(o.parent_id, 0) + 1
+        heads = {o.head_user_id for o in self.rows.values() if o.head_user_id}
+        self.head_names = {u.id: u.full_name or u.username for u in db.execute(
+            select(User).where(User.id.in_(heads))).scalars()} if heads else {}
 
     def is_port(self, o: Organization) -> bool:
         return (o.category or "").lower() in self.port_types
@@ -67,6 +72,20 @@ class Index:
             seen.add(cur.id)
             cur = self.rows.get(cur.parent_id) if cur.parent_id else None
         return None
+
+    def descendants(self, oid: int) -> list[int]:
+        kids: dict[int, list[int]] = {}
+        for o in self.rows.values():
+            if o.parent_id:
+                kids.setdefault(o.parent_id, []).append(o.id)
+        out, stack = [], list(kids.get(oid, []))
+        while stack and len(out) < 10000:
+            cur = stack.pop()
+            if cur in out or cur == oid:
+                continue
+            out.append(cur)
+            stack.extend(kids.get(cur, []))
+        return out
 
     def ancestors(self, parent_id: int | None) -> list[int]:
         out, cur = [], parent_id
@@ -99,7 +118,9 @@ def _out(o: Organization, idx: Index) -> OrganizationOut:
         destination_label=o.destination_label, contact_name=o.contact_name,
         contact_email=o.contact_email, contact_phone=o.contact_phone, status=o.status,
         evaluation_end_date=o.evaluation_end_date, approved_by=o.approved_by, approved_at=o.approved_at,
-        notes=o.notes, custom_fields=json.loads(o.custom_fields or "{}"), created_by=o.created_by,
+        notes=o.notes, custom_fields=json.loads(o.custom_fields or "{}"), head_user_id=o.head_user_id,
+        head_name=idx.head_names.get(o.head_user_id) if o.head_user_id else None, is_active=o.is_active,
+        deactivated_at=o.deactivated_at, deactivation_reason=o.deactivation_reason, created_by=o.created_by,
         created_at=o.created_at, updated_at=o.updated_at,
     )
 
@@ -123,14 +144,28 @@ def _check_category(category: str | None, current: str | None = None) -> str | N
 def _check_parent(db: DBSession, org_id: int | None, parent_id: int | None) -> int | None:
     if parent_id is None:
         return None
-    if db.get(Organization, parent_id) is None:
+    parent = db.get(Organization, parent_id)
+    if parent is None:
         raise field_error("parent_id", "is not a known entity")
+    if not parent.is_active:
+        raise field_error("parent_id", f"{parent.name} is deactivated: reactivate it or choose another parent")
     if org_id is not None:
         if parent_id == org_id:
             raise field_error("parent_id", "an entity cannot sit under itself")
         if org_id in Index(db).ancestors(parent_id):
             raise field_error("parent_id", "would create a loop (the chosen parent sits under this entity)")
     return parent_id
+
+
+def _check_head(db: DBSession, user: User, head_user_id: int | None) -> int | None:
+    """Naming a unit head is reference data: it needs 'system.reference', and the person must have an active account."""
+    ensure_perm(user, "system.reference")
+    if head_user_id is None:
+        return None
+    head = db.get(User, head_user_id)
+    if head is None or not head.is_active:
+        raise field_error("head_user_id", "must be a person with an active account")
+    return head_user_id
 
 
 def _get_or_404(db: DBSession, org_id: int) -> Organization:
@@ -149,6 +184,7 @@ def list_organizations(
     category: str | None = Query(default=None),
     port_id: int | None = Query(default=None),
     parent_id: int | None = Query(default=None),
+    active: bool | None = Query(default=None, description="Only units in use (true) or deactivated (false)"),
     mine: bool = Query(default=False, description="Only entities in the user's own port"),
 ) -> OrganizationList:
     stmt = select(Organization).order_by(Organization.name)
@@ -161,6 +197,8 @@ def list_organizations(
         stmt = stmt.where(func.lower(Organization.category) == category.lower())
     if parent_id is not None:
         stmt = stmt.where(Organization.parent_id == parent_id)
+    if active is not None:
+        stmt = stmt.where(Organization.is_active.is_(active))
     items = visible(db, user, "organization", list(db.execute(stmt).scalars().all()))
     idx = Index(db)
     if mine:
@@ -189,8 +227,17 @@ def list_entities(db: DBSession = Depends(get_db), user: User = Depends(require_
         out.append(EntityLite(id=o.id, name=o.name, category=o.category, is_port=idx.is_port(o),
                               port_id=port.id if port else None, port_name=port.name if port else None,
                               parent_id=o.parent_id, plan_destination=o.plan_destination,
-                              destination_label=o.destination_label))
+                              destination_label=o.destination_label, is_active=o.is_active))
     return out
+
+
+@router.get("/people")
+def people_for_units(db: DBSession = Depends(get_db), user: User = StaffOnly) -> list[dict]:
+    """Active accounts for the unit head picker (heads of audited units are often Audit Clients): names only, for
+    people who maintain the structure."""
+    ensure_perm(user, "system.reference")
+    rows = db.execute(select(User).where(User.is_active.is_(True)).order_by(User.full_name, User.username)).scalars()
+    return [{"id": u.id, "name": u.full_name or u.username, "username": u.username} for u in rows]
 
 
 @router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
@@ -217,6 +264,7 @@ def create_organization(
         evaluation_end_date=payload.evaluation_end_date,
         notes=payload.notes,
         custom_fields=json.dumps(custom),
+        head_user_id=_check_head(db, user, payload.head_user_id) if payload.head_user_id else None,
         created_by=user.id,
     )
     db.add(org)
@@ -261,7 +309,7 @@ def update_organization(
     if "category" in sent:
         org.category = _check_category(payload.category, org.category)
         changes.append("category")
-    if "parent_id" in sent:
+    if "parent_id" in sent and payload.parent_id != org.parent_id:  # forms resend the parent unchanged
         org.parent_id = _check_parent(db, org.id, payload.parent_id)
         changes.append("parent")
     if "address" in sent:
@@ -276,6 +324,9 @@ def update_organization(
             ensure_perm(user, "system.reference")  # removing a destination is as controlled as adding one
             org.plan_destination, org.destination_label = dest["plan_destination"], dest["destination_label"]
             changes.append("plan destination")
+    if "head_user_id" in sent and payload.head_user_id != org.head_user_id:
+        org.head_user_id = _check_head(db, user, payload.head_user_id)
+        changes.append("head")
     if "custom_fields" in sent:
         org.custom_fields = json.dumps(clean_values(db, "organizations", payload.custom_fields,
                                                     json.loads(org.custom_fields or "{}")))
@@ -309,6 +360,9 @@ def delete_organization(
     if db.execute(select(func.count()).select_from(Organization).where(Organization.parent_id == org.id)).scalar_one():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="Move or delete the entities under this one first")
+    if db.execute(select(func.count()).select_from(User).where(User.work_entity_id == org.id)).scalar_one():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="People have this unit as their workplace: move them first, or deactivate the unit")
     ref = org.org_ref
     db.delete(org)
     log_record_history(db, record_type="organization", record_id=org_id, user_id=user.id, action=f"DELETED {ref}")
@@ -325,6 +379,7 @@ def copy_organization(
     user: User = WriteOrg,
 ) -> OrganizationOut:
     source = _get_or_404(db, org_id)
+    parent_id = _check_parent(db, None, source.parent_id)  # never place an active copy under a deactivated unit
     copy = Organization(
         org_ref=next_reference(db, "ORG"),
         name=f"{source.name} (Copy)",
@@ -335,7 +390,7 @@ def copy_organization(
         status=OrganizationStatus.Pending,
         evaluation_end_date=source.evaluation_end_date,
         notes=source.notes,
-        parent_id=source.parent_id,
+        parent_id=parent_id,
         address=source.address,
         custom_fields=source.custom_fields,
         created_by=user.id,
@@ -364,6 +419,8 @@ def approve_organization(
     org = _get_or_404(db, org_id)
     if org.status != OrganizationStatus.Pending:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Organization is already approved")
+    if not org.is_active:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Reactivate this unit before approving it")
 
     def _on_approve(session: DBSession) -> None:
         org.status = OrganizationStatus.Approved
@@ -406,3 +463,131 @@ def set_pending(
     db.commit()
     db.refresh(org)
     return _one(db, org)
+
+# ---------------------------------------------------------------- administration: deactivate, reactivate, overview
+
+
+@router.post("/{org_id}/deactivate", response_model=OrganizationOut)
+def deactivate_organization(
+    org_id: int,
+    payload: DeactivateRequest,
+    request: Request,
+    db: DBSession = Depends(get_db),
+    user: User = WriteOrg,
+) -> OrganizationOut:
+    """Take a unit out of use. It stays on the audits, plans and history that name it, but is no longer offered
+    for new work. Units under it must be deactivated or moved first."""
+    ensure_perm(user, "system.reference")
+    org = _get_or_404(db, org_id)
+    if not org.is_active:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This unit is already deactivated")
+    active_kids = db.execute(select(func.count()).select_from(Organization).where(
+        Organization.parent_id == org.id, Organization.is_active.is_(True))).scalar_one()
+    if active_kids:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Deactivate or move the {active_kids} active unit{'s' if active_kids != 1 else ''} "
+                                   "under this one first")
+    reason = payload.reason.strip()
+    org.is_active = False
+    org.deactivated_at = utcnow()
+    org.deactivated_by = user.id
+    org.deactivation_reason = reason
+    log_action(db, user_id=user.id, action=f"ORG_DEACTIVATE id={org.id} ref={org.org_ref}", request=request)
+    log_record_history(db, record_type="organization", record_id=org.id, user_id=user.id,
+                       action=f"DEACTIVATED: {reason}", request=request)
+    db.commit()
+    db.refresh(org)
+    return _one(db, org)
+
+
+@router.post("/{org_id}/reactivate", response_model=OrganizationOut)
+def reactivate_organization(
+    org_id: int,
+    request: Request,
+    db: DBSession = Depends(get_db),
+    user: User = WriteOrg,
+) -> OrganizationOut:
+    ensure_perm(user, "system.reference")
+    org = _get_or_404(db, org_id)
+    if org.is_active:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This unit is already active")
+    parent = db.get(Organization, org.parent_id) if org.parent_id else None
+    if parent is not None and not parent.is_active:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Reactivate {parent.name} first, or move this unit under an active one")
+    org.is_active = True
+    org.deactivated_at = org.deactivated_by = org.deactivation_reason = None
+    log_action(db, user_id=user.id, action=f"ORG_REACTIVATE id={org.id} ref={org.org_ref}", request=request)
+    log_record_history(db, record_type="organization", record_id=org.id, user_id=user.id, action="REACTIVATED",
+                       request=request)
+    db.commit()
+    db.refresh(org)
+    return _one(db, org)
+
+
+@router.get("/{org_id}/overview")
+def organization_overview(org_id: int, db: DBSession = Depends(get_db), user: User = StaffOnly) -> dict:
+    """Everything an administrator needs about one unit: where it sits, who heads it and works there, the units
+    under it, the audits and processes that name it, and its change history."""
+    from app.core import permissions as perms
+    from app.domains.assurance.universe.models import Process, ProcessOrgUnit
+    from app.platform.history.models import RecordHistory
+
+    org = _get_or_404(db, org_id)
+    idx = Index(db)
+    path, cur, seen = [], org.parent_id, set()
+    while cur and cur in idx.rows and cur not in seen and len(seen) < MAX_DEPTH:
+        seen.add(cur)
+        path.append({"id": cur, "name": idx.rows[cur].name})
+        cur = idx.rows[cur].parent_id
+    path.reverse()
+    kids = sorted((o for o in idx.rows.values() if o.parent_id == org.id),
+                  key=lambda o: (not o.is_active, o.name.lower()))
+    subtree = [org.id, *idx.descendants(org.id)]
+    people = list(db.execute(select(User).where(User.work_entity_id == org.id)
+                             .order_by(User.full_name, User.username)).scalars())
+    people_below = db.execute(select(func.count()).select_from(User).where(
+        User.work_entity_id.in_(subtree[1:]), User.is_active.is_(True))).scalar_one() if len(subtree) > 1 else 0
+    names = {r.code: r.name for r in perms.JOB_ROLES}
+    from app.core.access import staff_audit_scope
+
+    unit_audits = (Audit.organization_id == org.id) | (Audit.port_entity_id == org.id)
+    scope = staff_audit_scope(db, user)  # only audits the caller may see (port scope)
+    if scope is not None:
+        unit_audits = unit_audits & Audit.id.in_(scope or {-1})
+    audits = db.execute(select(Audit).where(unit_audits).order_by(Audit.id.desc()).limit(10)).scalars().all()
+    audit_total = db.execute(select(func.count()).select_from(Audit).where(unit_audits)).scalar_one()
+    audit_open = db.execute(select(func.count()).select_from(Audit).where(
+        unit_audits, Audit.status != AuditStatus.Closed)).scalar_one()
+    processes = db.execute(select(Process.id, Process.name)
+                           .join(ProcessOrgUnit, ProcessOrgUnit.process_id == Process.id)
+                           .where(ProcessOrgUnit.org_id == org.id).order_by(Process.name)).all()
+    hist = db.execute(select(RecordHistory).where(RecordHistory.record_type == "organization",
+                                                  RecordHistory.record_id == org.id)
+                      .order_by(RecordHistory.timestamp.desc(), RecordHistory.id.desc()).limit(40)).scalars().all()
+    who = {u.id: u.full_name or u.username for u in db.execute(select(User).where(
+        User.id.in_({h.user_id for h in hist if h.user_id} | ({org.deactivated_by} if org.deactivated_by else set()))
+    )).scalars()} if hist or org.deactivated_by else {}
+    reference = perms.has_perm(user, "system.reference")
+    return {
+        "unit": _out(org, idx).model_dump(mode="json"),
+        "path": path,
+        "deactivated_by": who.get(org.deactivated_by) if org.deactivated_by else None,
+        "children": [{"id": o.id, "name": o.name, "org_ref": o.org_ref, "category": o.category,
+                      "is_active": o.is_active, "status": o.status.value} for o in kids],
+        "people": [{"id": u.id, "name": u.full_name or u.username, "username": u.username, "is_active": u.is_active,
+                    "role": names.get(perms.job_role_of(u), perms.job_role_of(u))} for u in people[:200]],
+        "people_total": len(people), "people_below": people_below,
+        "audits": [{"id": a.id, "title": a.title, "status": a.status.value} for a in audits],
+        "audit_total": audit_total, "audit_open": audit_open,
+        "processes": [{"id": pid, "name": name} for pid, name in processes],
+        "history": [{"at": h.timestamp.isoformat(), "action": h.action, "by": who.get(h.user_id) or "-"}
+                    for h in hist],
+        "can": {
+            "edit": perms.has_perm(user, "method.library", "system.reference"),
+            "administer": reference,
+            "approve": user.role == Role.Admin and org.status == OrganizationStatus.Pending and org.is_active,
+            "delete": user.role == Role.Admin and org.status == OrganizationStatus.Pending and not people
+                      and audit_total == 0 and not kids,
+        },
+    }

@@ -170,6 +170,13 @@ def save(db: DBSession, apps: dict[str, dict], branding: dict[str, str], user_id
     brand = {k: (branding.get(k) or DEFAULT_BRANDING[k]).strip()[:80] for k in DEFAULT_BRANDING}
     row = db.get(AppConfig, KEY)
     value = json.dumps({"apps": clean, "branding": brand})
+    if row is None or row.value != value:  # keep the change in the settings history (append-only)
+        from app.core.appconfig import AppConfigHistory
+        from app.platform.users.models import User
+
+        who = db.get(User, user_id)
+        db.add(AppConfigHistory(key=KEY, action="update", old_value=row.value if row else None, new_value=value,
+                                changed_by=user_id, changed_by_name=(who.full_name or who.username) if who else None))
     if row is None:
         db.add(AppConfig(key=KEY, value=value, updated_by=user_id))
     else:

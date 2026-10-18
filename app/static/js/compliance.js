@@ -695,6 +695,6 @@ async function renderRecordFieldsCard(container) {
   sel.addEventListener("change", () => { module = sel.value; paint(); });
   card.append(el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-input-cursor" }), " Fields on audits, findings and recommendations"),
     el("div", { class: "actions" }, sel, el("button", { class: "btn small", onclick: () => fieldForm(null) }, el("i", { class: "bi bi-plus-lg" }), " Add field"))),
-  el("p", { class: "muted small" }, "Extra inputs your team needs on these forms (for example budget code, amount at risk, ministry reference). They appear on the forms and in exports."), list);
+  list);
   paint();
 }

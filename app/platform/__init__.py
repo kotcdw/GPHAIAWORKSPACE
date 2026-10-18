@@ -29,12 +29,14 @@ MODULES = {
     "backups": "Encrypted database backups",
     "automations": "Admin-defined automation rules: reminders, routing and escalation",
     "portal": "Task Tracker priorities: one page of everything waiting for a person",
+    "admin": "Administration landing page with verified summaries",
     "workflow": "Workflow engine, the My work inbox and SLA time limits",
     "apps": "Apps & customization: the Super Administrator switches apps on and off, renames them and sets branding",
 }
 
 
 def routers() -> list:
+    from app.platform.admin.router import router as admin
     from app.platform.approvals.router import router as approvals
     from app.platform.apps.router import router as apps
     from app.platform.architecture import router as architecture
@@ -43,6 +45,7 @@ def routers() -> list:
     from app.platform.backups.router import router as backups
     from app.platform.configuration.router import router as configuration
     from app.platform.customfields.router import router as customfields
+    from app.platform.dataio.bulk import router as dataio_bulk
     from app.platform.dataio.router import router as dataio
     from app.platform.drafts.router import router as drafts
     from app.platform.history.router import records_router
@@ -58,5 +61,5 @@ def routers() -> list:
     from app.platform.workflow.router import router as workflow
 
     return [auth, users, history, records_router, organizations, stakeholders, tasks, approvals, backups,
-            drafts, notifications, configuration, dataio, views, customfields, roles, architecture, automations,
-            portal, apps, workflow]
+            drafts, notifications, configuration, dataio, dataio_bulk, views, customfields, roles, architecture,
+            automations, portal, apps, workflow, admin]

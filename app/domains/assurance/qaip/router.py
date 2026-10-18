@@ -481,7 +481,9 @@ def qaip_summary(db: DBSession, fy: int) -> QaipSummary:
 def get_qaip_summary(
     fiscal_year: int | None = None, db: DBSession = Depends(get_db), user: User = Governance
 ) -> QaipSummary:
-    return qaip_summary(db, fiscal_year or utcnow().year)
+    from app.core.regional import current_fiscal_year
+
+    return qaip_summary(db, fiscal_year or current_fiscal_year())
 
 
 # ------------------------------------------------------------------ internal assessment report (GIAS 8.3)
@@ -504,9 +506,10 @@ def internal_assessment_report(request: Request, fiscal_year: int | None = None,
     """Periodic internal assessment report for the CAE and the Audit Committee (Word)."""
 
 
+    from app.core.regional import current_fiscal_year
     from app.services.analytics.router import analytics
 
-    fy = fiscal_year or utcnow().year
+    fy = fiscal_year or current_fiscal_year()
     q = qaip_summary(db, fy)
     a = analytics(db, fy)
     doc = new_document()
@@ -577,7 +580,9 @@ def internal_assessment_report(request: Request, fiscal_year: int | None = None,
 
 def latest_internal_assessment(db: DBSession) -> str:
     """One line for the Committee pack: this year's internal assessment result (falls back to last year)."""
-    for fy in (utcnow().year, utcnow().year - 1):
+    from app.core.regional import current_fiscal_year
+
+    for fy in (current_fiscal_year(), current_fiscal_year() - 1):
         q = qaip_summary(db, fy)
         if q.reviews_completed:
             return (f"FY{fy}: {conformance_rating(q.average_score)} - {q.reviews_completed} engagement quality "

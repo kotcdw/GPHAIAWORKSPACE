@@ -22,9 +22,9 @@ function slaChip(item) {
   else if (days === 0) text = "Due today";
   else if (days === 1) text = "Due tomorrow";
   else if (days < 8) text = `Due in ${days} days`;
-  else text = `Due ${due.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+  else text = `Due ${fmtDay(due)}`;
   const icon = st === "breached" ? "exclamation-octagon" : st === "warning" ? "hourglass-split" : "calendar-event";
-  return el("span", { class: `sla-chip sla-${st}`, title: `Due ${due.toLocaleDateString()}` },
+  return el("span", { class: `sla-chip sla-${st}`, title: `Due ${fmtDate(due)}` },
     el("i", { class: `bi bi-${icon}`, "aria-hidden": "true" }), ` ${text}`);
 }
 
@@ -143,9 +143,7 @@ async function renderSlaPoliciesCard(container) {
   container.append(card);
   const canEdit = hasPerm("system.workflow");
   card.append(el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-stopwatch" }), " SLA time limits")),
-    el("p", { class: "muted small" }, "Working days allowed for each kind of task in My work (public holidays from Follow-up & reporting are skipped). "
-      + "A warning goes to the assignee the given number of working days before the due date; when it passes, the assignee and the audit's Lead auditor are told. "
-      + "A due date set on the record itself (an evidence request deadline, an action's target date) takes precedence."));
+    );
   let rows;
   try { rows = await API.get("/api/sla-policies"); } catch (err) { card.append(el("div", { class: "muted" }, err.message)); return; }
   const table = el("table", { class: "sla-table" },

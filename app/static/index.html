@@ -269,8 +269,9 @@
       <div class="nav-group" data-group="settings">
         <button class="nav-group-head" type="button" aria-expanded="true"><span>Platform settings</span><i class="bi bi-chevron-down" aria-hidden="true"></i></button>
         <div class="nav-group-items">
+          <button data-view="admin" data-perm="1"><i class="bi bi-gear-wide-connected"></i><span>Administration</span></button>
           <button data-view="orgstructure" data-staff="1"><i class="bi bi-diagram-3"></i><span>Org Structure</span></button>
-          <button data-view="profile"><i class="bi bi-person-gear"></i><span>Users</span></button>
+          <button data-view="users" data-perm="1"><i class="bi bi-people"></i><span>Users &amp; access</span></button>
           <button data-view="roles" data-perm="1"><i class="bi bi-shield-lock"></i><span>Roles &amp; permissions</span></button>
           <button data-view="configuration" data-perm="1"><i class="bi bi-sliders"></i><span>Configuration</span></button>
           <button data-view="backups" data-admin="1"><i class="bi bi-hdd-stack"></i><span>Backups</span></button>
@@ -310,6 +311,10 @@
   <script src="/static/js/parity.js"></script>
   <script src="/static/js/universe.js"></script>
   <script src="/static/js/mywork.js"></script>
+  <script src="/static/js/admin.js"></script>
+  <script src="/static/js/users.js"></script>
+  <script src="/static/js/imports.js"></script>
   <script src="/static/js/app.js"></script>
+  <script src="/static/js/session.js"></script>
 </body>
 </html>

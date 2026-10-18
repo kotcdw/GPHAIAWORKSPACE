@@ -20,12 +20,13 @@ def _u(db, prefix, role=Role.Auditor, job=None):
     return user
 
 
-def test_five_standard_roles_and_defaults(client, db):
+def test_standard_roles_and_defaults(client, db):
     root = _u(db, "rproot", Role.Admin)
     mgr = _u(db, "rpmgr")
     mgr.review_level = ReviewLevel.Manager
     db.commit()
-    assert [r.code for r in perms.JOB_ROLES] == ["super_admin", "admin", "manager", "auditor", "audit_client"]
+    assert [r.code for r in perms.JOB_ROLES] == ["super_admin", "admin", "manager", "auditor", "read_only",
+                                                 "audit_client"]
     assert perms.job_role_of(root) == "super_admin" and perms.job_role_of(mgr) == "manager"
     # Old job roles map onto the five.
     legacy = _u(db, "rplegacy")
@@ -48,7 +49,8 @@ def test_only_super_admin_changes_the_matrix(client, client2, db):
     aud = _u(db, "rpaud2", job="auditor")
     h = csrf_headers(login(client, root.username))
     cat = client.get("/api/roles").json()
-    assert [r["code"] for r in cat["roles"]] == ["super_admin", "admin", "manager", "auditor", "audit_client"]
+    assert [r["code"] for r in cat["roles"]] == ["super_admin", "admin", "manager", "auditor", "read_only",
+                                                 "audit_client"]
     assert cat["can_edit"] and next(r for r in cat["roles"] if r["code"] == "super_admin")["locked"]
 
     ah = csrf_headers(login(client2, admin.username))

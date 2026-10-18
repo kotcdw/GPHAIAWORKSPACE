@@ -28,7 +28,7 @@ def keep_universe(db):
     yield
     db.rollback()
     for e in db.execute(select(EntityUnit).where(EntityUnit.id.in_(before or [0]))).scalars():
-        e.is_active, e.archived_at = True, None
+        e.is_active, e.archived_at, e.definition_status = True, None, "Ready"
     db.commit()
 
 

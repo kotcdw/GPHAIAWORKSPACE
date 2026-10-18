@@ -139,9 +139,15 @@ function tabBar(tabs, activeKey, onSelect) {
   return bar;
 }
 
+// Date and time in the workspace's regional settings, e.g. "18/10/2026, 14:30". Plain dates show the date only.
+// (Callers that need only the date may take the part before the comma.)
 function fmtDate(value) {
   if (!value) return "-";
-  try { return new Date(value).toLocaleString(); } catch { return value; }
+  const w = parseWhen(value);
+  if (w.day) return formatDay(w.day);
+  if (Number.isNaN(w.date.getTime())) return String(value);
+  const p = zonedParts(w.date);
+  return `${formatDay(p)}, ${formatClock(p)}`;
 }
 
 // ==================================================================== module registry
@@ -165,7 +171,7 @@ const MODULES = {
       { key: "category", label: "Type" },
       { key: "port_name", label: "Port / site" },
       { key: "parent_name", label: "Part of" },
-      { key: "status", label: "Status", badge: true },
+      { key: "status", label: "Status", badge: true, render: (r) => badge(r.is_active === false ? "Deactivated" : r.status) },
     ],
     fields: [
       { key: "name", label: "Name", required: true },
@@ -331,8 +337,12 @@ const MODULES = {
 };
 
 function canWriteModule(key) {
+  if (isReadOnly()) return false;
   return isAdmin() || WRITE_ROLES.includes(state.user.role);
 }
+
+// Read-only User: may view everything in scope; the server refuses every change.
+function isReadOnly() { return !!(state.user && state.user.job_role === "read_only"); }
 
 // ------------------------------------------------------------------ auth
 function showLogin() {
@@ -372,6 +382,8 @@ qs("#loginForm").addEventListener("submit", async (ev) => {
     state.csrf = me.csrf_token;
     API.csrf = me.csrf_token;
     state.mfaSetupRequired = me.mfa_setup_required;
+    state.idleMinutes = me.idle_timeout_minutes || 0;
+    setRegional(me.regional);
     qs("#loginForm").reset();
     if (otpInput) otpInput.closest(".otp-row").remove();
     showApp();
@@ -466,13 +478,9 @@ setInterval(checkAuthHealth, 10000);
 
 qs("#draftsBtn").addEventListener("click", () => navigate("drafts"));
 whoami.addEventListener("click", () => navigate("profile"));
-qs("#signOut").addEventListener("click", async () => {
-  try { await API.post("/api/auth/logout"); } catch { /* ignore */ }
-  state.user = null;
-  state.csrf = null;
-  API.csrf = null;
-  appView.classList.add("hidden");
-  authView.classList.remove("hidden");
+qs("#signOut").addEventListener("click", () => {
+  setRoute(`#/${state.view || "dashboard"}`);
+  signOut("You signed out.");
 });
 
 async function boot() {
@@ -483,6 +491,8 @@ async function boot() {
     state.csrf = me.csrf_token;
     API.csrf = me.csrf_token;
     state.mfaSetupRequired = me.mfa_setup_required;
+    state.idleMinutes = me.idle_timeout_minutes || 0;
+    setRegional(me.regional);
     showApp();
   } catch {
     authView.classList.remove("hidden");
@@ -537,9 +547,12 @@ function showApp() {
   initGlobalSearch();
   const helpBtn = qs("#helpBtn");
   if (helpBtn && !helpBtn.dataset.ready) { helpBtn.dataset.ready = "1"; helpBtn.addEventListener("click", openHelp); }
+  if (typeof Idle !== "undefined") Idle.start(state.idleMinutes);
   // Deep link from an e-mail: #open/<type>/<id>
   const link = /^#open\/([a-z_]+)\/(\d+)$/.exec(window.location.hash);
   if (link) { history.replaceState(null, "", window.location.pathname); openLink(link[1], Number(link[2])); return; }
+  // A refresh (or signing in again after an idle sign-out) reopens the page in the address bar.
+  if (typeof restoreRoute === "function" && restoreRoute()) return;
   const home = isCommittee() ? "governance" : state.user.role === "Auditee" ? "portal" : "dashboard";
   navigate(state.view && viewAllowed(state.view) && !(isCommittee() && state.view === "dashboard") ? state.view : home);
 }
@@ -563,6 +576,8 @@ function setActiveNav(view) {
 }
 
 function navigate(view) {
+  // A page with unsaved changes (e.g. the auditable entity form) asks before it is left.
+  if (state.dirtyGuard) { const g = state.dirtyGuard; g(() => { state.dirtyGuard = null; navigate(view); }); return; }
   if (view !== "portal") state.fromPortal = false;
   const merged = hostGroup(view);
   if (state.user && merged && view === merged.host && !viewAllowed(view)) {
@@ -571,12 +586,14 @@ function navigate(view) {
   }
   if (state.user && !viewAllowed(view)) view = isCommittee() ? "governance" : "dashboard";
   state.view = view;
+  if (typeof setRoute === "function") setRoute(`#/${view}`);
   setActiveNav(view);
   navCrumbs(view);
   if (view === "capa") return renderRemediation(state.remTab);
   if (MODULES[view]) return renderList(view);
   if (view === "dashboard") return renderWorkspace();
   if (view === "roles") return renderRolesPage();
+  if (view === "imports") return renderImports();
   if (view === "programs") return renderProgramsPage();
   if (view === "evidence") return renderEvidencePage();
   if (view === "governance") return renderGovernance();
@@ -585,6 +602,8 @@ function navigate(view) {
   if (view === "qaip") return renderQaipPage();
   if (view === "capacity") return renderCapacity();
   if (view === "mywork") return renderMyWork();
+  if (view === "admin") return renderAdministration();
+  if (view === "users") return renderUsersAdmin();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "issues") return renderIssueTracker();
@@ -601,6 +620,9 @@ function navigate(view) {
   if (view === "plans") return renderPlans();
   if (view === "drafts") return renderDrafts();
   if (view === "universe") return renderUniverse();
+  if (view === "universe_units") return renderUniverseUnits();
+  if (view === "universe_processes") return renderUniverseProcesses();
+  if (view === "universe_entities") return renderUniverseEntities();
   if (view === "profile") return renderProfile();
   if (view === "logs") return renderLogs();
   if (view === "backups") return renderBackups();
@@ -635,6 +657,7 @@ function viewHeader(title, actions = null, opts = {}) {
 // ==================================================================== generic list
 
 function renderCell(item, col) {
+  if (col.render) return col.render(item);
   const value = item[col.key];
   if (value === null || value === undefined || value === "") return "-";
   if (col.badge) return badge(value);
@@ -1067,7 +1090,7 @@ function workspaceGroups() {
   return [
     { title: "Audit management", tiles: [
       { view: "mywork", icon: "inbox", name: "My work", desc: "Everything waiting for you: prepare, review, respond, validate", count: "mywork" },
-      { view: "universe", icon: "bullseye", name: "Audit universe", desc: "Auditable entities defined from the Org Structure and Process library" },
+      { view: "universe", icon: "bullseye", name: "Audit universe", desc: "Units, processes and auditable entities" },
       { view: "riskassess", icon: "clipboard-data", name: "Audit risk assessment", desc: "Score entities on assessment factors and prioritise them for the plan", staff: true },
       { view: "plans", icon: "calendar3", name: "Assurance Plans", desc: "Annual risk-based audit plan by fiscal year", count: "plans", staff: true },
       { view: "audits", icon: "clipboard-check", name: "Audits", desc: "Engagements: planning, fieldwork, issues, results, requests", count: "audits" },
@@ -1099,8 +1122,10 @@ function workspaceGroups() {
       { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews, professional practice and service feedback", staff: true },
     ] },
     { title: "Platform settings", tiles: [
+      { view: "admin", icon: "gear-wide-connected", name: "Administration", desc: "Users, settings, audit trail, imports, data policies and backups at a glance" },
       { view: "orgstructure", icon: "diagram-3", name: "Org Structure", desc: "Ports, departments, units, organizations and contacts", staff: true },
-      { view: "profile", icon: "person-gear", name: "Users", desc: "User accounts, your profile and two-step sign-in" },
+      { view: "users", icon: "people", name: "Users & access", desc: "Accounts, approvals, roles, sessions and access history" },
+      { view: "profile", icon: "person-gear", name: "My profile", desc: "Your details, password and two-step sign-in" },
       { view: "roles", icon: "shield-lock", name: "Roles & permissions", desc: "Job roles and what each one can do" },
       { view: "configuration", icon: "sliders", name: "Configuration", desc: "Business rules, audit types, apps and activity logs" },
       { view: "backups", icon: "hdd-stack", name: "Backups", desc: "Database backups and restore", admin: true },
@@ -1288,9 +1313,10 @@ const AUDIT_FIELDS = [
 ];
 
 // Audit type and port pickers (types come from Configuration > Audit methodology; ports from Organizations).
-async function auditFields() {
+async function auditFields(keepPortId = null) {
   let types = []; let ports = [];
-  try { const c = await loadEntityConfig(); types = c.types.audit_types || []; ports = c.entities.filter((e) => e.is_port); } catch { /* optional */ }
+  // Deactivated ports are not offered for new audits; an audit that already names one keeps it.
+  try { const c = await loadEntityConfig(); types = c.types.audit_types || []; ports = c.entities.filter((e) => e.is_port && (e.is_active !== false || e.id === keepPortId)); } catch { /* optional */ }
   const defs = await safeGet("/api/custom-fields?module=audits", []);
   return [
     ...AUDIT_FIELDS.slice(0, 1),
@@ -1324,7 +1350,7 @@ async function newAuditModal() {
 }
 
 async function editAuditModal(audit) {
-  const fields = await auditFields();
+  const fields = await auditFields(audit.port_entity_id);
   openForm({
     title: `Edit audit #${audit.id}`,
     key: `audit:edit:${audit.id}`,
@@ -1395,6 +1421,7 @@ async function openAudit(id, startTab = null) {
     side,
     onTab: (key, pane) => {
       state.lastAuditTab = { id, key };
+      if (typeof setRoute === "function") setRoute(`#/audit/${id}/${key}`);
       // Work screens (HighBond execution views) use the full width; the summary panel shows on the others.
       layout.root.querySelector(".rec-grid").classList.toggle("no-side", ["fieldwork", "findings", "evidence", "progress"].includes(key));
       paintTab(key, pane);
@@ -1727,7 +1754,7 @@ async function renderPapers(panel, id, canWrite) {
 async function renderProfile() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader(isAdmin() ? "Profile & users" : "My profile", null,
+  viewRoot.append(viewHeader("My profile", null,
     { meta: [el("span", { class: "muted" }, `Signed in as ${u_name()}`), badge(state.user.role)] }), msg);
   const u = state.user;
   const cols = el("div", { class: "two-cols" });
@@ -1760,7 +1787,7 @@ async function renderProfile() {
     fields: [
       { name: "current_password", label: "Current password", type: "password", required: true },
       { name: "new_password", label: "New password", type: "password", required: true, minLength: 8, maxLength: 128,
-        help: "At least 8 characters, not all numbers, not a common password, and not containing your username." },
+        help: "At least 8 characters; not your username or a common password." },
       { name: "confirm_password", label: "Confirm new password", type: "password", required: true },
     ],
     validate: (v) => (v.new_password && v.confirm_password !== v.new_password ? { confirm_password: "Passwords do not match" } : {}),
@@ -1774,10 +1801,19 @@ async function renderProfile() {
   renderWorkplaceCard(sec);
   renderMfaCard(sec);
 
-  if (isAdmin()) {
-    viewRoot.append(el("h2", { class: "section-title" }, "User accounts"));
-    await renderUserManagement(viewRoot, msg);
-  }
+  // Recent activity on this account (sign-ins, failed attempts, changes by administrators).
+  const act = el("div", { class: "card" }, el("h3", null, "Recent activity on your account"), loadingState());
+  viewRoot.append(act);
+  API.get("/api/auth/me/activity").then((d) => {
+    act.lastChild.remove();
+    if (!d.items.length) { act.append(el("p", { class: "muted" }, "No activity recorded yet.")); return; }
+    act.append(el("div", { class: "table-wrap" }, el("table", { class: "compact-table" },
+      el("thead", null, el("tr", null, el("th", null, "When"), el("th", null, "Event"), el("th", null, "From"))),
+      el("tbody", null, ...d.items.slice(0, 10).map((r) => el("tr", { class: `no-click ${r.outcome === "failure" ? "row-failure" : ""}` },
+        el("td", null, fmtDate(r.at)), el("td", null, r.event, r.by_someone_else ? el("span", { class: "muted small" }, " · by an administrator") : null),
+        el("td", { title: r.browser || "" }, r.ip || "-")))))),
+    el("p", { class: "muted small" }, "Don't recognise something? Change your password and tell an administrator."));
+  }).catch(() => act.remove());
 }
 
 // ==================================================================== users (admin)
@@ -1793,19 +1829,21 @@ function newUserForm() {
         patternMessage: "Username may contain letters, digits, '.', '_' and '-' only" },
       { name: "email", label: "Email", type: "email", required: true },
       { name: "job_role", label: "Role", type: "select", required: true,
-        options: (JOB_ROLE_OPTIONS || []).filter((r) => r.assignable).map((r) => ({ value: r.code, label: r.name })),
-        help: "Super Administrator, Administrator, Manager, Auditor or Audit Client. What each role may do is set under Roles & permissions." },
+        options: (JOB_ROLE_OPTIONS || []).filter((r) => r.assignable).map((r) => ({ value: r.code, label: r.name })) },
       { name: "password", label: "Initial password", type: "password", required: true, minLength: 8, maxLength: 128,
-        help: "The user should change it after first sign-in." },
+        help: "They change it after their first sign-in." },
     ],
     initial: { job_role: "auditor" },
     submitLabel: "Create user",
     onSubmit: (v) => API.post("/api/users", { ...v, role: ((JOB_ROLE_OPTIONS || []).find((r) => r.code === v.job_role) || {}).tier || "Auditor" }),
-    onDone: () => { toast("User created"); renderProfile(); },
+    onDone: () => { toast("User created"); refreshUsers(); },
   });
 }
 
-function editUserForm(u) {
+async function editUserForm(u) {
+  // Workplace: active units only, plus the one already set (even if deactivated since) so the choice stays visible.
+  let ents = [];
+  try { ents = (await loadEntityConfig(true)).entities.filter((e) => e.is_active !== false || e.id === u.work_entity_id); } catch { /* optional */ }
   openForm({
     title: `Edit user: ${u.full_name || u.username}`,
     key: `user:edit:${u.id}`,
@@ -1814,12 +1852,16 @@ function editUserForm(u) {
     fields: [
       { name: "full_name", label: "Full name", required: true, maxLength: 255, singleLine: true },
       { name: "email", label: "Email", type: "email", required: true },
-      { name: "company", label: "Department / unit", maxLength: 255, singleLine: true },
+      { name: "company", label: "Department / unit (text)", maxLength: 255, singleLine: true },
+      { name: "work_entity_id", label: "Workplace", type: "select", emptyLabel: "- not set -", full: true,
+        options: ents.map((e) => ({ value: String(e.id), label: entityLabel(e) + (e.is_active === false ? " (deactivated)" : "") })),
+        help: "The unit in the Org Structure where the person works. It decides which port's audits they see." },
     ],
-    initial: { full_name: u.full_name || "", email: u.email || "", company: u.company || "" },
+    initial: { full_name: u.full_name || "", email: u.email || "", company: u.company || "", work_entity_id: u.work_entity_id ? String(u.work_entity_id) : "" },
     submitLabel: "Save changes",
-    onSubmit: (v) => API.patch(`/api/users/${u.id}`, { full_name: v.full_name, email: v.email, company: v.company || "" }),
-    onDone: () => { toast("User updated"); renderProfile(); },
+    onSubmit: (v) => API.patch(`/api/users/${u.id}`, { full_name: v.full_name, email: v.email, company: v.company || "",
+      work_entity_id: v.work_entity_id ? Number(v.work_entity_id) : null }),
+    onDone: () => { toast("User updated"); refreshUsers(); },
   });
 }
 
@@ -1837,7 +1879,7 @@ function resetPasswordForm(u) {
     validate: (v) => (v.password && v.confirm && v.password !== v.confirm ? { confirm: "The two passwords do not match" } : null),
     submitLabel: "Reset password",
     onSubmit: (v) => API.patch(`/api/users/${u.id}`, { password: v.password }),
-    onDone: () => { toast("Password reset. The user was signed out everywhere and any lock was cleared."); renderProfile(); },
+    onDone: () => { toast("Password reset. The user was signed out everywhere and any lock was cleared."); refreshUsers(); },
   });
 }
 
@@ -1849,57 +1891,8 @@ async function deleteUser(u) {
     confirmLabel: "Delete account", danger: true,
   });
   if (!res.ok) return;
-  try { await API.del(`/api/users/${u.id}`); toast("User deleted"); renderProfile(); }
+  try { await API.del(`/api/users/${u.id}`); toast("User deleted"); refreshUsers(); }
   catch (err) { toast(err.message, "error"); }
-}
-
-async function renderUserManagement(container, msg) {
-  try {
-    const users = await API.get("/api/users");
-    const pending = users.filter((u) => !u.is_active).length;
-    const card = el("div", { class: "card" },
-      el("div", { class: "card-head" },
-        el("h3", null, `${users.length} accounts`, pending ? el("span", { class: "muted" }, ` · ${pending} awaiting approval`) : null),
-        el("button", { class: "btn small", onclick: newUserForm }, el("i", { class: "bi bi-person-plus" }), " Add user")));
-    card.append(el("div", { class: "table-wrap" }, el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "User"), el("th", null, "Role and approval level"),
-        el("th", null, "Status"), el("th", { class: "num" }, ""))),
-      el("tbody", null, ...(await Promise.all(users.sort((a, b) => Number(a.is_active) - Number(b.is_active)).map(async (u) => {
-        const self = u.id === state.user.id;
-        const jobSelect = await jobRoleSelect(u, () => renderProfile());
-        const locked = u.locked_until && new Date(`${u.locked_until}Z`) > new Date();
-        const isAdminRow = ["super_admin", "admin"].includes(u.job_role);
-        const canManage = self || !isAdminRow || Boolean(ROLE_CATALOGUE && ROLE_CATALOGUE.can_appoint_admins);
-        const iconBtn = (icon, label, onclick, cls = "secondary") => el("button", {
-          class: `btn small icon ${cls}`, type: "button", title: label, "aria-label": `${label}: ${u.username}`, onclick,
-        }, el("i", { class: `bi bi-${icon}` }));
-        const actions = el("div", { class: "actions end nowrap" },
-          canManage ? iconBtn("pencil", "Edit", () => editUserForm(u)) : null,
-          canManage && !self ? iconBtn("key", "Reset password", () => resetPasswordForm(u)) : null,
-          u.mfa_enabled && !self ? el("button", { class: "btn small secondary", title: "Use when the user lost their phone",
-            onclick: async () => {
-              try { await API.patch(`/api/users/${u.id}`, { reset_mfa: true }); toast("Two-step verification reset"); renderProfile(); }
-              catch (err) { toast(err.message, "error"); }
-            } }, "Reset 2-step") : null,
-          locked ? el("button", { class: "btn small secondary", onclick: async () => {
-            try { await API.post(`/api/users/${u.id}/unlock`); toast("Account unlocked"); renderProfile(); }
-            catch (err) { toast(err.message, "error"); }
-          } }, "Unlock") : null,
-          self ? null : el("button", { class: `btn small ${u.is_active ? "danger-ghost" : ""}`.trim(), onclick: async () => {
-            try { await API.patch(`/api/users/${u.id}`, { is_active: !u.is_active }); toast(u.is_active ? "Account deactivated" : "Account approved"); renderProfile(); }
-            catch (err) { toast(err.message, "error"); }
-          } }, u.is_active ? "Deactivate" : "Approve"),
-          canManage && !self ? iconBtn("trash", "Delete", () => deleteUser(u), "danger-ghost") : null);
-        return el("tr", { class: "no-click" },
-          el("td", null, el("div", { class: "cell-title" }, u.full_name || u.username),
-            el("div", { class: "muted small" }, `${u.username} · ${u.email}`)),
-          el("td", null, jobSelect),
-          el("td", null, u.is_active ? badge("Active") : badge("Pending"), locked ? " " : null, locked ? badge("Locked") : null,
-            u.mfa_enabled ? " " : null, u.mfa_enabled ? el("span", { class: "chip-mini", title: "Two-step verification on" }, el("i", { class: "bi bi-shield-check" }), " 2-step") : null),
-          el("td", { class: "num" }, actions));
-      })))))));
-    container.append(card);
-  } catch (err) { notify(msg, err.message, "error"); }
 }
 
 // ==================================================================== logs (admin)
@@ -1912,24 +1905,33 @@ const LOG_CATEGORY_LABEL = Object.fromEntries(LOG_CATEGORIES.map((c) => [c.value
 
 async function renderLogs(preset = null) {
   clear(viewRoot);
-  viewRoot.append(viewHeader("Audit trail", null, { sub: "Every sign-in (successful and failed), user administration, security event, export and record change: who, what, when and from where. Entries cannot be edited or deleted." }));
+  const shield = el("span", { class: "chip-mini", title: "Checking the database protection…" }, el("i", { class: "bi bi-shield" }), " Checking…");
+  const exportLink = el("a", { class: "btn small secondary", title: "Download every matching entry (the download is logged)" },
+    el("i", { class: "bi bi-download" }), " Export CSV");
+  viewRoot.append(viewHeader("Audit trail", el("div", { class: "actions" }, shield, exportLink)));
+  API.get("/api/audit-logs/integrity").then((g) => {
+    clear(shield);
+    shield.className = `chip-mini ${g.protected ? "ok" : "warn"}`;
+    shield.title = g.tables.map((t) => `${t.label}: ${t.update_blocked && t.delete_blocked ? "changes refused by the database" : "NOT protected"}`).join("\n")
+      + `\n${g.entries.toLocaleString()} entries${g.oldest ? ` since ${fmtDay(g.oldest)}` : ""}`;
+    shield.append(el("i", { class: `bi bi-${g.protected ? "shield-check" : "shield-exclamation"}` }), g.protected ? " Tamper-protected" : " Protection missing");
+  }).catch(() => shield.remove());
   const tiles = el("div", { class: "stats" }, loadingState());
   viewRoot.append(tiles);
   API.get("/api/audit-logs/summary?days=7").then((s) => {
     clear(tiles);
     tiles.append(
-      stat(s.sign_ins, "Successful sign-ins", "last 7 days"),
-      stat(s.failed_sign_ins, "Failed sign-ins", s.top_failures.length ? `most: ${s.top_failures[0].username} (${s.top_failures[0].failures})` : "last 7 days", s.failed_sign_ins ? "warn" : "ok"),
-      stat(s.lockouts, "Account lockouts", s.locked_now.length ? `locked now: ${s.locked_now.join(", ")}` : "none locked now", s.lockouts ? "danger" : "ok"),
-      stat(s.denied, "Denied sign-ins", "pending or locked accounts", s.denied ? "warn" : ""),
-      stat(s.exports, "Exports & downloads", "last 7 days"),
-      stat(s.distinct_users, "Active users", `${s.distinct_ips} computer address${s.distinct_ips === 1 ? "" : "es"}`));
+      stat(s.sign_ins, "Sign-ins", "last 7 days"),
+      stat(s.failed_sign_ins, "Failed sign-ins", s.top_failures.length ? `most: ${s.top_failures[0].username}` : "last 7 days", s.failed_sign_ins ? "warn" : "ok"),
+      stat(s.lockouts, "Lockouts", s.locked_now.length ? `locked now: ${s.locked_now.join(", ")}` : "none now", s.lockouts ? "danger" : "ok"),
+      stat(s.exports, "Exports", "last 7 days"));
   }).catch(() => clear(tiles));
   const presets = [
     { key: "all", label: "All activity", values: {} },
-    { key: "signins", label: "Sign-in history", values: { category: "authentication" } },
-    { key: "failed", label: "Failed & denied", values: { outcome: "failure" } },
+    { key: "signins", label: "Sign-ins", values: { category: "authentication" } },
+    { key: "failed", label: "Failed", values: { outcome: "failure" } },
     { key: "users", label: "User administration", values: { category: "user_admin" } },
+    { key: "system", label: "Settings & system", values: { category: "system" } },
     { key: "exports", label: "Exports", values: { category: "export" } },
   ];
   const active = preset || "all";
@@ -1941,16 +1943,12 @@ async function renderLogs(preset = null) {
   let users = [];
   try { users = await API.get("/api/users"); } catch { users = []; }
   const initial = { ...(presets.find((p) => p.key === active) || presets[0]).values };
-  let current = { ...initial };
-  const exportLink = el("a", { class: "btn small secondary", title: "Download every matching entry (logged)" },
-    el("i", { class: "bi bi-download" }), " Full export (CSV)");
   const setExport = (v) => {
     const sp = new URLSearchParams();
     Object.entries(v).forEach(([k, val]) => { if (val) sp.set(k, val); });
     exportLink.href = `/api/audit-logs/export.csv?${sp.toString()}`;
   };
-  setExport(current);
-  card.append(el("div", { class: "actions end" }, exportLink));
+  setExport(initial);
   const t = serverTable({
     url: "/api/audit-logs/register",
     storageKey: "audit-log",
@@ -1958,7 +1956,8 @@ async function renderLogs(preset = null) {
     pageSize: 50,
     exportName: "Audit trail",
     values: initial,
-    onFilter: (v) => { current = v; setExport(v); },
+    onFilter: (v) => setExport(v),
+    onRow: (l) => openLogEntry(l),
     filters: [
       { key: "date_from", label: "Period", options: [{ value: ago(1), label: "Last 24 hours" }, { value: ago(7), label: "Last 7 days" }, { value: ago(30), label: "Last 30 days" }, { value: ago(90), label: "Last 90 days" }, { value: ago(365), label: "Last 12 months" }] },
       { key: "category", label: "Category", options: LOG_CATEGORIES },
@@ -1967,17 +1966,32 @@ async function renderLogs(preset = null) {
     ],
     emptyTitle: "No activity recorded",
     columns: [
-      { key: "timestamp", label: "When", sort: true, render: (l) => fmtDate(l.timestamp), csv: (l) => l.timestamp },
+      { key: "timestamp", label: "When", sort: true, render: (l) => fmtDate(l.timestamp), csv: (l) => fmtDate(l.timestamp) },
       { key: "user", label: "User", sort: true, render: (l) => l.user || (l.user_id ? `#${l.user_id}` : "System"), csv: (l) => l.user || "" },
-      { key: "category", label: "Category", render: (l) => LOG_CATEGORY_LABEL[l.category] || l.category, csv: (l) => LOG_CATEGORY_LABEL[l.category] || l.category },
+      { key: "event", label: "Event", render: (l) => el("div", null, el("div", null, l.event), l.details ? el("div", { class: "muted small log-details" }, clip(l.details, 90)) : null), csv: (l) => l.event },
+      { key: "category", label: "Category", hidden: true, render: (l) => LOG_CATEGORY_LABEL[l.category] || l.category, csv: (l) => LOG_CATEGORY_LABEL[l.category] || l.category },
       { key: "outcome", label: "Outcome", render: (l) => (l.outcome === "failure" ? badge("Failed") : el("span", { class: "muted" }, "Success")), csv: (l) => l.outcome },
-      { key: "action_performed", label: "Action", render: (l) => el("span", { class: "log-action" }, l.action_performed) },
-      { key: "entity", label: "Record", hidden: true, render: (l) => (l.entity_type ? `${l.entity_type}${l.entity_id ? ` #${l.entity_id}` : ""}` : "-"), csv: (l) => (l.entity_type ? `${l.entity_type} ${l.entity_id || ""}`.trim() : "") },
       { key: "ip_address", label: "IP address" },
-      { key: "user_agent", label: "Browser", hidden: true, render: (l) => el("span", { class: "muted small", title: l.user_agent || "" }, (l.user_agent || "-").slice(0, 60)) , csv: (l) => l.user_agent || "" },
+      { key: "action_performed", label: "As recorded", hidden: true, render: (l) => el("span", { class: "log-action" }, l.action_performed) },
+      { key: "user_agent", label: "Browser", hidden: true, render: (l) => el("span", { class: "muted small", title: l.user_agent || "" }, (l.user_agent || "-").slice(0, 60)), csv: (l) => l.user_agent || "" },
     ],
   });
   card.append(t.root);
+}
+
+// One audit trail entry in full.
+function openLogEntry(l) {
+  const row = (label, value) => (value === null || value === undefined || value === "" ? null
+    : el("div", { class: "log-fact" }, el("dt", null, label), el("dd", null, value)));
+  const body = el("dl", { class: "log-facts" },
+    row("When", fmtDate(l.timestamp)),
+    row("User", l.user || "System"), row("Username", l.username),
+    row("Outcome", l.outcome === "failure" ? badge("Failed") : "Success"),
+    row("Category", LOG_CATEGORY_LABEL[l.category] || l.category),
+    row("Record", l.entity_type ? `${l.entity_type}${l.entity_id ? ` #${l.entity_id}` : ""}` : null),
+    row("Details", l.details), row("IP address", l.ip_address), row("Browser", l.user_agent),
+    row("As recorded", el("code", { class: "log-action" }, l.action_performed)), row("Entry", `#${l.id}`));
+  detailPanel({ title: l.event || "Audit entry", body, width: 560 });
 }
 
 // ==================================================================== backups (admin)
@@ -1985,27 +1999,117 @@ async function renderLogs(preset = null) {
 async function renderBackups() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Backups",
-    el("button", { class: "btn", onclick: async () => {
-      try { const b = await API.post("/api/admin/backup"); toast(`Backup ${b.filename} created`); renderBackups(); }
-      catch (err) { notify(msg, err.message, "error"); }
-    } }, "Run backup now")), msg);
+  const runBtn = el("button", { class: "btn", type: "button" }, el("i", { class: "bi bi-play-fill" }), " Run backup now");
+  runBtn.addEventListener("click", async () => {
+    runBtn.disabled = true; runBtn.textContent = "Backing up…";
+    try {
+      const b = await API.post("/api/admin/backup");
+      toast(b.verified && b.verified.outcome === "passed" ? "Backup created and checked" : "Backup created; the check found a problem");
+      renderBackups();
+    } catch (err) { notify(msg, err.message, "error"); runBtn.disabled = false; runBtn.textContent = "Run backup now"; }
+  });
+  const actions = el("div", { class: "actions" },
+    el("button", { class: "btn secondary", type: "button", onclick: openRestoreGuide }, el("i", { class: "bi bi-life-preserver" }), " Restore guide"),
+    hasPerm("system.technical") ? el("button", { class: "btn secondary", type: "button", onclick: () => { state.configSection = "Backups"; navigate("configuration"); } }, el("i", { class: "bi bi-gear" }), " Settings") : null,
+    runBtn);
+  viewRoot.append(viewHeader("Backups", actions), msg);
+  const tiles = el("div", { class: "stats" }, loadingState());
+  const setsCard = el("div", { class: "card" });
+  const checksCard = el("div", { class: "card" });
+  viewRoot.append(tiles, setsCard, checksCard);
+  let st, sets, checks;
   try {
-    const backups = await API.get("/api/admin/backups");
-    const card = el("div", { class: "card" }, el("h3", null, "Snapshots"));
-    if (!backups.length) card.append(el("div", { class: "empty" }, "No backups yet."));
-    else card.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "File"), el("th", null, "Size"), el("th", null, "Created"), el("th", null, ""))),
-      el("tbody", null, ...backups.map((b) => el("tr", { class: "no-click" },
-        el("td", { class: "ref" }, b.filename),
-        el("td", null, `${(b.size_bytes / 1024).toFixed(1)} KB`),
-        el("td", { class: "muted" }, fmtDate(b.created_at)),
-        el("td", null, el("button", { class: "btn small danger-ghost", onclick: async () => {
-          try { await API.del(`/api/admin/backups/${encodeURIComponent(b.filename)}`); toast("Deleted"); renderBackups(); }
-          catch (err) { notify(msg, err.message, "error"); }
-        } }, "Delete")))))));
-    viewRoot.append(card);
-  } catch (err) { notify(msg, err.message, "error"); }
+    [st, sets, checks] = await Promise.all([API.get("/api/admin/backups/status"), API.get("/api/admin/backups"), API.get("/api/admin/backups/checks?limit=20")]);
+  } catch (err) { clear(tiles); notify(msg, err.message, "error"); return; }
+
+  const size = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  const age = (h) => (h < 1 ? "Under 1 h" : h < 48 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`);
+  const result = (c) => (!c ? el("span", { class: "chip-mini" }, "Not checked")
+    : c.outcome === "passed" ? el("span", { class: "chip-mini ok" }, el("i", { class: "bi bi-check2" }), " Passed")
+      : el("span", { class: "chip-mini danger" }, el("i", { class: "bi bi-x-lg" }), " Failed"));
+  clear(tiles);
+  tiles.append(
+    st.latest ? stat(age(st.latest.age_hours), "Last backup", fmtDate(st.latest.created_at), st.overdue ? "danger" : "ok") : stat("None", "Last backup", null, "danger"),
+    stat(!st.server_schedule ? "Off" : st.interval_hours ? `Every ${st.interval_hours} h` : "Paused", "Schedule",
+      !st.server_schedule ? "switched off on the server" : st.next_due ? `next ${fmtDate(st.next_due)}` : null, st.interval_hours ? "" : "warn"),
+    stat(`${st.count} / ${st.retention}`, "Kept", st.include_attachments ? "with attachments" : "database only"),
+    stat(st.verified ? (st.verified.outcome === "passed" ? "Passed" : "Failed") : "-", "Last check", st.verified ? fmtDate(st.verified.at) : null,
+      st.verified ? (st.verified.outcome === "passed" ? "ok" : "danger") : ""),
+    stat(st.restore_test ? (st.restore_test.outcome === "passed" ? "Passed" : "Failed") : "Never", "Restore test",
+      st.restore_test ? fmtDate(st.restore_test.at) : null, st.restore_test ? (st.restore_test.outcome === "passed" ? "ok" : "danger") : "warn"));
+
+  setsCard.append(el("div", { class: "card-head" }, el("h3", null, "Backup sets")));
+  if (!sets.length) setsCard.append(emptyState({ icon: "hdd-stack", title: "No backups yet" }));
+  else {
+    const verify = async (b, btn) => {
+      btn.disabled = true;
+      try { const r = await API.post(`/api/admin/backups/${encodeURIComponent(b.stamp)}/verify`); toast(r.ok ? "Check passed" : "Check failed"); renderBackups(); }
+      catch (err) { notify(msg, err.message, "error"); btn.disabled = false; }
+    };
+    const remove = async (b) => {
+      const ok = await confirmDialog({ title: "Delete backup?", text: `${fmtDate(b.created_at)}: the database snapshot${b.files_name ? " and attachments" : ""} will be removed.`, confirmLabel: "Delete", danger: true });
+      if (!ok.ok) return;
+      try { await API.del(`/api/admin/backups/${encodeURIComponent(b.stamp)}`); toast("Backup deleted"); renderBackups(); }
+      catch (err) { notify(msg, err.message, "error"); }
+    };
+    setsCard.append(el("div", { class: "table-wrap" }, el("table", { class: "compact-table" },
+      el("thead", null, el("tr", null, ...["Created", "Database", "Attachments", "Check", ""].map((h) => el("th", null, h)))),
+      el("tbody", null, ...sets.map((b, i) => {
+        const vbtn = el("button", { class: "btn small secondary", type: "button", title: "Check this backup" }, el("i", { class: "bi bi-shield-check" }), " Verify");
+        vbtn.addEventListener("click", (e) => { e.stopPropagation(); verify(b, vbtn); });
+        return el("tr", { tabindex: "0", onclick: () => openBackupSet(b), onkeydown: (e) => { if (e.key === "Enter") openBackupSet(b); } },
+          el("td", null, fmtDate(b.created_at), i === 0 ? el("span", { class: "chip-mini", style: "margin-left:6px" }, "Latest") : null),
+          el("td", null, size(b.size_bytes)),
+          el("td", null, b.files_name ? `${b.file_count.toLocaleString()} file${b.file_count === 1 ? "" : "s"} · ${size(b.files_bytes)}` : el("span", { class: "muted" }, "Not included")),
+          el("td", null, result(b.verified)),
+          el("td", { class: "actions end" }, vbtn, sets.length > 1 ? el("button", { class: "btn small danger-ghost icon-only", type: "button", title: "Delete", "aria-label": "Delete backup",
+            onclick: (e) => { e.stopPropagation(); remove(b); } }, el("i", { class: "bi bi-trash" })) : null));
+      })))));
+  }
+
+  checksCard.append(el("div", { class: "card-head" }, el("h3", null, "Check history")));
+  if (!checks.items.length) checksCard.append(el("p", { class: "muted" }, "No checks yet."));
+  else checksCard.append(el("div", { class: "table-wrap" }, el("table", { class: "compact-table" },
+    el("thead", null, el("tr", null, ...["When", "Type", "Result", "By"].map((h) => el("th", null, h)))),
+    el("tbody", null, ...checks.items.map((c) => el("tr", { tabindex: "0", class: c.outcome === "failed" ? "row-failure" : "", onclick: () => openBackupCheck(c),
+      onkeydown: (e) => { if (e.key === "Enter") openBackupCheck(c); } },
+    el("td", null, fmtDate(c.at)), el("td", null, c.kind === "restore_test" ? "Restore test" : "Check"),
+    el("td", null, result(c)), el("td", null, c.by)))))));
+}
+
+function backupCheckList(checks) {
+  return el("ul", { class: "check-list" }, ...(checks || []).map((c) => el("li", { class: c.ok ? "ok" : "bad" },
+    el("i", { class: `bi bi-${c.ok ? "check-circle-fill" : "x-circle-fill"}`, "aria-hidden": "true" }),
+    el("span", null, c.name), c.detail ? el("span", { class: "muted small" }, ` · ${c.detail}`) : null)));
+}
+
+function openBackupSet(b) {
+  const fact = (k, v) => el("div", { class: "log-fact" }, el("dt", null, k), el("dd", null, v));
+  const body = el("div", null, el("dl", { class: "log-facts" },
+    fact("Created", fmtDate(b.created_at)), fact("Database", b.filename), fact("Method", b.method === "mysqldump" ? "MySQL dump" : "Portable snapshot"),
+    fact("Attachments", b.files_name ? `${b.file_count.toLocaleString()} file${b.file_count === 1 ? "" : "s"}` : "Not included")));
+  if (b.verified) body.append(el("h4", null, `Last check · ${fmtDate(b.verified.at)}`), backupCheckList(b.verified.checks));
+  else body.append(el("p", { class: "muted" }, "Not checked yet."));
+  detailPanel({ title: "Backup", body, width: 560 });
+}
+
+function openBackupCheck(c) {
+  detailPanel({ title: c.kind === "restore_test" ? "Restore test" : "Backup check", width: 560,
+    body: el("div", null, el("p", { class: "muted" }, `${fmtDate(c.at)} · ${c.by}`), backupCheckList(c.checks)) });
+}
+
+function openRestoreGuide() {
+  const step = (title, code) => el("li", null, el("div", null, title), code ? el("code", { class: "cmd" }, code) : null);
+  modal({ title: "Restore guide", width: 620, body: el("div", { class: "restore-guide" },
+    el("p", { class: "muted" }, "Restores are done on the server by the system administrator, never from the browser."),
+    el("ol", null,
+      step("Stop the application and create a new, empty database."),
+      step("Restore the database snapshot (point GPHA_DATABASE_URL at the new database):", "uv run python -m scripts.restore_backup backups/backup_<date>.json.enc --yes"),
+      step("For a MySQL dump, decrypt it and load it with the mysql client:", "uv run python -m scripts.restore_backup backups/backup_<date>.sql.enc --decrypt-only"),
+      step("Restore the attachments of the same backup:", "uv run python -m scripts.restore_backup backups/backup_<date>.files.tar.gz --yes"),
+      step("Start the application and sign in to check."),
+      step("Every quarter, run a full restore test; the result appears here:", "uv run python -m scripts.verify_backup")),
+    el("p", { class: "muted small" }, "The same encryption key must be in .env. Keep backups and the key off e-mail and chat.")) });
 }
 
 function registerAppOpeners() {
@@ -2038,7 +2142,7 @@ function registerAppOpeners() {
     (kind === "implement" ? implementForm : validateForm)(c, () => openRecord("capa", Number(id)));
   });
   registerFormOpener("profile:me", () => navigate("profile"));
-  registerFormOpener("user:new", () => { navigate("profile"); newUserForm(); });
+  registerFormOpener("user:new", () => { navigate(hasPerm("system.users") ? "users" : "profile"); newUserForm(); });
 }
 
 registerAppOpeners();

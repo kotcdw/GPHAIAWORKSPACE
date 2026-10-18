@@ -213,7 +213,21 @@ def _audit_type(value: str | None) -> str | None:
     return match
 
 
-def _port(db: DBSession, port_id: int | None) -> int | None:
+def _organization(db: DBSession, org_id: int | None, current: int | None = None) -> int | None:
+    from app.core.errors import field_error
+    from app.platform.organizations.models import Organization
+
+    if org_id is None:
+        return None
+    org = db.get(Organization, org_id)
+    if org is None:
+        raise field_error("organization_id", "is not a known entity")
+    if not org.is_active and org_id != current:  # an audit that already names a deactivated unit keeps it
+        raise field_error("organization_id", f"{org.name} is deactivated: choose an active unit")
+    return org_id
+
+
+def _port(db: DBSession, port_id: int | None, current: int | None = None) -> int | None:
     from app.core.errors import field_error
     from app.platform.organizations.router import Index
 
@@ -223,6 +237,8 @@ def _port(db: DBSession, port_id: int | None) -> int | None:
     row = idx.rows.get(port_id)
     if row is None or not idx.is_port(row):
         raise field_error("port_entity_id", "is not a port / site entity")
+    if not row.is_active and port_id != current:  # an audit that already names a deactivated port keeps it
+        raise field_error("port_entity_id", f"{row.name} is deactivated: choose an active port")
     return port_id
 
 
@@ -269,7 +285,7 @@ def create_audit(
         description=payload.description,
         scope=payload.scope,
         status=payload.status,
-        organization_id=payload.organization_id,
+        organization_id=_organization(db, payload.organization_id),
         audit_type=audit_type,
         workflow=payload.workflow or default_workflow(audit_type),
         port_entity_id=_port(db, payload.port_entity_id) if payload.port_entity_id else _home_port(db, user),
@@ -320,13 +336,13 @@ def update_audit(
         audit.scope = payload.scope
         changes.append("scope")
     if payload.organization_id is not None:
-        audit.organization_id = payload.organization_id
+        audit.organization_id = _organization(db, payload.organization_id, audit.organization_id)
         changes.append("organization_id")
     if "audit_type" in payload.model_fields_set:
         audit.audit_type = _audit_type(payload.audit_type)
         changes.append("audit_type")
     if "port_entity_id" in payload.model_fields_set:
-        audit.port_entity_id = _port(db, payload.port_entity_id)
+        audit.port_entity_id = _port(db, payload.port_entity_id, audit.port_entity_id)
         changes.append("port")
     if payload.custom_fields is not None:
         audit.custom_fields = json.dumps(_custom(db, payload.custom_fields, audit.custom_fields))

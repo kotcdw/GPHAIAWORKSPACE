@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
@@ -33,19 +34,56 @@ _ROUTERS = tuple(router for layer in LAYERS for router in layer.routers())
 
 
 async def _backup_scheduler() -> None:
-    """Periodically snapshot the database while the app runs."""
-    from app.platform.backups.service import create_backup
+    """Take a backup whenever the newest one is older than the configured interval (Configuration > Backups).
+    The interval is read on every tick, so a change applies without a restart; 0 pauses the schedule."""
+    from app.platform.backups import service
 
-    interval = settings.backup_interval_hours * 3600
     while True:
-        await asyncio.sleep(interval)
-        db = SessionLocal()
+        await asyncio.sleep(BACKUP_TICK_SECONDS)
         try:
-            create_backup(db)
-        except Exception:  # noqa: BLE001 - a failed backup must not kill the app
-            logger.exception("Scheduled backup failed")
-        finally:
-            db.close()
+            if await asyncio.to_thread(_backup_due, service):
+                await asyncio.to_thread(_scheduled_backup, service.create_backup)
+        except Exception:  # noqa: BLE001 - the scheduler must keep running
+            logger.exception("Backup scheduler tick failed")
+
+
+BACKUP_TICK_SECONDS = 60
+
+
+def _backup_due(service) -> bool:  # noqa: ANN001
+    hours = service.interval_hours()
+    if hours <= 0:
+        return False
+    sets = service.list_backups()
+    if not sets:
+        return True
+    newest = datetime.fromisoformat(sets[0].created_at)
+    return datetime.now(UTC) - newest >= timedelta(hours=hours)
+
+
+def _scheduled_backup(create_backup) -> None:  # noqa: ANN001
+    """Run one scheduled backup, check it, and record both outcomes in the audit trail (success or failure)."""
+    from app.core.audit import log_action
+
+    db = SessionLocal()
+    try:
+        info = create_backup(db)
+        log_action(db, user_id=None, commit=True,
+                   action=f"BACKUP_CREATE scheduled file={info.filename} bytes={info.size_bytes}")
+        if getattr(info, "stamp", ""):
+            from app.platform.backups.router import verify_and_record
+
+            verify_and_record(db, info.stamp, None)
+    except Exception as exc:  # noqa: BLE001 - a failed backup must not kill the app
+        logger.exception("Scheduled backup failed")
+        db.rollback()
+        try:
+            log_action(db, user_id=None, commit=True, outcome="failure",
+                       action=f"BACKUP_FAILED scheduled {type(exc).__name__}")
+        except Exception:  # noqa: BLE001 - database unreachable: the application log has it
+            db.rollback()
+    finally:
+        db.close()
 
 
 logger = logging.getLogger("gpha")

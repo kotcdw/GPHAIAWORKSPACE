@@ -79,6 +79,7 @@ def test_backup_create_list_delete(client, db):
     make_user(db, "backup_admin", Role.Admin)
     csrf = login(client, "backup_admin")
 
+    assert client.post("/api/admin/backup", headers=csrf_headers(csrf)).status_code == 200
     made = client.post("/api/admin/backup", headers=csrf_headers(csrf))
     assert made.status_code == 200, made.text
     filename = made.json()["filename"]

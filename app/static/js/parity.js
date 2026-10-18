@@ -318,7 +318,7 @@ const ATTR_TYPES = [["text", "Short answer"], ["select", "Dropdown"], ["date", "
 async function renderAuditTypes(tab = state.auditTypesTab || "terms") {
   state.auditTypesTab = tab;
   clear(viewRoot);
-  viewRoot.append(viewHeader("Audit types", null, { sub: "Each audit type renames its terms and adds up to 10 custom attributes per page (Diligent: Manage project types)" }));
+  viewRoot.append(viewHeader("Audit types"));
   let s;
   try { s = await API.get("/api/audit-types/settings"); } catch (err) { viewRoot.append(errorState(err, () => renderAuditTypes(tab))); return; }
   const canEdit = hasPerm("system.reference");
