@@ -20,7 +20,7 @@ All documents are in `docs/manuals/` in the project folder. Each one exists as M
 | 02 | Technology Stack | Components and versions, runtime topology, sizing, environments, what is not used and why, upgrade policy | IT management, infrastructure | `02-Technology-Stack.md` / `.docx` | Issued |
 | 03 | Administration Guide | Installation (development and production), `.env` settings, users and roles, reference data, configuration, apps & customization, security operations, backups and restore, monitoring, troubleshooting, scripts | Super Administrators, Administrators, GPHA IT | `03-Administration-Guide.md` / `.docx` | Issued |
 | 04 | Governance, Administration & Operations Manual | Ownership and RACI, decision register, change control and release procedure, support model, data governance, routine operations, continuity, UAT and go-live checklist, templates | GM Audit, system owner, IT management | `04-Governance-and-Operations.md` / `.docx` | Draft for GPHA approval |
-| 05 | User Manual (illustrated) | Screen-by-screen guide with 55 screenshots: getting started, lists and forms, audit management, resources, risk, compliance, analytics and reporting, auditees, FAQ, quick reference cards | All users | `05-User-Manual.md` / `.docx` | Issued |
+| 05 | User Manual (illustrated) | How GIAW works and how each user works in it: the audit cycle, getting started, universe and assurance map, plan, audits, reports, follow-up, Committee, quality, auditees, administrators, FAQ, quick reference cards, glossary; with a companion slide deck | All users | `docs/Usermanual.md` / `.docx` / `.pptx` | Issued |
 | 06 | Training Guide | Learning outcomes, six training tracks, session plan, facilitator preparation, 20 hands-on exercises (reusable as UAT scripts), knowledge check with answers, evaluation and completion forms | Trainers, participants | `06-Training-Guide.md` / `.docx` | Issued |
 | 07 | Training deck | Slides for instructor-led training, with screenshots and speaker notes | Trainers | `07-GIAW-Training-Deck.pptx` | Issued |
 | – | Images | Screenshots and diagrams used by the documents | – | `images/` | – |
@@ -53,7 +53,7 @@ These cannot be written by the developer alone. They need GPHA owners and decisi
 | Data migration plan | Loading org structure, universe, plan, open findings | System owner | Administration Guide §5 |
 | Service level agreement (support) | Support expectations | Sponsor / IT | Governance manual §5 |
 | Release notes (per release) | Record of changes | Developer | Change request form |
-| Quick reference cards (printable, per role) | Day-one support | System owner | User Manual §11 |
+| Quick reference cards (printable, per role) | Day-one support | System owner | User Manual §16 |
 
 # 5. Keeping the documentation current
 
@@ -67,7 +67,9 @@ These cannot be written by the developer alone. They need GPHA owners and decisi
 From the `docs/manuals` folder:
 
 ```
-pandoc 05-User-Manual.md -o 05-User-Manual.docx --reference-doc=reference.docx --toc --resource-path=.
+pandoc 06-Training-Guide.md -o 06-Training-Guide.docx --reference-doc=reference.docx --toc --resource-path=.
+# User Manual (from the docs folder)
+cd .. && pandoc Usermanual.md -o Usermanual.docx --reference-doc=manuals/reference.docx --toc --resource-path=.
 ```
 
 `reference.docx` holds the GPHA styles: fonts, heading colours and table style.

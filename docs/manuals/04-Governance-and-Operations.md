@@ -223,7 +223,7 @@ Recovery objectives (RPO and RTO) are **GPHA to decide** (D9). With daily backup
 | 02 | Technology Stack | .md / .docx | IT management | Developer | Each major release |
 | 03 | Administration Guide | .md / .docx | Administrators, IT | System owner | Each release |
 | 04 | Governance, Administration & Operations Manual (this document) | .md / .docx | Sponsor, owner, IT | System owner | Annually |
-| 05 | User Manual (illustrated) | .md / .docx | All users | System owner | Each release |
+| 05 | User Manual (illustrated), `docs/Usermanual` | .md / .docx / .pptx | All users | System owner | Each release |
 | 06 | Training Guide | .md / .docx | Trainers, participants | System owner | Each release |
 | 07 | Training deck | .pptx | Trainers | System owner | Each release |
 | – | QA and test reports | .md | Owner, IT | Developer | Each test cycle |

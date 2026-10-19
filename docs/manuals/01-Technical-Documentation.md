@@ -15,7 +15,7 @@ date: "Version 1.0 · 16 October 2026"
 | Code baseline | Repository `C:\dev\GPHAIAWORKSPACE`, commit `4e0d386`, database migration `0034_drop_workspace_prefs` |
 | Audience | Developers, technical administrators, IT security reviewers, support engineers |
 | Owner | GIAW system owner (GPHA Internal Audit), to be named |
-| Related documents | Technology Stack (02), Administration Guide (03), Governance & Operations (04), User Manual (05), Training Guide (06), `mainBLUEPRINT.md` |
+| Related documents | Technology Stack (02), Administration Guide (03), Governance & Operations (04), User Manual (`docs/Usermanual`), Training Guide (06), `mainBLUEPRINT.md` |
 
 **Change history**
 
@@ -36,7 +36,7 @@ GIAW is GPHA's internal audit management system. It supports the full internal a
 
 It also covers related governance, risk and compliance (GRC) registers: Risk Manager, Compliance Maps, Policy Manager and Asset Inventory.
 
-This document describes how the system is built and how it behaves technically. How to install and run it is in the Administration Guide (03). How to use it is in the User Manual (05).
+This document describes how the system is built and how it behaves technically. How to install and run it is in the Administration Guide (03). How to use it is in the User Manual (`docs/Usermanual`).
 
 # 2. System overview
 
