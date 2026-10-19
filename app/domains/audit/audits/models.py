@@ -54,6 +54,13 @@ class Audit(Base):
     working_papers: Mapped[list[WorkingPaper]] = relationship(back_populates="audit", cascade="all, delete-orphan")
     findings: Mapped[list[Finding]] = relationship(back_populates="audit", cascade="all, delete-orphan")
 
+    @property
+    def nature(self) -> str:
+        """Assurance or Advisory, from the audit type (see ``nature.py``)."""
+        from app.domains.audit.audits.nature import nature
+
+        return nature(self)
+
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<Audit id={self.id} title={self.title!r} status={self.status.value}>"
 

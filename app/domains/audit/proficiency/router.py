@@ -3,7 +3,7 @@ confidentiality), conflict review, CPD records and certifications (IIA GIAS Doma
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -18,6 +18,7 @@ from app.core.enums import Role, utcnow
 from app.core.permissions import has_perm
 from app.domains.audit.proficiency.models import (
     CPD_CATEGORIES,
+    AuditorPriorRole,
     Certification,
     CpdRecord,
     Declaration,
@@ -326,3 +327,81 @@ def team_summary(year: int | None = Query(default=None), db: DBSession = Depends
             "expiring": [c.name for c in certs if c.expires_on and (c.expires_on - now).days <= 90]})
     pending = db.execute(select(Declaration).where(Declaration.review_status == "Pending review")).scalars().all()
     return {"year": year, "target": target, "staff": out, "pending_reviews": [_decl_out(db, d) for d in pending]}
+
+
+# ---------------------------------------------------------------- prior roles (cooling-off, IIA GIAS 2.2)
+
+
+class PriorRoleIn(BaseModel):
+    user_id: int | None = None
+    org_unit_id: int
+    role: str = Field(min_length=2, max_length=160)
+    from_date: date | None = None
+    to_date: date | None = None
+
+
+def _prior_out(db: DBSession, r: AuditorPriorRole) -> dict:
+    from app.platform.organizations.models import Organization
+
+    org = db.get(Organization, r.org_unit_id)
+    return {"id": r.id, "user_id": r.user_id, "org_unit_id": r.org_unit_id, "unit": org.name if org else None,
+            "role": r.role, "from_date": r.from_date, "to_date": r.to_date}
+
+
+def _subject(user: User, user_id: int | None) -> int:
+    if user_id in (None, user.id):
+        _staff_only(user)
+        return user.id
+    if not has_perm(user, "proficiency.manage"):
+        raise HTTPException(status_code=403, detail="Only a reviewer can record another auditor's prior roles")
+    return user_id
+
+
+@router.get("/prior-roles")
+def list_prior_roles(user_id: int | None = Query(default=None), db: DBSession = Depends(get_db),
+                     user: User = Staff) -> dict:
+    """Units the auditor worked in before; an audit of these units within the cooling-off period is flagged."""
+    from app.platform.organizations.models import Organization
+
+    who = _subject(user, user_id)
+    rows = db.execute(select(AuditorPriorRole).where(AuditorPriorRole.user_id == who)
+                      .order_by(AuditorPriorRole.to_date.is_(None).desc(), AuditorPriorRole.to_date.desc())).scalars()
+    units = db.execute(select(Organization).order_by(Organization.name)).scalars()
+    return {"items": [_prior_out(db, r) for r in rows], "cooling_off_months": int(cfg("cooling_off_months") or 0),
+            "units": [{"id": o.id, "name": o.name} for o in units]}
+
+
+@router.post("/prior-roles", status_code=201)
+def add_prior_role(payload: PriorRoleIn, request: Request, db: DBSession = Depends(get_db),
+                   user: User = Staff) -> dict:
+    from app.platform.organizations.models import Organization
+
+    who = _subject(user, payload.user_id)
+    if db.get(User, who) is None:
+        raise HTTPException(status_code=422, detail="Choose an auditor")
+    if db.get(Organization, payload.org_unit_id) is None:
+        raise HTTPException(status_code=422, detail="Choose an org unit")
+    if payload.from_date and payload.to_date and payload.to_date < payload.from_date:
+        raise HTTPException(status_code=422, detail="The end date must be after the start date")
+    r = AuditorPriorRole(user_id=who, org_unit_id=payload.org_unit_id, role=payload.role.strip(),
+                         from_date=payload.from_date, to_date=payload.to_date, created_by=user.id)
+    db.add(r)
+    db.flush()
+    log_action(db, user_id=user.id, request=request,
+               action=f"PRIOR_ROLE_ADDED id={r.id} user={who} unit={payload.org_unit_id}")
+    db.commit()
+    return _prior_out(db, r)
+
+
+@router.delete("/prior-roles/{role_id}")
+def delete_prior_role(role_id: int, request: Request, db: DBSession = Depends(get_db),
+                      user: User = Reviewer) -> dict:
+    """Only a reviewer removes a recorded role, so an auditor cannot lift their own cooling-off flag."""
+    r = db.get(AuditorPriorRole, role_id)
+    if r is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(r)
+    log_action(db, user_id=user.id, request=request,
+               action=f"PRIOR_ROLE_DELETED id={role_id} user={r.user_id} unit={r.org_unit_id} role={r.role}")
+    db.commit()
+    return {"message": "Deleted"}

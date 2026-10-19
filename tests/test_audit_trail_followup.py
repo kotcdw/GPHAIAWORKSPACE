@@ -7,12 +7,14 @@ import io
 import uuid
 from datetime import timedelta
 
+from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 
 from app.core import permissions as perms
 from app.core.audit import classify
-from app.core.enums import Role, utcnow
+from app.core.enums import ReviewLevel, Role, utcnow
 from app.domains.issues.capa.models import Capa, CapaEvent
+from app.main import app
 from app.platform.history.models import AuditLog
 from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
 
@@ -205,7 +207,18 @@ def test_risk_acceptance_reopen_and_aging(client, client2, db):
                             json={"reason": "Legacy system retires in March; compensating weekly review in place",
                                   "accepted_by": "Director of Finance"}, headers=mh)
     assert accepted.status_code == 200, accepted.text
-    assert accepted.json()["status"] == "Closed" and accepted.json()["implementation_status"] == "Risk Accepted"
+    assert accepted.json()["status"] != "Closed" and accepted.json()["risk_acceptance_status"] == "Proposed"
+    # The GM Audit decides (IIA GIAS 11.5); a Medium action then closes without the Committee.
+    cae = _u(db, "fm_cae2", job="manager")
+    cae.review_level = ReviewLevel.CAE
+    db.commit()
+    with TestClient(app) as c3:
+        ch = csrf_headers(login(c3, cae.username))
+        agreed = c3.post(f"/api/capa/{cid}/risk-acceptance/decision",
+                         json={"decision": "Agree", "comment": "Discussed with the Director-General; within appetite"},
+                         headers=ch)
+    assert agreed.status_code == 200, agreed.text
+    assert agreed.json()["status"] == "Closed" and agreed.json()["implementation_status"] == "Risk Accepted"
     # Reopen a closed action
     assert client2.post(f"/api/capa/{cid}/reopen", json={"reason": "short"}, headers=mh).status_code == 422
     reopened = client2.post(f"/api/capa/{cid}/reopen",

@@ -51,6 +51,7 @@ class AuditOut(ORMModel):
     port_entity_id: int | None = None
     workflow: str = "Internal Control"
     testing_rounds: int = 1
+    nature: str = "Assurance"
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None
     created_at: datetime

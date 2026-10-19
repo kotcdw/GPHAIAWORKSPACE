@@ -171,6 +171,18 @@ def _apply_to_capa(db: DBSession, m: CommitteeMeeting, d: CommitteeDecision, use
     if capa.status == CapaStatus.Closed and d.decision != "Noted":
         raise HTTPException(status_code=409, detail=f"{capa.capa_ref} is already closed")
     note = f"Audit Committee {m.meeting_ref} ({m.meeting_date:%d %b %Y}): {d.decision}"
+    if d.decision in ("Accept risk", "Reject risk acceptance"):
+        from app.domains.issues.followup.actions import close_risk_accepted, reject_risk_acceptance
+
+        if capa.risk_acceptance_status != "Committee":
+            raise HTTPException(status_code=409, detail=f"{capa.capa_ref} has no risk acceptance referred to the "
+                                                        "Committee")
+        text = note + (f". {d.notes}" if d.notes else "")
+        if d.decision == "Accept risk":
+            close_risk_accepted(db, capa, user.id, text, request)
+        else:
+            reject_risk_acceptance(db, capa, user.id, text, request)
+        return
     if d.decision == "Close":
         if is_internal(capa):
             if capa.validation_result != ValidationResult.Effective:
@@ -195,6 +207,9 @@ def _apply_to_capa(db: DBSession, m: CommitteeMeeting, d: CommitteeDecision, use
         capa.closed_at = utcnow()
     if d.decision in ("Close", "Withdraw"):
         from app.domains.issues.capa.timeline import add_event
+        from app.domains.issues.followup.actions import drop_pending_risk_acceptance
+
+        drop_pending_risk_acceptance(db, capa, user.id, request)
 
         add_event(db, capa, "closed" if d.decision == "Close" else "withdrawal", user_id=user.id, request=request,
                   text=note + (f". {d.notes}" if d.notes else ""))
@@ -259,7 +274,8 @@ def for_decision(db: DBSession = Depends(get_db), _: User = Viewer) -> list[dict
     recommendations from external bodies with a closure reference, and actions escalated to the Committee."""
     rows = db.execute(select(Capa).where(Capa.status != CapaStatus.Closed, or_(
         Capa.withdrawal_proposed_at.is_not(None), Capa.validation_result == ValidationResult.Effective,
-        Capa.escalation_level >= 4, Capa.external_closure_ref.is_not(None)))).scalars()
+        Capa.escalation_level >= 4, Capa.external_closure_ref.is_not(None),
+        Capa.risk_acceptance_status == "Committee"))).scalars()
     out = []
     for c in rows:
         reasons = []
@@ -271,9 +287,12 @@ def for_decision(db: DBSession = Depends(get_db), _: User = Viewer) -> list[dict
             reasons.append("Overdue - escalated to the Committee")
         if c.external_closure_ref:
             reasons.append(f"Closed by {c.source_body} ({c.external_closure_ref})")
+        if c.risk_acceptance_status == "Committee":
+            reasons.append("Risk acceptance agreed by the GM Audit - for decision")
         out.append({"id": c.id, "capa_ref": c.capa_ref, "title": c.title, "source_body": c.source_body,
                     "owner_email": c.owner_email, "due_date": c.due_date, "implementation_status":
-                    c.implementation_status, "reasons": reasons, "withdrawal_reason": c.withdrawal_reason})
+                    c.implementation_status, "reasons": reasons, "withdrawal_reason": c.withdrawal_reason,
+                    "risk_acceptance": c.risk_acceptance if c.risk_acceptance_status == "Committee" else None})
     return out
 
 

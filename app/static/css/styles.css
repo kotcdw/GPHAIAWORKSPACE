@@ -1775,6 +1775,9 @@ button.u-stat:hover, button.u-stat:focus-visible { border-color: var(--accent-li
 .u-chip.ok { background: var(--ok-soft); color: var(--ok-text); }
 .u-chip.warn { background: var(--warn-soft); color: var(--warn-text); }
 .u-chip.muted { background: var(--neutral-soft); color: var(--muted); }
+.u-chip.danger { background: var(--danger-soft); color: var(--danger-text); }
+.u-cell-list { display: grid; gap: 4px; }
+.u-cell-list > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .u-chip.as-btn { cursor: pointer; font: inherit; font-size: 12px; }
 .u-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .u-bar { display: inline-block; width: 100%; max-width: 220px; height: 8px; border-radius: 999px; background: var(--panel-3); overflow: hidden; vertical-align: middle; }

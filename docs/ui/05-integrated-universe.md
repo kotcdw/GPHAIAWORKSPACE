@@ -35,7 +35,7 @@ auditable entities + assessment factors + rating scale ─► Audit risk assessm
 
 ## 3. Audit universe (Audit management > Audit universe)
 
-One page with four tabs; source records stay in the Org Structure and the Process library (nothing is copied).
+One page with five tabs; source records stay in the Org Structure and the Process library (nothing is copied).
 
 - **Overview**: setup flow (review units > review processes > define entities > assess risk), counts (org units,
   processes, defined entities, needs review) and coverage (units included, processes mapped, entities ready).
@@ -51,6 +51,12 @@ One page with four tabs; source records stay in the Org Structure and the Proces
   `POST /api/audit-universe/processes/map`.
 - **Entities**: register (name, type, org units, processes, business owner, linked risks, last audit, status) with
   filters, export and **New entity**. API: `GET /api/audit-universe/entities`.
+- **Assurance map** (IIA GIAS 9.5): entities (not retired) by line of assurance (`assurance_lines`), with each
+  provider's result and the reliance placed on it; Internal Audit's column is the last assurance audit. Providers
+  are listed below the map. Reliance other than None needs a basis and an assurance date. The entity page has an
+  **Assurance** tab. API: `GET /api/assurance-map`, `GET|POST /api/assurance-providers`,
+  `PATCH /api/assurance-providers/{id}`, `GET /api/auditable-entities/{id}/assurance`,
+  `POST /api/assurance-coverage`, `PATCH|DELETE /api/assurance-coverage/{id}`.
 
 ## 4. New / edit auditable entity
 

@@ -11,10 +11,10 @@ and a completed assessment feeds the Assurance Plan.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -186,3 +186,43 @@ def band(label: str | None) -> str | None:
 __all__ = ["AuditEntity", "UniverseReview", "Process", "ProcessOrgUnit", "EntityOrgUnit", "EntityProcess",
            "AssessmentFactor", "AuditRiskAssessment", "AraEntity", "AraFactor", "AraScore", "SCALES", "scale_label",
            "band"]
+
+
+class AssuranceProvider(Base):
+    """Another provider of assurance or advice (IIA GIAS 9.5): a management function, risk or compliance, an
+    external auditor or a regulator."""
+
+    __tablename__ = "assurance_providers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False, unique=True)
+    line: Mapped[str] = mapped_column(String(60), nullable=False)
+    contact: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class AssuranceCoverage(Base):
+    """What a provider covers on an auditable entity, its latest result and the reliance Internal Audit places on it."""
+
+    __tablename__ = "assurance_coverage"
+    __table_args__ = (UniqueConstraint("entity_id", "provider_id", name="uq_assurance_coverage_entity_provider"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_id: Mapped[int] = mapped_column(ForeignKey("entity_units.id", ondelete="CASCADE"), nullable=False,
+                                           index=True)
+    provider_id: Mapped[int] = mapped_column(ForeignKey("assurance_providers.id", ondelete="RESTRICT"),
+                                             nullable=False, index=True)
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_assurance_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    next_planned_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    result: Mapped[str] = mapped_column(String(40), nullable=False)
+    reliance: Mapped[str] = mapped_column(String(10), nullable=False, default="None")
+    reliance_basis: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_ref: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

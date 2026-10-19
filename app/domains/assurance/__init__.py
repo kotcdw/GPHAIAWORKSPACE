@@ -8,7 +8,7 @@ DESCRIPTION = (
     "distribution, Audit Committee, governance and QAIP."
 )
 MODULES = {
-    "planning": "Audit universe, risk assessment and the annual assurance plan",
+    "planning": "Audit universe, assurance map, risk assessment and the annual assurance plan",
     "plancycle": "Planning cycle, statuses, versions, change requests, IAA submission, distribution",
     "committee": "Audit Committee packs, meetings register, minutes and decisions on recommendations",
     "governance": "Governance portal and charter",
@@ -30,9 +30,10 @@ def routers() -> list:
     from app.domains.assurance.planning.timeline import router as plan_timeline
     from app.domains.assurance.qaip.router import router as qaip
     from app.domains.assurance.scheduler.router import router as scheduler
+    from app.domains.assurance.universe.assurance_map import router as assurance_map
     from app.domains.assurance.universe.router import router as universe
     from app.domains.assurance.universe.workspace import router as universe_workspace
 
     return [planning, plan_coverage, plan_timeline, committee, committee_meetings, qaip, governance, plancycle,
             plan_changes,
-            conformance, scheduler, universe, universe_workspace]
+            conformance, scheduler, universe, universe_workspace, assurance_map]

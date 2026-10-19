@@ -623,6 +623,7 @@ function navigate(view) {
   if (view === "universe_units") return renderUniverseUnits();
   if (view === "universe_processes") return renderUniverseProcesses();
   if (view === "universe_entities") return renderUniverseEntities();
+  if (view === "universe_assurance") return renderAssuranceMap();
   if (view === "profile") return renderProfile();
   if (view === "logs") return renderLogs();
   if (view === "backups") return renderBackups();
@@ -1479,6 +1480,7 @@ function renderAuditSide(side, audit, canWrite) {
     el("dl", { class: "kv" },
       el("dt", null, "Plan"), el("dd", null, plan),
       el("dt", null, "Stream"), el("dd", null, audit.audit_type || el("span", { class: "muted" }, "Not set")),
+      el("dt", null, "Nature"), el("dd", null, audit.nature || "Assurance"),
       el("dt", null, "Port"), el("dd", null, port),
       el("dt", null, "Created"), el("dd", null, fmtDay(audit.created_at)),
       el("dt", null, "Updated"), el("dd", null, fmtDay(audit.updated_at))),
@@ -1500,7 +1502,9 @@ async function renderAuditTeam(slot, audit, canEdit) {
   if (!team.length) card.append(el("p", { class: "muted small" }, "No team assigned yet."));
   else card.append(el("ul", { class: "plain-list team-list" }, ...team.map((m) => el("li", null,
     el("div", null, el("strong", null, m.name), el("div", { class: "muted small" },
-      [m.team_role, m.approval_level ? LEVEL[m.approval_level] || m.approval_level : null].filter(Boolean).join(" · "))),
+      [m.team_role, m.approval_level ? LEVEL[m.approval_level] || m.approval_level : null].filter(Boolean).join(" · ")),
+      m.independence ? el("div", null, el("span", { class: `u-chip ${m.independence === "Declared" || m.independence === "Cleared" ? "ok" : "warn"}` }, m.independence)) : null,
+      ...(m.objectivity || []).map((t) => el("div", { class: "small text-danger" }, el("i", { class: "bi bi-exclamation-triangle" }), ` ${t}`))),
     canEdit && m.team_role !== "Lead auditor" ? el("button", { class: "chip-x", type: "button", title: `Remove ${m.name}`, "aria-label": `Remove ${m.name}`,
       onclick: async () => {
         const ok = await confirmDialog({ title: "Remove from team", text: `${m.name} will lose access to this audit unless it belongs to their port.`, confirmLabel: "Remove", danger: true });
@@ -1517,7 +1521,13 @@ async function renderAuditTeam(slot, audit, canEdit) {
   });
   card.append(el("div", { class: "team-add" }, who, role, el("button", { class: "btn small", type: "button", onclick: async () => {
     if (!who.value) { toast("Choose a person", "error"); return; }
-    try { await API.post(`/api/audits/${audit.id}/team`, { user_id: Number(who.value), team_role: role.value }); toast("Team updated"); renderAuditTeam(slot, audit, canEdit); }
+    try {
+      const t = await API.post(`/api/audits/${audit.id}/team`, { user_id: Number(who.value), team_role: role.value });
+      const added = t.find((m) => m.user_id === Number(who.value));
+      if (added && added.objectivity && added.objectivity.length) toast(`Objectivity: ${added.objectivity.join("; ")}`, "error");
+      else toast("Team updated");
+      renderAuditTeam(slot, audit, canEdit);
+    }
     catch (err) { toast(err.message, "error"); }
   } }, "Add")));
 }

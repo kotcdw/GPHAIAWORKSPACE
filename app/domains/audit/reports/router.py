@@ -1,4 +1,4 @@
-"""Audit report routes: build, comment, review, approve, issue and export."""
+"""Audit report routes: build, comment, review, approve, issue, correct and export."""
 
 from __future__ import annotations
 
@@ -19,14 +19,23 @@ from app.core.history import log_record_history
 from app.core.refs import next_reference
 from app.core.schemas import ESignRequest
 from app.domains.audit.audits.models import Audit, AuditAuditee, Finding
+from app.domains.audit.audits.nature import is_advisory
 from app.domains.audit.reports import service
-from app.domains.audit.reports.models import AuditReport
-from app.domains.audit.reports.schemas import ManagementComments, ReportOut, ReportUpdate, SignoffOut
+from app.domains.audit.reports.models import AuditReport, ReportRevision
+from app.domains.audit.reports.schemas import (
+    CorrectionIn,
+    ManagementComments,
+    ReportOut,
+    ReportUpdate,
+    RevisionOut,
+    SignoffOut,
+)
 from app.platform.notifications.service import notify, notify_many, user_id_by_email, user_ids_with_level
 from app.platform.users.models import User
 from app.services.documents import docx_response
 
 router = APIRouter(tags=["reports"])
+_PRINT_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
 
 Staff = Depends(require_module_tier("reports", Role.Admin, Role.Auditor))
 _AUDITEE_STAGES = (ReportStatus.ManagementReview, ReportStatus.Issued)
@@ -66,12 +75,13 @@ def _can_view(db: DBSession, user: User, report: AuditReport) -> bool:
 def _blockers(db: DBSession, report: AuditReport) -> list[str]:
     """What must be fixed before the report can go to review."""
     problems = []
-    if report.overall_rating is None:
+    if report.overall_rating is None and not is_advisory(db.get(Audit, report.audit_id)):
         problems.append("Choose an overall rating.")
     if not report.executive_summary.strip():
         problems.append("Write the executive summary.")
     if not report.overall_opinion.strip():
-        problems.append("Write the overall opinion.")
+        problems.append("Write the conclusion." if is_advisory(db.get(Audit, report.audit_id))
+                        else "Write the overall opinion.")
     findings = db.execute(select(Finding).where(Finding.audit_id == report.audit_id)).scalars().all()
     no_response = [f.id for f in findings if not (f.management_response or "").strip()]
     if no_response and cfg("require_management_response_for_review"):
@@ -103,6 +113,8 @@ def _out(db: DBSession, report: AuditReport, user: User) -> ReportOut:
         and user.id not in (report.created_by, report.manager_reviewed_by)
         and user.id not in review_chain.signer_ids(report.review_trail)
     )
+    out.can_correct = staff and report.status == ReportStatus.Issued and level == ReviewLevel.CAE
+    out.advisory = is_advisory(db.get(Audit, report.audit_id))
     out.blockers = _blockers(db, report) if staff and report.status != ReportStatus.Issued else []
     out.signoffs = [SignoffOut(**s) for s in service.signoffs(db, report)]
     return out
@@ -144,7 +156,7 @@ def create_audit_report(audit_id: int, request: Request, db: DBSession = Depends
     report = AuditReport(
         audit_id=audit.id,
         report_ref=next_reference(db, "RPT"),
-        title=f"Internal Audit Report: {audit.title}"[:255],
+        title=f"{'Advisory Report' if is_advisory(audit) else 'Internal Audit Report'}: {audit.title}"[:255],
         status=ReportStatus.Draft,
         background=audit.description or "",
         scope_objectives=audit.scope or "",
@@ -215,7 +227,8 @@ def send_to_management(report_id: int, request: Request, db: DBSession = Depends
     report = _report_or_404(db, report_id, user)
     if report.status != ReportStatus.Draft:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only a draft can be sent to management")
-    if report.overall_rating is None or not report.executive_summary.strip():
+    rated = report.overall_rating is not None or is_advisory(db.get(Audit, report.audit_id))
+    if not rated or not report.executive_summary.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Add the overall rating and executive summary before sending to management")
     report.status = ReportStatus.ManagementReview
@@ -339,7 +352,7 @@ def cae_approve(report_id: int, payload: ESignRequest, request: Request, db: DBS
         now = utcnow()
         report.cae_approved_by = user.id
         report.cae_approved_at = now
-        report.issued_at = now
+        report.issued_at = report.issued_at or now  # the first issue date stays; a correction has its own approval date
         report.status = ReportStatus.Issued
         report.issued_snapshot = service.take_snapshot(session, report)
 
@@ -347,10 +360,20 @@ def cae_approve(report_id: int, payload: ESignRequest, request: Request, db: DBS
          decision=decision, comment=payload.comment, request=request, on_approve=_approve,
          preparer_id=report.created_by)
     if decision == "Approve":
-        notify_many(db, _auditee_ids(db, report.audit_id) + [report.created_by, report.manager_reviewed_by],
-                    f"Audit report issued: {report.title}", f"{report.report_ref} has been approved and issued.",
-                    link_type="audit_report", link_id=report.id)
         from app.platform.automations.engine import emit, report_context
+
+        subject, body = f"Audit report issued: {report.title}", f"{report.report_ref} has been approved and issued."
+        if report.version > 1:
+            from app.domains.audit.reports.distribution import previous_recipients
+
+            resend = previous_recipients(db, report)
+            subject = f"Corrected audit report issued: {report.title}"
+            body = (f"{report.report_ref} version {report.version} replaces version {report.version - 1}. "
+                    f"Correction: {report.correction_reason}"
+                    + (f" Send the corrected copy to: {', '.join(resend)}." if resend else ""))
+            _history(db, report, user, f"ISSUED corrected version {report.version}", request)
+        notify_many(db, _auditee_ids(db, report.audit_id) + [report.created_by, report.manager_reviewed_by],
+                    subject, body, link_type="audit_report", link_id=report.id)
 
         emit(db, "report.issued", "audit_report", report.id, report_context(db, report))
     else:
@@ -365,14 +388,104 @@ def cae_approve(report_id: int, payload: ESignRequest, request: Request, db: DBS
     return _out(db, report, user)
 
 
+# ------------------------------------------------------------------ correction of an issued report (GIAS 11.4)
+
+
+@router.post("/api/reports/{report_id}/correction", response_model=ReportOut)
+def open_correction(report_id: int, payload: CorrectionIn, request: Request, db: DBSession = Depends(get_db),
+                    user: User = Staff) -> ReportOut:
+    """The GM Audit reopens an issued report that contains a significant error or omission. The issued version is
+    frozen as it was; the report returns to Draft as the next version and goes through review and approval again.
+    Everyone who received the earlier version must be sent the corrected one."""
+    report = _report_or_404(db, report_id, user)
+    if report.status != ReportStatus.Issued:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only an issued report can be corrected")
+    if user.review_level != ReviewLevel.CAE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Only the GM Audit can correct an issued report (IIA GIAS 11.4)")
+    reason = payload.reason.strip()
+    db.add(ReportRevision(report_id=report.id, version=report.version, snapshot=service.version_snapshot(db, report),
+                          issued_at=report.cae_approved_at or report.issued_at, superseded_at=utcnow(),
+                          correction_reason=reason,
+                          opened_by=user.id))
+    report.version += 1
+    report.correction_reason = reason
+    report.status = ReportStatus.Draft
+    report.issued_snapshot = None
+    report.cae_approved_at = report.cae_approved_by = None
+    report.manager_reviewed_by = report.manager_reviewed_at = None
+    report.review_stage, report.review_trail = None, "[]"
+    _history(db, report, user, f"CORRECTION opened: version {report.version} will replace version "
+                               f"{report.version - 1} ({reason[:300]})", request)
+    notify_many(db, [u for u in (report.created_by,) if u and u != user.id],
+                f"Issued report reopened for correction: {report.report_ref}", reason,
+                link_type="audit_report", link_id=report.id)
+    db.commit()
+    db.refresh(report)
+    return _out(db, report, user)
+
+
+def _can_view_versions(db: DBSession, user: User, report: AuditReport) -> bool:
+    from app.core.permissions import has_perm
+
+    if is_privileged(user):
+        from app.core.access import can_view
+
+        return can_view(db, user, "audit", db.get(Audit, report.audit_id))
+    return has_perm(user, "governance.view") or report.audit_id in assigned_audit_ids(db, user)
+
+
+def _revision_or_404(db: DBSession, report_id: int, version: int, user: User) -> tuple[AuditReport, ReportRevision]:
+    report = db.get(AuditReport, report_id)
+    if report is None or not _can_view_versions(db, user, report):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    rev = db.execute(select(ReportRevision).where(ReportRevision.report_id == report_id,
+                                                  ReportRevision.version == version)).scalar_one_or_none()
+    if rev is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such version")
+    return report, rev
+
+
+@router.get("/api/reports/{report_id}/versions", response_model=list[RevisionOut])
+def list_versions(report_id: int, db: DBSession = Depends(get_db),
+                  user: User = Depends(require_active_user)) -> list[RevisionOut]:
+    """Earlier issued versions of the report, newest first, each with the reason it was corrected."""
+    report = db.get(AuditReport, report_id)
+    if report is None or not _can_view_versions(db, user, report):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    rows = db.execute(select(ReportRevision).where(ReportRevision.report_id == report_id)
+                      .order_by(ReportRevision.version.desc())).scalars().all()
+    return [RevisionOut(version=r.version, issued_at=r.issued_at, superseded_at=r.superseded_at,
+                        correction_reason=r.correction_reason, opened_by=service._name(db, r.opened_by))
+            for r in rows]
+
+
+@router.get("/api/reports/{report_id}/versions/{version}/print", response_class=HTMLResponse)
+def print_version(report_id: int, version: int, request: Request, db: DBSession = Depends(get_db),
+                  user: User = Depends(require_active_user)) -> HTMLResponse:
+    _, rev = _revision_or_404(db, report_id, version, user)
+    frozen, parts = service.frozen_report(rev.snapshot)
+    log_action(db, user_id=user.id, request=request, commit=True,
+               action=f"REPORT_EXPORT id={report_id} version={version} format=print")
+    return HTMLResponse(service.to_html(db, frozen, parts), headers={"Content-Security-Policy": _PRINT_CSP})
+
+
+@router.get("/api/reports/{report_id}/versions/{version}/export.docx")
+def export_version_docx(report_id: int, version: int, request: Request, db: DBSession = Depends(get_db),
+                        user: User = Depends(require_active_user)) -> Response:
+    _, rev = _revision_or_404(db, report_id, version, user)
+    frozen, parts = service.frozen_report(rev.snapshot)
+    log_action(db, user_id=user.id, request=request, commit=True,
+               action=f"REPORT_EXPORT id={report_id} version={version} format=docx")
+    return docx_response(service.to_docx(db, frozen, parts), f"{frozen.report_ref}-v{version}-SUPERSEDED.docx")
+
+
 # ------------------------------------------------------------------ exports
 
 
-_PRINT_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
-
-
 def _filename(report: AuditReport, ext: str) -> str:
-    return f"{report.report_ref}{'' if report.status == ReportStatus.Issued else '-DRAFT'}.{ext}"
+    version = f"-v{report.version}" if report.version > 1 else ""
+    return f"{report.report_ref}{version}{'' if report.status == ReportStatus.Issued else '-DRAFT'}.{ext}"
 
 
 @router.get("/api/reports/{report_id}/export.docx")

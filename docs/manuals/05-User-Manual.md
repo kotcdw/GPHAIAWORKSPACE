@@ -99,12 +99,13 @@ Approvals, such as approving the plan, reviewing a test, approving a report or c
 
 ![Audit universe](images/12-universe.jpg){width=100%}
 
-The audit universe is the list of **auditable entities** built from the Org Structure and the Process library. It has four tabs:
+The audit universe is the list of **auditable entities** built from the Org Structure and the Process library. It has five tabs:
 
 1. **Overview**: the setup flow, the counts and the coverage.
 2. **Units**: include the units that belong in the universe, or mark them **Not included** with a reason.
 3. **Processes**: map each process to the units that perform it.
 4. **Entities**: the register. Select **New entity**, choose the units and processes, the business owner and the scope, and save. Set the status to **Ready** when the entity is fully defined.
+5. **Assurance map**: who else gives assurance on each entity (management, risk and compliance, external auditors, regulators), their latest result and how far Internal Audit relies on them (IIA GIAS 9.5). Add providers with **New provider**; record coverage on the entity's **Assurance** tab. Any reliance needs a recorded basis (the provider's competence, objectivity and due care).
 
 Open an entity to see its definition, its risk assessment, its audits, its findings and its history. Only **Ready** entities go to the audit risk assessment; use **Start audit risk assessment** on the entity page.
 
@@ -140,6 +141,10 @@ Changing an approved plan always goes through a **plan change request (PCR)**. I
 ### Creating an audit
 
 Audits are normally created by **Start** on a plan engagement. An authorised user can also select **New audit** on the Audits list (Figure: New audit) and enter the title, audit type, port and scope.
+
+Audit types listed under Configuration > Audit methodology > **Audit types that are advisory engagements** (default: Advisory) are **advisory**: the report shows observations and a conclusion without an overall rating, agreed actions are optional at closure, and the engagement does not count as audit coverage of the entity.
+
+Every member of the engagement team must sign the annual declaration and declare independence for the engagement before fieldwork starts. The team panel shows each member's status and flags two threats automatically: a lead auditor who has led audits of the same entity for too many consecutive years (**rotation**), and an auditor who worked in an audited unit recently (**cooling-off**; record previous roles under Professional practice > My declarations). A flagged member declares the conflict; a reviewer clears it (with safeguards) or reassigns the member.
 
 ### The audit page
 
@@ -185,6 +190,8 @@ The engagement quality review checklist (mapped to the IIA Standards) is complet
 ![Results](images/08-audit-results.jpg){width=100%}
 
 The report goes through **Draft → Management Review → Manager Review → CAE Approval → Issued**. At each stage the reviewer approves (electronic signature) or returns it. When the draft goes to management, a response deadline is set (10 working days by default, skipping weekends and the configured public holidays). Record the **exit meeting**. Export the report to Word, or print it to PDF. Issues are frozen once the report is issued. **Supporting workpapers** are listed here.
+
+If an issued report contains a significant error or omission, the GM Audit selects **Correct** and records what is wrong (IIA GIAS 11.4). The issued version is kept unchanged under **Earlier versions**; the report returns to Draft as the next version and goes through review and approval again. Everyone who received an earlier version is listed as still due the corrected copy.
 
 ### Issues tab
 
@@ -254,6 +261,9 @@ The red number on **Task Tracker** in the sidebar is the number of priorities wa
 | **Validation** (follow-up testing): Effective, or Not Effective (reopened) | A different auditor |
 | Closure (electronic signature) after validation | Authorised manager |
 | Overdue actions escalate: owner → Audit Managers (14 days) → CAE (30 days) → Audit Committee | Automatic |
+| **Risk acceptance**: management decides not to implement; proposed with who accepts and why | Follow-up manager |
+| Risk acceptance agreed or not, after discussion with senior management (IIA GIAS 11.5) | GM Audit |
+| Risk acceptances of the set severities (default High) decided before the action closes | Audit Committee |
 
 The **Statutory reports** tab produces the quarterly follow-up report and the annual statement on implementation of recommendations, in Word and Excel, and keeps a register of what was submitted.
 
@@ -355,7 +365,7 @@ Headline KPIs against the configured targets (plan delivery, actions closed on t
 | Tab | Contents |
 |------------------------|---------------------------------------------|
 | **Committee pack** | Plan delivery, reports issued and ratings, open findings by risk and age, action status, most overdue actions, items for decision. **Download** produces the Word pack. |
-| **Meetings & decisions** | Meetings register, attendance, quorum, minutes (approved, then locked), decisions on recommendations (close, withdraw, extend, escalate) |
+| **Meetings & decisions** | Meetings register, attendance, quorum, minutes (approved, then locked), decisions on recommendations (close, withdraw, extend, escalate, accept or reject a risk acceptance) |
 | **Governance portal** | Read-only view of approved plans, issued reports and dashboards |
 | **Port portfolio** | Audit coverage and results by port |
 

@@ -67,7 +67,12 @@ class Capa(Base):
     # Revised target dates: the first agreed date is kept; every change needs a reason (capa_events).
     original_due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     extension_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    # Management accepts the residual risk instead of implementing (approved by the CAE / follow-up manager).
+    # Management accepts the residual risk instead of implementing (IIA GIAS 11.5): proposed by the follow-up
+    # manager, decided by the GM Audit and, for the configured severities, by the Audit Committee.
+    # risk_acceptance_status: Proposed | Committee | Accepted | Rejected.
+    risk_acceptance_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    risk_proposed_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    risk_proposed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     risk_accepted_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
     risk_accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     risk_acceptance: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -85,7 +90,8 @@ class CapaEvent(Base):
     """Append-only follow-up timeline of a remediation action (UPDATE/DELETE blocked by database triggers).
 
     ``kind``: created, progress, implementation, evidence_file, validation, extension, escalation, reopened,
-    risk_accepted, withdrawal, closed. ``capa_id`` is a soft reference so the trail outlives the action.
+    risk_proposed, risk_rejected, risk_accepted, withdrawal, closed. ``capa_id`` is a soft reference so the trail
+    outlives the action.
     """
 
     __tablename__ = "capa_events"

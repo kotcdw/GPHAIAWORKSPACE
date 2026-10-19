@@ -201,12 +201,13 @@ async function reportComplianceCards(panel, r) {
       }) }, el("i", { class: "bi bi-plus-lg" }), " Record copy sent") : null));
     if (d.missing.length) {
       card.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
-        el("div", null, el("strong", null, "Still to receive a copy: "), d.missing.join(", "),
+        el("div", null, el("strong", null, d.version > 1 ? `Still to receive version ${d.version}: ` : "Still to receive a copy: "), d.missing.join(", "),
           el("div", { class: "muted small" }, "Internal Audit Agency Act, 2003 (Act 658) s.16. The list is set under Configuration > Follow-up & reporting."))));
     }
     card.append(dataTable(d.sent, [
       { key: "recipient", label: "Recipient" }, { key: "channel", label: "How" },
       { key: "sent_at", label: "Date", render: (x) => dayOnly(x.sent_at) }, { key: "reference", label: "Reference" },
+      ...(d.version > 1 ? [{ key: "version", label: "Version" }] : []),
     ], { emptyText: "No copies recorded yet.", pageSize: 10 }));
   };
   paint();
@@ -299,7 +300,7 @@ async function openMeeting(id, back) {
         title: "Record a Committee decision", key: `acm:${id}:decision`, width: 760, draftable: false,
         fields: [
           { name: "subject_id", label: "Recommendation (leave empty for another matter)", type: "select", options, emptyLabel: "- other matter -", full: true },
-          { name: "decision", label: "Decision", type: "select", required: true, options: ["Close", "Withdraw", "Extend deadline", "Escalate to management", "Noted"] },
+          { name: "decision", label: "Decision", type: "select", required: true, options: ["Close", "Withdraw", "Extend deadline", "Escalate to management", "Accept risk", "Reject risk acceptance", "Noted"] },
           { name: "new_due_date", label: "New due date (extensions)", type: "date" },
           { name: "reference", label: "Minute / external closure reference", maxLength: 120, singleLine: true,
             help: "For recommendations from the Auditor-General, PAC or Parliament give that body's closure reference" },
@@ -435,6 +436,34 @@ async function paintMine(body) {
   dataTable(cpd.certifications, [
     { key: "name", label: "Certification" }, { key: "issuer", label: "Issuer" }, { key: "number", label: "Number" },
     { key: "expires_on", label: "Expires", render: (c) => (c.expires_on ? el("span", { class: c.expired ? "text-danger" : "" }, dayOnly(c.expires_on)) : "-") },
+  ], { emptyText: "None recorded.", pageSize: 10 })));
+  priorRolesCard(body);
+}
+
+// Units the auditor worked in before: audits of them within the cooling-off period are flagged (IIA GIAS 2.2).
+async function priorRolesCard(body) {
+  const d = await safeGet("/api/proficiency/prior-roles", null);
+  if (!d) return;
+  body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Previous roles"),
+    el("button", { class: "btn small secondary", onclick: () => openForm({
+      title: "Add a previous role", key: "prior:new", width: 600, draftable: false,
+      fields: [
+        { name: "org_unit_id", label: "Org unit", type: "select", required: true, options: d.units.map((u) => ({ value: u.id, label: u.name })), full: true },
+        { name: "role", label: "Role", required: true, minLength: 2, maxLength: 160, singleLine: true },
+        { name: "from_date", label: "From", type: "date" }, { name: "to_date", label: "To (empty if current)", type: "date" },
+      ],
+      submitLabel: "Add",
+      onSubmit: (v) => API.post("/api/proficiency/prior-roles", { org_unit_id: Number(v.org_unit_id), role: v.role, from_date: v.from_date || null, to_date: v.to_date || null }),
+      onDone: () => { toast("Role added"); renderPractice("mine"); },
+    }) }, el("i", { class: "bi bi-plus-lg" }), " Add")),
+  d.cooling_off_months ? el("p", { class: "muted small" }, `Audits of these units within ${d.cooling_off_months} months of leaving are flagged.`) : null,
+  dataTable(d.items, [
+    { key: "unit", label: "Org unit" }, { key: "role", label: "Role" },
+    { key: "from_date", label: "From", render: (r) => (r.from_date ? dayOnly(r.from_date) : "-") },
+    { key: "to_date", label: "To", render: (r) => (r.to_date ? dayOnly(r.to_date) : "Current") },
+    ...(hasPerm("proficiency.manage") ? [{ key: "x", label: "", render: (r) => el("button", { class: "btn small danger-ghost", onclick: async () => {
+      try { await API.del(`/api/proficiency/prior-roles/${r.id}`); renderPractice("mine"); } catch (err) { toast(err.message, "error"); }
+    } }, "Remove") }] : []),
   ], { emptyText: "None recorded.", pageSize: 10 })));
 }
 

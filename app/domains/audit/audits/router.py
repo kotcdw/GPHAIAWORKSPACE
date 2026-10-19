@@ -499,6 +499,8 @@ def close_audit(
 
         covered = {e for (e,) in session.execute(select(AuditEntity.entity_id).where(
             AuditEntity.audit_id == audit.id)).all()} | ({audit.entity_unit_id} if audit.entity_unit_id else set())
+        if audit.nature == "Advisory":
+            covered = set()  # advisory work is not audit coverage of the entity
         for eid in covered:  # every auditable entity the audit covers
             unit = session.get(EntityUnit, eid)
             if unit is not None:
@@ -551,15 +553,24 @@ class TeamMemberOut(BaseModel):
     approval_level: str | None
     workplace_id: int | None
     added_at: datetime
+    independence: str | None = None
+    objectivity: list[str] = []
 
 
 def _team_out(db: DBSession, audit_id: int) -> list[TeamMemberOut]:
+    from app.domains.audit.proficiency.service import independence_status
+
+    audit = db.get(Audit, audit_id)
     rows = db.execute(select(AuditTeamMember, User).join(User, User.id == AuditTeamMember.user_id)
                       .where(AuditTeamMember.audit_id == audit_id)).all()
     order = {r: i for i, r in enumerate(TEAM_ROLES)}
-    out = [TeamMemberOut(user_id=u.id, name=u.full_name or u.username, username=u.username, team_role=m.team_role,
-                         approval_level=u.review_level.value if u.review_level else None,
-                         workplace_id=u.work_entity_id, added_at=m.added_at) for m, u in rows]
+    out = []
+    for m, u in rows:
+        declared, issues = independence_status(db, audit, u.id)
+        out.append(TeamMemberOut(user_id=u.id, name=u.full_name or u.username, username=u.username,
+                                 team_role=m.team_role, approval_level=u.review_level.value if u.review_level else None,
+                                 workplace_id=u.work_entity_id, added_at=m.added_at, independence=declared,
+                                 objectivity=issues))
     return sorted(out, key=lambda t: (order.get(t.team_role, 9), t.name.lower()))
 
 
@@ -606,6 +617,12 @@ def add_team_member(audit_id: int, payload: TeamMemberIn, request: Request, db: 
         db.add(AuditTeamMember(audit_id=audit_id, user_id=member.id, team_role=payload.team_role, added_by=user.id))
     else:
         row.team_role = payload.team_role
+    db.flush()
+    from app.domains.audit.proficiency.service import objectivity_issues
+
+    for issue in objectivity_issues(db, audit, member.id):
+        log_record_history(db, record_type="audit", record_id=audit_id, user_id=user.id, request=request,
+                           action=f"OBJECTIVITY: {member.full_name or member.username} - {issue}")
     log_action(db, user_id=user.id, request=request,
                action=f"AUDIT_TEAM_SET audit={audit_id} user={member.id} role={payload.team_role}")
     log_record_history(db, record_type="audit", record_id=audit_id, user_id=user.id, request=request,

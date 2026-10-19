@@ -119,7 +119,7 @@ def _rows(db: DBSession, entries: list[AuditLog]) -> list[AuditLogRow]:
 
 PROTECTED_TABLES = {"audit_logs": "Audit trail", "workflow_transitions": "Workflow status history",
                     "app_config_history": "Settings history", "import_runs": "Import history",
-                    "backup_checks": "Backup checks"}
+                    "backup_checks": "Backup checks", "report_revisions": "Superseded report versions"}
 
 
 @router.get("/integrity")

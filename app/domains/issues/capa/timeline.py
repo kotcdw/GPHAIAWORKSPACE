@@ -19,7 +19,7 @@ from app.core.history import log_record_history
 from app.domains.issues.capa.models import Capa, CapaEvent
 
 KINDS = ("created", "progress", "implementation", "evidence_file", "validation", "extension", "escalation",
-         "reopened", "risk_accepted", "withdrawal", "closed", "note")
+         "reopened", "risk_proposed", "risk_rejected", "risk_accepted", "withdrawal", "closed", "note")
 
 
 def add_event(db: DBSession, capa: Capa, kind: str, *, user_id: int | None, text: str | None = None,

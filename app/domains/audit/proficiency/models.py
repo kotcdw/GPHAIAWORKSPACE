@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -65,4 +65,20 @@ class Certification(Base):
     number: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     obtained_on: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     expires_on: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class AuditorPriorRole(Base):
+    """An org unit an auditor worked in before (or outside) Internal Audit; drives the cooling-off check (GIAS 2.2).
+    ``to_date`` empty means the role is current."""
+
+    __tablename__ = "auditor_prior_roles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    org_unit_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(String(160), nullable=False)
+    from_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    to_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

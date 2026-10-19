@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 from datetime import datetime
+from types import SimpleNamespace
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
@@ -27,9 +28,11 @@ def _name(db: DBSession, user_id: int | None) -> str | None:
     return (user.full_name or user.username) if user else None
 
 
-def _fmt(dt: datetime | None) -> str:
+def _fmt(dt: datetime | str | None) -> str:
     from app.core.regional import fmt_date
 
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt)
     return fmt_date(dt) if dt else ""
 
 
@@ -92,10 +95,46 @@ def take_snapshot(db: DBSession, report: AuditReport) -> str:
     return json.dumps({"findings": live_findings(db, report.audit_id)}, default=str)
 
 
-def content(db: DBSession, report: AuditReport) -> dict:
-    """Everything an export needs; issued reports read their frozen snapshot."""
+_TEXT_FIELDS = ("report_ref", "title", "executive_summary", "background", "scope_objectives", "methodology",
+                "overall_opinion", "distribution_list", "management_comments", "exit_meeting_attendees",
+                "exit_meeting_notes", "version", "correction_reason", "audit_id")
+
+
+def version_snapshot(db: DBSession, report: AuditReport) -> str:
+    """The whole issued version - text, rating, findings and sign-offs - frozen before a correction reopens it."""
+    data = {k: getattr(report, k) for k in _TEXT_FIELDS}
+    findings = json.loads(report.issued_snapshot).get("findings", []) if report.issued_snapshot \
+        else live_findings(db, report.audit_id)
+    data.update(overall_rating=getattr(report.overall_rating, "value", None), issued_at=report.issued_at,
+                cae_approved_at=report.cae_approved_at,
+                exit_meeting_date=report.exit_meeting_date, findings=findings, signoffs=signoffs(db, report))
+    return json.dumps(data, default=str)
+
+
+def frozen_report(snapshot: str) -> tuple[SimpleNamespace, dict]:
+    """A report-like object and its frozen findings and sign-offs, for exporting a superseded version."""
+    data = json.loads(snapshot)
+
+    def when(v: str | None) -> datetime | None:
+        return datetime.fromisoformat(v) if v else None
+
+    rating = data.get("overall_rating")
+    report = SimpleNamespace(**{k: data.get(k) for k in _TEXT_FIELDS},
+                             overall_rating=SimpleNamespace(value=rating) if rating else None,
+                             status=SimpleNamespace(value="Superseded"), issued_at=when(data.get("issued_at")),
+                             cae_approved_at=when(data.get("cae_approved_at")),
+                             exit_meeting_date=when(data.get("exit_meeting_date")))
+    return report, {"findings": data.get("findings", []), "signoffs": data.get("signoffs", [])}
+
+
+def content(db: DBSession, report: AuditReport, frozen: dict | None = None) -> dict:
+    """Everything an export needs; issued reports read their frozen snapshot, superseded versions their revision."""
+    from app.domains.audit.audits.nature import is_advisory
+
     audit = db.get(Audit, report.audit_id)
-    if report.issued_snapshot:
+    if frozen is not None:
+        findings = frozen["findings"]
+    elif report.issued_snapshot:
         findings = json.loads(report.issued_snapshot).get("findings", [])
     else:
         findings = live_findings(db, report.audit_id)
@@ -106,24 +145,36 @@ def content(db: DBSession, report: AuditReport) -> dict:
         "audit_ref": f"AUD-{audit.id:04d}" if audit else "",
         "findings": findings,
         "counts": counts,
-        "signoffs": signoffs(db, report),
-        "draft": report.status.value != "Issued",
+        "signoffs": frozen["signoffs"] if frozen is not None else signoffs(db, report),
+        "draft": frozen is None and report.status.value != "Issued",
+        "superseded": frozen is not None,
+        "advisory": is_advisory(audit),
     }
+
+
+def version_note(report: AuditReport | SimpleNamespace) -> str:
+    if (report.version or 1) <= 1:
+        return ""
+    when = f" issued {_fmt(report.cae_approved_at)}" if report.cae_approved_at else ""
+    return (f"Version {report.version}{when}, correcting version {report.version - 1}: "
+            f"{report.correction_reason or ''}").strip()
 
 
 # ------------------------------------------------------------------ Word export
 
 
-def to_docx(db: DBSession, report: AuditReport) -> bytes:
+def to_docx(db: DBSession, report: AuditReport, frozen: dict | None = None) -> bytes:
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.shared import RGBColor
 
-    data = content(db, report)
+    data = content(db, report, frozen)
     doc = new_document()
-    if data["draft"]:
+    banner = (f"DRAFT - {report.status.value.upper()} - NOT FOR DISTRIBUTION" if data["draft"]
+              else f"SUPERSEDED BY VERSION {report.version + 1}" if data["superseded"] else "")
+    if banner:
         mark = doc.add_paragraph()
         mark.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        r = mark.add_run(f"DRAFT - {report.status.value.upper()} - NOT FOR DISTRIBUTION")
+        r = mark.add_run(banner)
         r.bold = True
         r.font.color.rgb = RGBColor(0xC0, 0x39, 0x2B)
 
@@ -136,7 +187,8 @@ def to_docx(db: DBSession, report: AuditReport) -> bytes:
         ("Overall rating", report.overall_rating.value if report.overall_rating else "Not rated"),
         ("Status", report.status.value),
         ("Date issued", _fmt(report.issued_at) or "Not issued"),
-        ("Findings", f"{len(data['findings'])} (High {data['counts']['High']}, Medium {data['counts']['Medium']}, "
+        *((("Version", version_note(report)),) if version_note(report) else ()),
+        ("Observations" if data["advisory"] else "Findings", f"{len(data['findings'])} (High {data['counts']['High']}, Medium {data['counts']['Medium']}, "
                      f"Low {data['counts']['Low']})"),
     ):
         cells = meta.add_row().cells
@@ -148,15 +200,16 @@ def to_docx(db: DBSession, report: AuditReport) -> bytes:
         ("2. Background", report.background),
         ("3. Scope and objectives", report.scope_objectives),
         ("4. Methodology", report.methodology),
-        ("5. Overall opinion", report.overall_opinion),
+        ("5. Conclusion" if data["advisory"] else "5. Overall opinion", report.overall_opinion),
     ):
         doc.add_heading(heading, level=1)
         for para in (text or "Not provided.").split("\n"):
             doc.add_paragraph(para)
 
-    doc.add_heading("6. Detailed findings", level=1)
+    doc.add_heading("6. Observations" if data["advisory"] else "6. Detailed findings", level=1)
     if not data["findings"]:
-        doc.add_paragraph("No findings were raised in this engagement.")
+        doc.add_paragraph("No observations were raised in this engagement." if data["advisory"]
+                          else "No findings were raised in this engagement.")
     for i, f in enumerate(data["findings"], start=1):
         doc.add_heading(f"6.{i} {f['title']} ({f['risk_rating']} risk)", level=2)
         for label, key in (
@@ -209,8 +262,8 @@ def to_docx(db: DBSession, report: AuditReport) -> bytes:
 # ------------------------------------------------------------------ printable HTML (Save as PDF)
 
 
-def to_html(db: DBSession, report: AuditReport) -> str:
-    data = content(db, report)
+def to_html(db: DBSession, report: AuditReport, frozen: dict | None = None) -> str:
+    data = content(db, report, frozen)
     e = html.escape
 
     def paras(text: str) -> str:
@@ -248,7 +301,12 @@ def to_html(db: DBSession, report: AuditReport) -> str:
     )
     rating = report.overall_rating.value if report.overall_rating else "Not rated"
     banner = (f"<div class='draft'>DRAFT - {e(report.status.value)} - not for distribution</div>"
-              if data["draft"] else "")
+              if data["draft"] else f"<div class='draft'>Superseded by version {report.version + 1}</div>"
+              if data["superseded"] else "")
+    noun = "Observations" if data["advisory"] else "Findings"
+    none_raised = f"<p>No {noun.lower()} were raised in this engagement.</p>"
+    note = version_note(report)
+    version_row = f"<tr><th>Version</th><td colspan='3'>{e(note)}</td></tr>" if note else ""
     return f"""<!doctype html><html lang='en'><head><meta charset='utf-8'><title>{e(report.report_ref)} {e(report.title)}</title>
 <style>
 body{{font-family:Calibri,'Segoe UI',Arial,sans-serif;color:#1d2433;max-width:820px;margin:32px auto;padding:0 24px;line-height:1.5}}
@@ -265,13 +323,13 @@ th{{background:#eef2f8}} dl{{margin:0}} dt{{font-weight:700;margin-top:6px}} dd{
 {banner}<h1>{e(report.title)}</h1>
 <table><tr><th>Report reference</th><td>{e(report.report_ref)}</td><th>Audit reference</th><td>{e(data['audit_ref'])}</td></tr>
 <tr><th>Overall rating</th><td>{e(rating)}</td><th>Date issued</th><td>{_fmt(report.issued_at) or 'Not issued'}</td></tr>
-<tr><th>Findings</th><td colspan='3'>{len(data['findings'])} - High {data['counts']['High']}, Medium {data['counts']['Medium']}, Low {data['counts']['Low']}</td></tr></table>
+<tr><th>{noun}</th><td colspan='3'>{len(data['findings'])} - High {data['counts']['High']}, Medium {data['counts']['Medium']}, Low {data['counts']['Low']}</td></tr>{version_row}</table>
 <h2>1. Executive summary</h2>{paras(report.executive_summary)}
 <h2>2. Background</h2>{paras(report.background)}
 <h2>3. Scope and objectives</h2>{paras(report.scope_objectives)}
 <h2>4. Methodology</h2>{paras(report.methodology)}
-<h2>5. Overall opinion</h2>{paras(report.overall_opinion)}
-<h2>6. Findings</h2>{"<table><tr><th>Finding</th><th>Risk</th><th>Status</th><th>Actions</th></tr>" + rows + "</table>" if rows else "<p>No findings were raised in this engagement.</p>"}
+<h2>5. {"Conclusion" if data["advisory"] else "Overall opinion"}</h2>{paras(report.overall_opinion)}
+<h2>6. {noun}</h2>{f"<table><tr><th>{noun[:-1]}</th><th>Risk</th><th>Status</th><th>Actions</th></tr>" + rows + "</table>" if rows else none_raised}
 {details}
 <h2>7. Management comments</h2>{paras(report.management_comments or 'None received.')}
 <h2>8. Distribution</h2>{paras(report.distribution_list or 'Not specified.')}

@@ -757,6 +757,104 @@ async function renderUniverseEntities() {
   paint();
 }
 
+// ---------------------------------------------------------------- Assurance map (IIA GIAS 9.5)
+
+const MAP_EDIT = () => hasPerm("plan.prepare", "method.library");
+const RELIANCE_TONE = { Full: "ok", Partial: "warn", None: "muted" };
+
+async function renderAssuranceMap() {
+  clear(viewRoot);
+  const can = MAP_EDIT();
+  const head = el("div");
+  const body = el("div", null, loadingState());
+  viewRoot.append(head, body);
+  let d; let prov;
+  try { [d, prov] = await Promise.all([API.get("/api/assurance-map"), API.get("/api/assurance-providers")]); }
+  catch (err) { clear(body); body.append(errorState(err, renderAssuranceMap)); return; }
+  clear(body);
+  const flat = d.rows.map((r) => ({ ...r, ...Object.fromEntries(d.lines.map((l) => [l, (r.cells[l] || []).map((c) => `${c.provider} (${c.result}, reliance ${c.reliance})`).join("; ")])),
+    ia: r.internal_audit ? r.internal_audit.slice(0, 10) : "" }));
+  const cols = [{ key: "code", label: "Code" }, { key: "name", label: "Entity" }, { key: "ia", label: "Internal audit (last audit)" }, ...d.lines.map((l) => ({ key: l, label: l }))];
+  head.append(uHead("Assurance map", "Who gives assurance on each entity, and the reliance placed on it.", el("div", { class: "actions" },
+    uExport("assurance-map", cols, flat), can ? btn("New provider", () => providerForm(null, prov.lines)) : null)));
+  const s = d.summary;
+  const fb = filterBar({ placeholder: "Search entities", values: {}, onChange: () => paint(),
+    filters: [{ key: "show", label: "Show", options: [{ value: "none", label: "No assurance" }, { value: "relied", label: "Relied on" }, { value: "others", label: "Other providers" }] }] });
+  const setShow = (v) => { const sel = fb.root.querySelector('select[aria-label="Show"]'); sel.value = v; sel.dispatchEvent(new Event("change")); };
+  body.append(el("div", { class: "u-stats" }, uStat(s.entities, "Entities"), uStat(s.covered_by_others, "Other providers", "", () => setShow("others")),
+    uStat(s.relied_on, "Relied on", "ok", () => setShow("relied")), uStat(s.no_assurance, "No assurance", s.no_assurance ? "warn" : "", () => setShow("none"))));
+  const cell = (items) => (items && items.length ? el("div", { class: "u-cell-list" }, ...items.map((c) => el("div", null,
+    el("span", null, c.provider), " ", uChip(c.result, c.result === "Effective" ? "ok" : (c.result === "Ineffective" ? "danger" : "")),
+    c.reliance !== "None" ? uChip(`${c.reliance} reliance`, RELIANCE_TONE[c.reliance]) : null))) : el("span", { class: "muted" }, "-"));
+  const table = uTable({ rows: d.rows, onRow: (r) => openEntity(r.id, "assurance"), empty: emptyState({ icon: "bullseye", title: "No entities", text: "Define auditable entities first." }),
+    columns: [
+      { key: "name", label: "Entity", render: (r) => el("div", null, el("div", { class: "cell-title" }, r.name), el("div", { class: "muted small" }, r.code)) },
+      { key: "rating", label: "Risk", render: (r) => (r.rating ? ratingBadge(r.rating) : el("span", { class: "muted" }, "-")) },
+      { key: "internal_audit", label: "Internal audit", render: (r) => (r.internal_audit ? fmtDay(r.internal_audit.slice(0, 10)) : el("span", { class: "muted" }, "Never")) },
+      ...d.lines.map((l) => ({ key: l, label: l, sort: (r) => (r.cells[l] || []).length, render: (r) => cell(r.cells[l]) })),
+    ] });
+  body.append(el("section", { class: "card u-card" }, fb.root, table.root));
+  function paint() {
+    const v = fb.values();
+    const q = (v.q || "").toLowerCase();
+    const has = (r) => d.lines.some((l) => (r.cells[l] || []).length);
+    const list = d.rows.filter((r) => (!q || `${r.name} ${r.code}`.toLowerCase().includes(q))
+      && (!v.show || (v.show === "none" ? !has(r) && !r.internal_audit : v.show === "others" ? has(r)
+        : d.lines.some((l) => (r.cells[l] || []).some((c) => c.reliance !== "None")))));
+    fb.setCount(`${list.length} of ${d.rows.length}`);
+    table.set(list);
+  }
+  paint();
+  body.append(el("section", { class: "card" }, el("h3", null, "Providers"), uTable({ rows: prov.items, onRow: can ? (p) => providerForm(p, prov.lines) : null,
+    empty: el("p", { class: "muted small" }, "No providers yet."),
+    columns: [{ key: "name", label: "Provider" }, { key: "line", label: "Line" }, { key: "contact", label: "Contact", render: (p) => p.contact || el("span", { class: "muted" }, "-") },
+      { key: "entities", label: "Entities", num: true }, { key: "is_active", label: "Status", render: (p) => uChip(p.is_active ? "Active" : "Inactive", p.is_active ? "ok" : "muted") }] }).root));
+}
+
+function providerForm(p, lines) {
+  openForm({
+    title: p ? `Edit ${p.name}` : "New provider", key: p ? `prov:${p.id}` : "prov:new", width: 600, draftable: false,
+    fields: [
+      { name: "name", label: "Provider", required: true, minLength: 2, maxLength: 160, singleLine: true, full: true, placeholder: "e.g. Risk Management Unit, External auditor, Ghana Maritime Authority" },
+      { name: "line", label: "Line", type: "select", required: true, options: lines.includes(p ? p.line : "") || !p ? lines : [p.line, ...lines] },
+      { name: "contact", label: "Contact", maxLength: 160, singleLine: true },
+      { name: "description", label: "What it covers", type: "textarea", rows: 3, maxLength: 5000, full: true },
+      ...(p ? [{ name: "is_active", label: "Status", type: "select", options: [{ value: "true", label: "Active" }, { value: "false", label: "Inactive" }] }] : []),
+    ],
+    initial: p ? { ...p, is_active: String(p.is_active) } : { line: lines[0] },
+    submitLabel: "Save",
+    onSubmit: (v) => (p ? API.patch(`/api/assurance-providers/${p.id}`, { ...v, is_active: v.is_active === "true" })
+      : API.post("/api/assurance-providers", { name: v.name, line: v.line, contact: v.contact || "", description: v.description || "" })),
+    onDone: () => { toast("Provider saved"); renderAssuranceMap(); },
+  });
+}
+
+async function coverageForm(e, c, reload) {
+  const [prov, map] = await Promise.all([safeGet("/api/assurance-providers", { items: [] }), safeGet("/api/assurance-map", { results: [], reliance: ["None"] })]);
+  const active = prov.items.filter((p) => p.is_active || (c && p.id === c.provider_id));
+  if (!c && !active.length) { toast("Add a provider on the Assurance map first", "error"); return; }
+  openForm({
+    title: c ? `${c.provider} - ${e.code}` : `Add assurance - ${e.code}`, key: c ? `cov:${c.id}` : `cov:new:${e.id}`, width: 680, draftable: false,
+    fields: [
+      ...(c ? [] : [{ name: "provider_id", label: "Provider", type: "select", required: true, options: active.map((p) => ({ value: p.id, label: `${p.name} (${p.line})` })), full: true }]),
+      { name: "scope", label: "What it covers", type: "textarea", rows: 2, maxLength: 5000, full: true },
+      { name: "last_assurance_on", label: "Last assurance", type: "date" }, { name: "next_planned_on", label: "Next planned", type: "date" },
+      { name: "result", label: "Result", type: "select", required: true, options: map.results },
+      { name: "reliance", label: "Reliance by Internal Audit", type: "select", required: true, options: map.reliance },
+      { name: "reliance_basis", label: "Basis for reliance (competence, objectivity, due care)", type: "textarea", rows: 3, maxLength: 5000, full: true },
+      { name: "evidence_ref", label: "Report / evidence reference", maxLength: 255, singleLine: true, full: true },
+    ],
+    initial: c ? { ...c, last_assurance_on: c.last_assurance_on || "", next_planned_on: c.next_planned_on || "" } : { result: map.results[map.results.length - 1], reliance: "None" },
+    submitLabel: "Save",
+    onSubmit: (v) => {
+      const body = { scope: v.scope || "", last_assurance_on: v.last_assurance_on || null, next_planned_on: v.next_planned_on || null, result: v.result,
+        reliance: v.reliance, reliance_basis: v.reliance_basis || "", evidence_ref: v.evidence_ref || "" };
+      return c ? API.patch(`/api/assurance-coverage/${c.id}`, body) : API.post("/api/assurance-coverage", { ...body, entity_id: e.id, provider_id: Number(v.provider_id) });
+    },
+    onDone: () => { toast("Saved"); reload(); },
+  });
+}
+
 // ---------------------------------------------------------------- 5. New / edit entity (a page, so nothing is lost by accident)
 
 async function openEntityForm(entity = null, preset = {}) {
@@ -936,7 +1034,7 @@ async function openEntity(id, tab = "overview") {
     crumbs: uCrumbs(e.code), back: () => navigate("universe_entities"),
     title: e.name, ref: e.code, meta: [uChip(e.definition_status), el("span", { class: "u-chip muted" }, e.entity_type)],
     actions: [can && !retired ? btn("Edit", () => openEntityForm(e), "secondary") : null, handoff, more].filter(Boolean),
-    tabs: [{ key: "overview", label: "Overview" }, { key: "assess", label: "Risk assessment" }, { key: "audits", label: "Audits" },
+    tabs: [{ key: "overview", label: "Overview" }, { key: "assess", label: "Risk assessment" }, { key: "assurance", label: "Assurance" }, { key: "audits", label: "Audits" },
       { key: "findings", label: "Findings", count: e.open_findings || null }, { key: "history", label: "History" }],
     side: null,
     onTab: (key, pane) => paintEntityTab(key, pane, e, can),
@@ -991,6 +1089,21 @@ async function paintEntityTab(key, pane, e, can) {
         el("td", { class: "num" }, r.status === "Completed" && r.overall != null ? String(r.overall) : "-"), el("td", null, r.status === "Completed" ? ratingBadge(r.rating) : el("span", { class: "muted" }, "-")),
         el("td", { class: "num" }, r.priority ? `#${r.priority}` : "-"), el("td", null, r.completed_at ? fmtDay(r.completed_at.slice(0, 10)) : "-"))))))
       : el("p", { class: "muted small" }, "Not assessed yet.")));
+  }
+  if (key === "assurance") {
+    const d = await safeGet(`/api/auditable-entities/${e.id}/assurance`, { items: [], internal_audit: {} });
+    const edit = MAP_EDIT() && e.definition_status !== "Retired";
+    const reload = () => openEntity(e.id, "assurance");
+    pane.append(el("section", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Assurance providers"),
+      edit ? btn("Add", () => coverageForm(e, null, reload), "secondary") : null),
+    el("dl", { class: "log-facts" }, fact("Internal audit", d.internal_audit.last_audited_at ? `Last audit ${fmtDay(d.internal_audit.last_audited_at.slice(0, 10))}` : "Never audited")),
+    d.items.length ? el("div", { class: "table-wrap" }, el("table", { class: "dense" },
+      el("thead", null, el("tr", null, ...["Provider", "Line", "Last assurance", "Result", "Reliance", "Next planned"].map((h) => el("th", { scope: "col" }, h)))),
+      el("tbody", null, ...d.items.map((c) => el("tr", edit ? { tabindex: "0", onclick: () => coverageForm(e, c, reload), onkeydown: (ev) => { if (ev.key === "Enter") coverageForm(e, c, reload); } } : { class: "no-click" },
+        el("td", { class: "col-wide" }, c.provider, c.scope ? el("div", { class: "muted small" }, c.scope) : null), el("td", null, c.line),
+        el("td", null, c.last_assurance_on ? fmtDay(c.last_assurance_on) : "-"), el("td", null, uChip(c.result)),
+        el("td", null, uChip(c.reliance, RELIANCE_TONE[c.reliance])), el("td", null, c.next_planned_on ? fmtDay(c.next_planned_on) : "-"))))))
+      : el("p", { class: "muted small" }, "No other provider recorded.")));
   }
   if (key === "audits") {
     const rows = await safeGet(`/api/auditable-entities/${e.id}/audits`, []);

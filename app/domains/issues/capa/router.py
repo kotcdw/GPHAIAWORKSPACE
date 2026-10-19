@@ -336,6 +336,9 @@ def close_capa(
                                    "closure reference (e.g. the Auditor-General's letter) before closing.")
 
     def _on_approve(session: DBSession) -> None:
+        from app.domains.issues.followup.actions import drop_pending_risk_acceptance
+
+        drop_pending_risk_acceptance(session, capa, user.id, request)
         capa.status = CapaStatus.Closed
         capa.implementation_status = FULLY
         capa.closed_by = user.id

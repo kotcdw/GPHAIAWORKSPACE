@@ -71,6 +71,13 @@ async function renderReportTab(panel, auditId, canWrite) {
     r.can_cae_approve ? el("button", { class: "btn small", onclick: () => eSignModal({
       title: "GM Audit approval - issue report", pathOverride: `/api/reports/${r.id}/cae-approve`, actionLabel: "Approve & issue",
       allowReject: true, onDone: reload }) }, el("i", { class: "bi bi-patch-check" }), " Approve & issue (e-sign)") : null,
+    r.can_correct ? el("button", { class: "btn small secondary", onclick: () => openForm({
+      title: `Correct ${r.report_ref}`, key: `report:${r.id}:correct`, draftable: false, width: 640,
+      fields: [{ name: "reason", label: "Error or omission to correct", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
+      submitLabel: `Open version ${r.version + 1}`,
+      onSubmit: (v) => API.post(`/api/reports/${r.id}/correction`, v),
+      onDone: () => { toast(`Version ${r.version + 1} opened`); reload(); },
+    }) }, el("i", { class: "bi bi-arrow-repeat" }), " Correct") : null,
     el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/export.docx` }, el("i", { class: "bi bi-file-earmark-word" }), " Word"),
     el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/print`, target: "_blank", rel: "noopener" },
       el("i", { class: "bi bi-printer" }), " Print / PDF"));
@@ -79,6 +86,8 @@ async function renderReportTab(panel, auditId, canWrite) {
     el("div", { class: "card-head" },
       el("div", null, el("h3", null, r.title),
         el("div", { class: "view-meta" }, el("span", { class: "ref" }, r.report_ref), badge(r.status),
+          r.version > 1 ? el("span", { class: "muted" }, `Version ${r.version}`) : null,
+          r.advisory ? el("span", { class: "u-chip" }, "Advisory") : null,
           r.overall_rating ? el("span", { class: `rating rating-${r.overall_rating.toLowerCase().replace(/\s+/g, "-")}` }, r.overall_rating)
             : el("span", { class: "muted" }, "Not rated"))),
       actions),
@@ -90,7 +99,12 @@ async function renderReportTab(panel, auditId, canWrite) {
       el("div", null, el("strong", null, "Before it can go to review"),
         el("ul", null, ...r.blockers.map((b) => el("li", null, b))))));
   }
+  if (r.version > 1) {
+    panel.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-arrow-repeat" }),
+      el("div", null, el("strong", null, `Version ${r.version} corrects version ${r.version - 1}. `), r.correction_reason || "")));
+  }
   reportComplianceCards(panel, r);
+  if (r.version > 1) reportVersionsCard(panel, r);
   if (r.status === "Management Review" && !isStaff()) {
     panel.append(el("div", { class: "callout" }, el("i", { class: "bi bi-info-circle" }),
       el("div", null, "Please read the draft, add your management comments and respond to each finding on the Findings tab.")));
@@ -98,7 +112,7 @@ async function renderReportTab(panel, auditId, canWrite) {
 
   panel.append(el("div", { class: "card" },
     longBlock("Executive summary", r.executive_summary),
-    longBlock("Overall opinion", r.overall_opinion),
+    longBlock(r.advisory ? "Conclusion" : "Overall opinion", r.overall_opinion),
     longBlock("Background", r.background),
     longBlock("Scope and objectives", r.scope_objectives),
     longBlock("Methodology", r.methodology),
@@ -114,13 +128,29 @@ async function renderReportTab(panel, auditId, canWrite) {
         el("td", null, s.name && s.at ? fmtDate(s.at).split(",")[0] : "-"))))))));
 }
 
+async function reportVersionsCard(panel, r) {
+  const card = el("div", { class: "card" }, el("h3", null, "Earlier versions"));
+  panel.append(card);
+  const rows = await safeGet(`/api/reports/${r.id}/versions`, []);
+  card.append(dataTable(rows, [
+    { key: "version", label: "Version" },
+    { key: "issued_at", label: "Issued", render: (x) => (x.issued_at ? dayOnly(x.issued_at) : "-") },
+    { key: "superseded_at", label: "Superseded", render: (x) => dayOnly(x.superseded_at) },
+    { key: "correction_reason", label: "Corrected because" },
+    { key: "opened_by", label: "By" },
+    { key: "files", label: "", render: (x) => el("span", { class: "actions" },
+      el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/versions/${x.version}/print`, target: "_blank", rel: "noopener" }, "Print"),
+      el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/versions/${x.version}/export.docx` }, "Word")) },
+  ], { emptyText: "No earlier versions.", pageSize: 10 }));
+}
+
 function reportForm(r, reload) {
   const fields = [
     { name: "title", label: "Report title", required: true, maxLength: 255, singleLine: true },
-    { name: "overall_rating", label: "Overall rating", type: "select", options: REPORT_RATINGS, emptyLabel: "- choose -" },
+    ...(r.advisory ? [] : [{ name: "overall_rating", label: "Overall rating", type: "select", options: REPORT_RATINGS, emptyLabel: "- choose -" }]),
     { name: "executive_summary", label: "Executive summary", type: "textarea", rows: 5, maxLength: 50000,
       help: "What the reader must know: the overall conclusion and the most significant issues." },
-    { name: "overall_opinion", label: "Overall opinion", type: "textarea", rows: 3, maxLength: 50000 },
+    { name: "overall_opinion", label: r.advisory ? "Conclusion" : "Overall opinion", type: "textarea", rows: 3, maxLength: 50000 },
     { name: "background", label: "Background", type: "textarea", rows: 3, maxLength: 50000 },
     { name: "scope_objectives", label: "Scope and objectives", type: "textarea", rows: 3, maxLength: 50000 },
     { name: "methodology", label: "Methodology", type: "textarea", rows: 3, maxLength: 50000 },
@@ -184,9 +214,23 @@ function renderCapaFollowup(panel, c, refresh) {
       el("dt", null, "Target date"), el("dd", null, fmtDate(c.due_date).split(",")[0],
         extended ? el("span", { class: "muted small" }, ` (originally ${fmtDate(c.original_due_date).split(",")[0]}; revised ${c.extension_count} time${c.extension_count === 1 ? "" : "s"})`) : null)));
   }
-  if (c.risk_acceptance) {
+  const RISK_STEP = { Proposed: "Risk acceptance proposed - awaiting the GM Audit. ", Committee: "Risk acceptance agreed by the GM Audit - awaiting the Audit Committee. ",
+    Accepted: "Closed - risk accepted. " };
+  if (c.risk_acceptance && RISK_STEP[c.risk_acceptance_status]) {
     card.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-shield-exclamation" }),
-      el("div", null, el("strong", null, "Closed - risk accepted. "), c.risk_acceptance)));
+      el("div", null, el("strong", null, RISK_STEP[c.risk_acceptance_status]), c.risk_acceptance,
+        c.risk_acceptance_status === "Proposed" && state.user.review_level === "CAE" && ![c.risk_proposed_by, c.created_by].includes(state.user.id)
+          ? el("div", { class: "actions" }, el("button", { class: "btn small", onclick: () => openForm({
+            title: `Risk acceptance - ${c.capa_ref}`, key: `capa:${c.id}:riskdecide`, draftable: false, width: 640,
+            fields: [
+              { name: "decision", label: "Decision", type: "select", required: true, options: ["Agree", "Disagree"] },
+              { name: "comment", label: "Discussion with senior management and conclusion", type: "textarea", rows: 4, required: true, minLength: 10, maxLength: 5000 },
+            ],
+            initial: { decision: "Agree" },
+            submitLabel: "Record decision",
+            onSubmit: (v) => API.post(`/api/capa/${c.id}/risk-acceptance/decision`, v),
+            onDone: () => { toast("Decision recorded"); refresh(); },
+          }) }, el("i", { class: "bi bi-check2-square" }), " Decide")) : null)));
   }
   if (c.reopen_count) card.append(el("p", { class: "muted small" }, `Reopened ${c.reopen_count} time(s) after validation.`));
   card.append(longBlock("Implementation evidence", c.implementation_evidence, "Not recorded yet"));
@@ -224,18 +268,17 @@ function capaManageActions(card, c, refresh) {
       onDone: () => { toast("Target date revised"); refresh(); },
     }) }, el("i", { class: "bi bi-calendar-plus" }), " Revise target date"));
   }
-  if (c.status !== "Closed" && c.created_by !== state.user.id) {
+  if (c.status !== "Closed" && c.created_by !== state.user.id && !["Proposed", "Committee"].includes(c.risk_acceptance_status)) {
     btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: `Close by risk acceptance - ${c.capa_ref}`, key: `capa:${c.id}:risk`, draftable: false, width: 640,
-      intro: "Use only when management formally decides not to implement and accepts the remaining risk. The action closes as 'Risk Accepted' and is reported as such.",
+      title: `Propose risk acceptance - ${c.capa_ref}`, key: `capa:${c.id}:risk`, draftable: false, width: 640,
       fields: [
         { name: "accepted_by", label: "Accepted by (name and position)", required: true, minLength: 3, maxLength: 255, singleLine: true },
         { name: "reason", label: "Why the risk is accepted, and any compensating controls", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 },
       ],
-      submitLabel: "Close - risk accepted",
+      submitLabel: "Send to the GM Audit",
       onSubmit: (v) => API.post(`/api/capa/${c.id}/accept-risk`, v),
-      onDone: () => { toast("Closed - risk accepted"); refresh(); },
-    }) }, el("i", { class: "bi bi-shield-exclamation" }), " Accept risk"));
+      onDone: () => { toast("Sent to the GM Audit"); refresh(); },
+    }) }, el("i", { class: "bi bi-shield-exclamation" }), " Propose risk acceptance"));
   }
   if (c.status === "Closed") {
     btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
@@ -289,7 +332,7 @@ function capaEvidenceCard(c, refresh) {
 
 const CAPA_EVENT_ICONS = { created: "flag", progress: "graph-up", implementation: "clipboard-check", evidence_file: "paperclip",
   validation: "shield-check", extension: "calendar-plus", escalation: "alarm", reopened: "arrow-counterclockwise",
-  risk_accepted: "shield-exclamation", withdrawal: "x-octagon", closed: "lock", note: "chat-left-text" };
+  risk_proposed: "shield", risk_rejected: "shield-x", risk_accepted: "shield-exclamation", withdrawal: "x-octagon", closed: "lock", note: "chat-left-text" };
 
 function capaTimelineCard(c) {
   const body = el("div", null, loadingState());

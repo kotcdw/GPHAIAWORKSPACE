@@ -180,7 +180,17 @@ RULES: list[Rule] = [
     Rule("audit_types", "Audit types", "Audit methodology", "list",
          "One per line. Used on audits, programmes and in analytics.",
          default=["Financial", "Compliance", "Operational", "Information Technology", "Performance / Value for Money",
-                  "Special investigation", "Follow-up"]),
+                  "Special investigation", "Follow-up", "Advisory"]),
+    Rule("advisory_audit_types", "Audit types that are advisory engagements", "Audit methodology", "list",
+         "One per line. IIA GIAS 13.1: advisory engagements report observations without an overall assurance rating, "
+         "agreed actions are optional, and they do not count as audit coverage.", default=["Advisory"],
+         allow_empty=True),
+    Rule("assurance_lines", "Lines on the assurance map", "Audit methodology", "list",
+         "One per line. IIA GIAS 9.5: the providers whose assurance the plan considers.",
+         default=["First line (management)", "Second line (risk and compliance)", "External assurance"]),
+    Rule("assurance_results", "Assurance results", "Audit methodology", "list",
+         "One per line. The conclusion another provider reached.",
+         default=["Effective", "Partially effective", "Ineffective", "Not rated"]),
     Rule("workplan_audit_types", "Audit types that use the Workplan workflow", "Audit methodology", "list",
          "One per line. New audits of these types run on procedures (Objectives > Risks > Procedures > Execute). "
          "Other types use the Internal Control workflow (risk & control matrix, walkthroughs, testing rounds). The "
@@ -305,6 +315,10 @@ RULES: list[Rule] = [
                   "Internal Audit Agency"]),
     Rule("annual_statement_due", "Annual statement due date (MM-DD of the following year)", "Follow-up & reporting",
          "text", "Act 921 s.88(1)(b): not later than 30 June.", default="06-30"),
+    Rule("risk_acceptance_committee_severities", "Risk acceptances the Audit Committee decides",
+         "Follow-up & reporting", "list",
+         "IIA GIAS 11.5: after the GM Audit agrees, acceptances of these severities go to the Audit Committee before "
+         "the action closes.", default=["High"], options=["Low", "Medium", "High"], allow_empty=True),
     Rule("report_statutory_recipients", "Who must receive a copy of every issued audit report",
          "Follow-up & reporting", "list",
          "Internal Audit Agency Act, 2003 (Act 658) s.16(3)-(5). Adjust to GPHA's reporting route.",
@@ -313,8 +327,15 @@ RULES: list[Rule] = [
     # --- professional practice (IIA GIAS Domains II and III)
     Rule("require_engagement_declaration", "Require independence / conflict-of-interest declarations before "
          "fieldwork starts", "Professional practice", "bool",
-         "IIA GIAS 2.1-2.3 and 7.1: the GM Audit, the engagement creator and the lead auditor must hold a current "
-         "annual declaration and have declared for this engagement.", default_attr="require_engagement_declaration"),
+         "IIA GIAS 2.1-2.3 and 7.1: every member of the engagement team must hold a current annual declaration and "
+         "have declared for this engagement.", default_attr="require_engagement_declaration"),
+    Rule("auditor_rotation_years", "Lead auditor rotation (consecutive years on the same entity)",
+         "Professional practice", "int",
+         "IIA GIAS 2.2 (familiarity): after this many consecutive years leading audits of an entity, another lead is "
+         "needed unless the reviewer clears a declared conflict. 0 switches the check off.", default=3, min=0, max=10),
+    Rule("cooling_off_months", "Cooling-off after working in a unit (months)", "Professional practice", "int",
+         "IIA GIAS 2.2: an auditor does not audit a unit they worked in during this period unless the reviewer clears "
+         "a declared conflict. 0 switches the check off.", default=12, min=0, max=60),
     Rule("declaration_text_annual", "Annual declaration text", "Professional practice", "longtext",
          default=("I confirm that during this year I will comply with the IIA Code of Ethics and the Global Internal "
                   "Audit Standards (integrity, objectivity, competency, due professional care and confidentiality), "

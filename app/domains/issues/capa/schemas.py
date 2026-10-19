@@ -106,6 +106,9 @@ class CapaOut(ORMModel):
     risk_accepted_by: int | None = None
     risk_accepted_at: datetime | None = None
     risk_acceptance: str | None = None
+    risk_acceptance_status: str | None = None
+    risk_proposed_by: int | None = None
+    risk_proposed_at: datetime | None = None
     custom_fields: dict[str, Any] = Field(default_factory=dict)
     created_by: int | None
     created_at: datetime

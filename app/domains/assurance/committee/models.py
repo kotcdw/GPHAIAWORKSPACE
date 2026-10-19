@@ -16,7 +16,8 @@ from app.core.enums import utcnow
 
 MEETING_TYPES = ("Ordinary", "Extraordinary", "Special")
 MEETING_STATUSES = ("Scheduled", "Held", "Minutes approved", "Cancelled")
-DECISIONS = ("Close", "Withdraw", "Extend deadline", "Escalate to management", "Noted")
+DECISIONS = ("Close", "Withdraw", "Extend deadline", "Escalate to management", "Accept risk", "Reject risk acceptance",
+             "Noted")
 
 
 class CommitteeMeeting(Base):

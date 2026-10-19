@@ -3,7 +3,9 @@
 One report per audit. Workflow:
   Draft -> Management Review (auditee comments) -> Manager Review (e-sign)
   -> CAE Approval (e-sign) -> Issued (locked, findings snapshotted).
-A rejection at either review returns the report to Draft.
+A rejection at either review returns the report to Draft. An issued report found to contain a significant error or
+omission is corrected by the GM Audit: the issued version is frozen in ``report_revisions`` and the report goes back
+through the same workflow as the next version (IIA GIAS 11.4).
 """
 
 from __future__ import annotations
@@ -42,6 +44,8 @@ class AuditReport(Base):
     # the issued report never changes even if the records are edited later.
     issued_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Why the current version corrects the previous one (set while a correction is open and on the new version).
+    correction_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     manager_reviewed_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -73,5 +77,22 @@ class ReportDistribution(Base):
     channel: Mapped[str] = mapped_column(String(40), nullable=False, default="Letter")
     sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class ReportRevision(Base):
+    """An issued version of a report, frozen when a corrected version replaces it (append-only)."""
+
+    __tablename__ = "report_revisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("audit_reports.id", ondelete="RESTRICT"), nullable=False,
+                                           index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot: Mapped[str] = mapped_column(Text, nullable=False)  # JSON: report text, findings, sign-offs
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    superseded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    correction_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    opened_by: Mapped[int | None] = mapped_column(Integer, nullable=True)

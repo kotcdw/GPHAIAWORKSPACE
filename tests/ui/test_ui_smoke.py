@@ -348,7 +348,7 @@ def test_org_structure_define_universe_and_risk_assessment(browser, base_url):
     assert f"UI Finance {ids['tag']}" in page.inner_text(".tree-table")
     page.evaluate("navigate('universe')")
     page.wait_for_selector(".u-flow .u-step")
-    assert page.locator(".host-tabs .tab").count() == 4
+    assert page.locator(".host-tabs .tab").count() == 5
     page.evaluate("navigate('universe_units')")
     page.wait_for_selector(".u-table tbody tr")
     page.fill(".fb-search", f"UI Finance {ids['tag']}")
@@ -366,6 +366,12 @@ def test_org_structure_define_universe_and_risk_assessment(browser, base_url):
     page.click("button:has-text('Save entity')")
     page.wait_for_selector(".record .rec-title")
     assert f"UI entity {ids['tag']}" in page.inner_text(".rec-title")
+    page.click(".tabs button:has-text('Assurance'), [role=tab]:has-text('Assurance')")
+    page.wait_for_selector("h3:has-text('Assurance providers')")
+    page.evaluate("navigate('universe_assurance')")
+    page.wait_for_selector("h3:has-text('Providers')")
+    assert f"UI entity {ids['tag']}" in page.inner_text(".u-table")
+    _shot(page, "desktop-assurance-map")
     # Leave the rest of the suite's universe as it was: no Define here, only the scoring matrix of a fresh assessment.
     page.evaluate("navigate('riskassess')")
     page.wait_for_selector("#viewRoot h2")

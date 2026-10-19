@@ -83,10 +83,15 @@ def closure_checks(db: DBSession, audit: Audit) -> list[Check]:
             if not has_action:
                 no_action.append(f"#{f.id}")
     need = bool(cfg("require_findings_actioned_to_close"))
+    from app.domains.audit.audits.nature import is_advisory
+
+    advisory = is_advisory(audit)  # management decides which advisory observations to act on
     checks.append(Check(key="responses", label="Every finding has a management response", ok=not no_response,
                         required=need, detail=f"Missing on {', '.join(no_response)}" if no_response else ""))
     checks.append(Check(key="actions", label="Every open High/Medium finding has an agreed action", ok=not no_action,
-                        required=need, detail=f"No action for {', '.join(no_action)}" if no_action else ""))
+                        required=need and not advisory,
+                        detail="Optional for an advisory engagement" if advisory and no_action
+                        else f"No action for {', '.join(no_action)}" if no_action else ""))
     from app.domains.audit.methodology.router import open_notes
 
     pending_notes = open_notes(db, audit.id)
@@ -161,10 +166,14 @@ def engagement_letter(audit_id: int, request: Request, db: DBSession = Depends(g
     doc.add_paragraph(f"Ref: AUD-{audit.id:04d}/EL\nDate: {utcnow():%d %B %Y}")
     to = ", ".join(u.full_name or u.username for u in auditees if u) or "The Head of Department"
     doc.add_paragraph(f"To: {to}")
-    doc.add_heading(f"ENGAGEMENT LETTER: {audit.title.upper()}", level=1)
+    advisory = audit.nature == "Advisory"
+    doc.add_heading(f"{'ADVISORY ' if advisory else ''}ENGAGEMENT LETTER: {audit.title.upper()}", level=1)
     doc.add_paragraph(
         "In line with the approved Internal Audit Plan, the Internal Audit Department will carry out the engagement "
         "described below. This letter sets out its objectives, scope and arrangements."
+        + (" This is an advisory engagement: Internal Audit gives advice and observations, does not give an "
+           "assurance opinion and does not take on management responsibility. Management decides which "
+           "suggestions to implement." if advisory else "")
     )
     doc.add_heading("1. Objectives", level=2)
     if objectives:
@@ -183,7 +192,8 @@ def engagement_letter(audit_id: int, request: Request, db: DBSession = Depends(g
         doc.add_paragraph(item, style="List Bullet")
     doc.add_heading("5. Reporting", level=2)
     doc.add_paragraph(
-        "Findings will be discussed with management as they arise. A draft report will be shared for management "
+        ("Observations" if advisory else "Findings")
+        + " will be discussed with management as they arise. A draft report will be shared for management "
         "comments before the final report is approved by the Chief Audit Executive and issued."
     )
     doc.add_paragraph("\nYours faithfully,\n\n\n" + (preparer.full_name or preparer.username if preparer else "")

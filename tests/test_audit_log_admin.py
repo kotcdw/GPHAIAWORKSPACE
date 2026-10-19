@@ -41,7 +41,7 @@ def test_register_shows_events_and_the_trail_is_protected(client, db):
     g = client.get("/api/audit-logs/integrity").json()
     assert g["protected"] is True and g["entries"] > 0
     assert {t["table"] for t in g["tables"]} == {"audit_logs", "workflow_transitions", "app_config_history",
-                                                 "import_runs", "backup_checks"}
+                                                 "import_runs", "backup_checks", "report_revisions"}
     aud = _u(db, "al_aud", job="auditor")
     login(client, aud.username)
     assert client.get("/api/audit-logs/integrity").status_code == 403

@@ -70,6 +70,7 @@ class ReportOut(BaseModel):
     exit_meeting_attendees: str | None = None
     exit_meeting_notes: str | None = None
     version: int
+    correction_reason: str | None = None
     created_by: int | None
     manager_reviewed_by: int | None
     manager_reviewed_at: datetime | None
@@ -89,5 +90,19 @@ class ReportOut(BaseModel):
     can_comment: bool = False
     can_manager_review: bool = False
     can_cae_approve: bool = False
+    can_correct: bool = False
+    advisory: bool = False
     blockers: list[str] = []
     signoffs: list[SignoffOut] = []
+
+
+class CorrectionIn(BaseModel):
+    reason: str = Field(min_length=20, max_length=5000)
+
+
+class RevisionOut(BaseModel):
+    version: int
+    issued_at: datetime | None
+    superseded_at: datetime
+    correction_reason: str
+    opened_by: str | None
