@@ -209,9 +209,9 @@ def test_register_search_sort_columns_and_paging(browser, base_url):
     page.wait_for_selector("th[aria-sort=descending]")
     # Column chooser hides a column (remembered per device).
     page.click("text=Columns")
-    page.locator(".side-panel label.check", has_text="Stream").locator("input").uncheck()
+    page.locator(".side-panel label.check", has_text="Lead auditor").locator("input").uncheck()
     page.keyboard.press("Escape")
-    assert page.locator("th", has_text="Stream").count() == 0
+    assert page.locator("th", has_text="Lead auditor").count() == 0
     # Paging: 1 row per page through the page-size control is not offered, so use 10 and check the footer.
     page.select_option(".table-foot select", "10")
     page.wait_for_selector(".table-foot")
@@ -227,7 +227,7 @@ def test_record_page_tabs_sit_under_the_title(browser, base_url):
     page.wait_for_selector(".rec-tabs [role=tab].active")
     box = page.locator(".rec-tabs").bounding_box()
     assert box["y"] < 220, box  # tabs are visible without scrolling
-    assert page.inner_text(".rec-tabs [role=tab].active") == "Dashboard"
+    assert page.inner_text(".rec-tabs [role=tab].active") == "Overview"
     side_titles = page.locator(".rec-side .card h3").all_inner_texts()
     assert "Engagement" in side_titles and "Engagement team" in side_titles
     assert "Audits" in page.inner_text("#crumbs")
@@ -235,7 +235,7 @@ def test_record_page_tabs_sit_under_the_title(browser, base_url):
     page.focus(".rec-tabs [role=tab].active")
     page.keyboard.press("ArrowRight")
     page.wait_for_load_state("networkidle")
-    assert page.inner_text(".rec-tabs [role=tab].active") != "Dashboard"
+    assert page.inner_text(".rec-tabs [role=tab].active") != "Overview"
     _shot(page, "desktop-audit-record")
     assert not watch.take()
     ctx.close()
@@ -337,10 +337,10 @@ def test_workplan_execute_and_issue_tracker(browser, base_url):
     }""")
     page.evaluate(f"state.fwSub = {{{audit_id}: 'plan'}}; openAudit({audit_id}, 'fieldwork')")
     page.wait_for_selector(".plan-matrix")
-    assert page.inner_text(".subnav-item.active") == "Project plan"
+    assert page.inner_text(".fw-step.active .fw-step-l") == "Work programme"
     assert "Vouch takings to bank" in page.inner_text(".plan-matrix")
     assert page.locator(".rec-side").is_hidden()  # work screens use the full width
-    page.click(".subnav-item:has-text('Execute procedures')")
+    page.click(".fw-step:has-text('Execute procedures')")
     page.wait_for_selector("table.dense tbody tr")
     page.click("table.dense tbody tr")
     page.wait_for_selector(".side-panel")
@@ -360,6 +360,37 @@ def test_workplan_execute_and_issue_tracker(browser, base_url):
     for col in ("Issue", "Status", "Severity", "Owner", "Remediation deadline", "Issue type", "Published", "Sign-offs"):
         assert any(h.strip().startswith(col) for h in headers), (col, headers)
     _shot(page, "desktop-issue-tracker")
+    assert not watch.take()
+    ctx.close()
+
+
+def test_internal_control_steps_and_rcm_matrix(browser, base_url):
+    """Fieldwork follows the GIAS steps; the RCM is one risk x control matrix; no rows of zero counters."""
+    ctx, page, watch = _signed_in(browser, base_url)
+    audit_id = page.evaluate("""async () => {
+        const a = await API.post('/api/audits', {title: 'UI test - internal control', scope: 'x'});
+        await API.patch(`/api/audits/${a.id}/fieldwork`, {workflow: 'Internal Control'});
+        const o = await API.post(`/api/audits/${a.id}/objectives`, {title: 'Dues are billed'});
+        const r1 = await API.post(`/api/objectives/${o.id}/risks`,
+            {title: 'Calls not billed', likelihood: 4, impact: 4});
+        await API.post(`/api/objectives/${o.id}/risks`, {title: 'Credit notes unapproved', likelihood: 2, impact: 4});
+        await API.post(`/api/objectives/${o.id}/controls`, {title: 'Daily call reconciliation',
+            control_type: 'Detective', nature: 'Manual', frequency: 'Daily', is_key: true, risk_ids: [r1.id]});
+        return a.id;
+    }""")
+    page.evaluate(f"state.fwSub = {{{audit_id}: 'rcm'}}; openAudit({audit_id}, 'fieldwork')")
+    page.wait_for_selector(".rcm-matrix")
+    assert page.locator(".fw-step").count() == 5
+    assert page.locator(".phase-track .phase.current").inner_text().startswith("1")
+    matrix = page.inner_text(".rcm-matrix")
+    assert "Daily call reconciliation" in matrix and "No mitigating control" in matrix
+    assert "1 risk without a control" in page.inner_text(".fw-step.active")
+    for step in ("Walkthroughs", "Test plan", "Testing"):
+        page.click(f".fw-step:has-text('{step}')")
+        page.wait_for_selector(".fw-step-head h3")
+        page.wait_for_timeout(400)
+        assert page.locator(".rec-pane .stats").count() == 0, step
+    _shot(page, "desktop-fieldwork-steps")
     assert not watch.take()
     ctx.close()
 

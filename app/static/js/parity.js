@@ -142,7 +142,9 @@ async function renderNarratives(body, { audit, open, reload }) {
   const objectives = rcm.objectives || [];
   const add = open ? btn(`Add new ${word.toLowerCase()}`, () => narrativeForm(audit, objectives, null, reload)) : null;
   if (!objectives.length) {
-    body.append(emptyState({ icon: "journal-text", title: `No ${termOf(terms, "objective", "objective").toLowerCase()}s yet`, text: `Add an objective on the Risk control matrix first; each ${word.toLowerCase()} belongs to one.` }));
+    body.append(emptyState({ icon: "journal-text", title: `No ${termOf(terms, "objective", "objective").toLowerCase()}s yet`,
+      text: `Start with the engagement objectives (IIA GIAS 13.3); each ${word.toLowerCase()} describes the process behind one.`,
+      action: open ? btn("Add objective", () => objectiveForm(audit.id, null, reload)) : null }));
     return;
   }
   if (!rows.length) {

@@ -106,7 +106,8 @@ function detailPanel({ title, body, footer = null, width = 520, onClose = null }
     el("div", { class: "side-panel-head" }, el("h3", null, title),
       el("button", { class: "modal-close", type: "button", "aria-label": "Close", onclick: close }, "×")),
     el("div", { class: "side-panel-body" }, body), footer ? el("div", { class: "side-panel-foot" }, footer) : null);
-  aside.addEventListener("input", () => { edited = true; });
+  // Typing counts; ticking a box or picking from a list (e.g. the column chooser) does not.
+  aside.addEventListener("input", (e) => { if (e.target.matches("textarea, input:not([type=checkbox]):not([type=radio])")) edited = true; });
   const wrap = el("div", { class: "side-panel-wrap" }, el("div", { class: "side-panel-scrim", onclick: () => { if (!edited) close(); } }), aside);
   document.body.append(wrap);
   document.addEventListener("keydown", onKey);
@@ -240,13 +241,13 @@ function serverTable(opts) {
       const key = c.sort === true ? c.key : c.sort;
       const active = key && q.sort && q.sort.replace(/^-/, "") === key;
       const desc = active && q.sort.startsWith("-");
-      return el("th", { class: c.num ? "num" : null, scope: "col", "aria-sort": active ? (desc ? "descending" : "ascending") : (key ? "none" : null) },
+      return el("th", { class: [c.num ? "num" : "", c.wide ? "col-wide" : ""].join(" ").trim() || null, scope: "col", "aria-sort": active ? (desc ? "descending" : "ascending") : (key ? "none" : null) },
         key ? el("button", { class: "th-sort", type: "button", title: `Sort by ${c.label}`, onclick: () => {
           q.sort = active && !desc ? `-${key}` : key; q.page = 1; load();
         } }, c.label, el("i", { class: `bi ${active ? (desc ? "bi-caret-down-fill" : "bi-caret-up-fill") : "bi-chevron-expand"} sort-ico`, "aria-hidden": "true" })) : c.label);
     }));
     const rows = items.map((it) => el("tr", onRow ? { tabindex: "0", onclick: () => onRow(it), onkeydown: (e) => { if (e.key === "Enter") onRow(it); } } : { class: "no-click" },
-      ...cols.map((c) => el("td", { class: c.num ? "num" : null, "data-label": c.label }, c.render ? c.render(it) : cellText(it[c.key])))));
+      ...cols.map((c) => el("td", { class: [c.num ? "num" : "", c.wide ? "col-wide" : ""].join(" ").trim() || null, "data-label": c.label }, c.render ? c.render(it) : cellText(it[c.key])))));
     body.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" }, el("thead", null, head), el("tbody", null, ...rows))));
     const sizeSel = el("select", { class: "compact", "aria-label": "Rows per page" }, ...[10, 25, 50, 100].map((n) => el("option", { value: n, selected: n === size ? "1" : null }, `${n} / page`)));
     sizeSel.addEventListener("change", () => { q.pageSize = Number(sizeSel.value); Prefs.set(`size.${storageKey}`, q.pageSize); q.page = 1; load(); });
@@ -323,6 +324,7 @@ function recordLayout(opts) {
       el("span", { class: "rec-util" }, ...(opts.utility || []).map((u) => el("button", { class: "link-btn", type: "button", onclick: u.onClick },
         u.icon ? el("i", { class: `bi bi-${u.icon}`, "aria-hidden": "true" }) : null, ` ${u.label}`, u.count ? el("span", { class: "count-pill" }, String(u.count)) : null))),
       opts.actions && opts.actions.length ? el("span", { class: "rec-actions" }, ...opts.actions) : null),
+    opts.band || null,
     tabsNav);
   const root = el("div", { class: "record" }, head, grid);
   let current = null;
@@ -470,4 +472,23 @@ function hostBar(view) {
   return el("nav", { class: "tabs host-tabs", "aria-label": "Sections" }, ...tabs.map(([v, label]) =>
     el("button", { class: `tab ${v === view ? "active" : ""}`, type: "button", "aria-current": v === view ? "page" : null,
       onclick: () => { if (v !== view) navigate(v); } }, label)));
+}
+
+// ------------------------------------------------------------------ "more actions" menu
+// items: [label, onClick, danger?]; falsy items are skipped. Closes on choice, Esc or a click elsewhere.
+function moreMenu(items, label = "More actions") {
+  const list = items.filter(Boolean);
+  if (!list.length) return null;
+  const menu = el("details", { class: "more-menu" },
+    el("summary", { class: "btn small secondary icon", title: label, "aria-label": label }, el("i", { class: "bi bi-three-dots" })),
+    el("div", { class: "more-menu-list", role: "menu" }, ...list.map(([text, fn, danger]) => el("button", {
+      type: "button", role: "menuitem", class: danger ? "danger" : null,
+      onclick: () => { menu.open = false; fn(); } }, text))));
+  const away = (e) => { if (!menu.contains(e.target)) menu.open = false; };
+  const esc = (e) => { if (e.key === "Escape" && menu.open) { menu.open = false; menu.querySelector("summary").focus(); } };
+  menu.addEventListener("toggle", () => {
+    if (menu.open) { document.addEventListener("click", away, true); document.addEventListener("keydown", esc); }
+    else { document.removeEventListener("click", away, true); document.removeEventListener("keydown", esc); }
+  });
+  return menu;
 }

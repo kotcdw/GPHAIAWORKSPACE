@@ -49,10 +49,10 @@ Reference = Depends(require_perm("system.reference"))
 
 TERMS: dict[str, str] = {
     "project": "Audit", "planning": "Planning", "fieldwork": "Fieldwork", "objective": "Objective",
-    "narrative": "Narrative", "rcm": "Risk control matrix", "risk": "Risk", "control": "Control",
+    "narrative": "Process narrative", "rcm": "Risk & control matrix", "risk": "Risk", "control": "Control",
     "walkthrough": "Walkthrough", "test_plan": "Test plan", "testing": "Testing", "procedure": "Procedure",
-    "execute": "Execute procedures", "issue": "Issue", "request": "Request", "results": "Results",
-    "reviews": "Reviews",
+    "work_program": "Work programme", "execute": "Execute procedures", "issue": "Finding",
+    "request": "Evidence request", "results": "Report", "reviews": "Supervision & review",
 }
 
 

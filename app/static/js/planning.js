@@ -300,31 +300,25 @@ async function renderRcm(panel, auditId) {
   const reload = () => { clear(panel); renderRcm(panel, auditId); };
   let rcm;
   try { rcm = await API.get(`/api/audits/${auditId}/rcm`); }
-  catch (err) { panel.append(el("div", { class: "empty" }, err.message)); return; }
+  catch (err) { panel.append(errorState(err, reload)); return; }
   const s = rcm.summary;
   const open = !rcm.locked;
-
   const eff = s.controls_by_effectiveness;
-  panel.append(el("div", { class: "stats" },
-    stat(s.objectives, "Objectives"),
-    stat(s.risks, "Risks", `${s.risks_by_rating.High} high · ${s.risks_by_rating.Medium} medium · ${s.risks_by_rating.Low} low`,
-      s.risks_by_rating.High ? "warn" : ""),
-    stat(s.controls, "Controls", `${s.key_controls} key`),
-    stat(`${eff.Effective}/${eff.Ineffective}`, "Effective / ineffective", `${eff["Not Tested"]} not tested`, eff.Ineffective ? "danger" : ""),
-    stat(s.tests_awaiting_review, "Tests awaiting review", null, s.tests_awaiting_review ? "warn" : ""),
-    stat(s.open_issues, "Open issues", null, s.open_issues ? "danger" : ""),
-  ));
-  const gaps = [
-    ...s.risks_without_controls.map((r) => `Risk without a mitigating control: ${r}`),
-    ...s.key_controls_untested.map((c) => `Key control not yet tested: ${c}`),
-  ];
-  if (gaps.length) panel.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
-    el("div", null, el("strong", null, "Coverage gaps"), el("ul", null, ...gaps.map((g) => el("li", null, g))))));
+  const line = statusLine([[s.objectives, `objective${s.objectives === 1 ? "" : "s"}`], [s.risks, `risk${s.risks === 1 ? "" : "s"}`],
+    [s.risks_by_rating.High, "high", "danger"], [s.controls, `control${s.controls === 1 ? "" : "s"}`], [s.key_controls, "key"],
+    [eff.Effective, "effective", "ok"], [eff.Ineffective, "ineffective", "danger"], [s.tests_awaiting_review, "tests awaiting review", "warn"]]);
+  if (line) panel.append(line);
+  if (s.risks_without_controls.length) panel.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
+    el("div", null, el("strong", null, "Risks without a mitigating control"), el("ul", null, ...s.risks_without_controls.map((g) => el("li", null, g))))));
   if (rcm.locked) panel.append(el("p", { class: "muted" }, "The audit is closed - the matrix is read-only."));
-
+  if (!rcm.objectives.length) {
+    panel.append(emptyState({ icon: "bullseye", title: "No objectives yet",
+      text: "Start with the engagement objectives (IIA GIAS 13.3), then the risks to each objective and the controls that mitigate them.",
+      action: open ? btn("Add objective", () => objectiveForm(auditId, null, reload)) : null }));
+    return;
+  }
   rcm.objectives.forEach((o) => panel.append(objectiveCard(o, open, reload)));
-  if (!rcm.objectives.length) panel.append(el("div", { class: "card empty" }, "No objectives yet. Start by adding the audit objectives."));
-  if (open) panel.append(el("div", null, btn("Add objective", () => objectiveForm(auditId, null, reload))));
+  if (open) panel.append(el("div", null, btn("Add objective", () => objectiveForm(auditId, null, reload), "secondary")));
 }
 
 function objectiveForm(auditId, o, reload) {
@@ -345,69 +339,90 @@ function objectiveForm(auditId, o, reload) {
   });
 }
 
+// Design result from the walkthrough / design test; operating result from the operating-effectiveness tests.
+function controlResults(c) {
+  const done = (c.tests || []).filter((t) => ["Completed", "Reviewed"].includes(t.status));
+  const design = done.filter((t) => t.test_type !== "Operating Effectiveness");
+  const oe = done.filter((t) => t.test_type === "Operating Effectiveness");
+  const pick = (list, good, bad, none) => (list.some((t) => t.conclusion === "Ineffective") ? [bad, "danger"]
+    : list.some((t) => t.conclusion === "Effective") ? [good, "ok"] : [none, ""]);
+  return { design: pick(design, "Adequate", "Deficient", "Not assessed"), operating: pick(oe, "Effective", "Ineffective", "Not tested") };
+}
+
+// One objective of the risk & control matrix: a single matrix with a row per risk x control.
 function objectiveCard(o, open, reload) {
-  const card = el("div", { class: "card" });
-  card.append(el("div", { class: "view-head" },
-    el("h3", null, el("span", { class: "ref" }, o.ref), " ", o.title,
-      typeof signoffCell === "function" ? el("span", { class: "muted small rcm-so" }, " Risk control matrix sign-offs ", signoffCell("rcm", o.id, o.rcm_signoffs, o.audit_id, `${o.ref} risk control matrix`, reload)) : null),
+  const card = el("div", { class: "card rcm-obj" });
+  const attrs = typeof editAttributes === "function";
+  card.append(el("div", { class: "card-head" },
+    el("h3", null, el("span", { class: "ref" }, o.ref), ` ${o.title}`,
+      typeof signoffCell === "function" ? el("span", { class: "muted small rcm-so" }, "Sign-offs ", signoffCell("rcm", o.id, o.rcm_signoffs, o.audit_id, `${o.ref} risk & control matrix`, reload)) : null),
     el("div", { class: "actions" },
-      typeof editAttributes === "function" ? btn("Attributes", () => editAttributes("objectives", o.id, o.ref, reload, !open), "secondary") : null),
-    open ? el("div", { class: "actions" },
-      btn("+ Risk", () => riskModal(o, null, reload), "secondary"),
-      btn("+ Control", () => controlModal(o, null, reload), "secondary"),
-      btn("From library", () => fromLibraryDialog(o, reload), "secondary"),
-      aiRiskAction(o, reload),
-      btn("Edit", () => objectiveForm(o.audit_id, o, reload), "secondary"),
-      btn("Delete", async () => {
-        try { await API.del(`/api/objectives/${o.id}`); toast("Objective deleted"); reload(); }
-        catch (err) { toast(err.message, "error"); }
-      }, "danger-ghost")) : null));
-  if (o.description) card.append(el("p", { class: "muted" }, o.description));
-
-  const riskRef = Object.fromEntries(o.risks.map((r) => [r.id, r.ref]));
-  card.append(el("h4", null, "Risks"));
-  if (!o.risks.length) card.append(el("div", { class: "empty" }, "No risks identified."));
-  else card.append(el("table", null,
-    el("thead", null, el("tr", null, el("th", null, "Ref"), el("th", null, "Risk"), el("th", null, "Inherent"),
-      el("th", null, "Residual"), el("th", null, "Controls"), el("th", null, ""))),
-    el("tbody", null, ...o.risks.map((r) => el("tr", { class: "no-click" },
-      el("td", { class: "ref" }, r.ref), el("td", null, r.title, r.enterprise_risk ? el("div", { class: "muted small" }, el("i", { class: "bi bi-link-45deg" }), ` ${r.enterprise_risk}`) : null),
-      el("td", null, heat(r.inherent_score)), el("td", null, badge(r.residual_rating)),
-      el("td", null, r.control_ids.length ? r.control_ids.map((id) => o.controls.find((c) => c.id === id)?.ref || `#${id}`).join(", ") : el("span", { class: "badge badge-risk-high" }, "none")),
-      el("td", null, el("div", { class: "actions" }, open ? btn("Edit", () => riskModal(o, r, reload), "secondary") : null,
-        typeof editAttributes === "function" ? btn("Attributes", () => editAttributes("risks", r.id, r.ref, reload, !open), "secondary") : null)))))));
-
-  card.append(el("h4", null, "Controls"));
-  if (!o.controls.length) card.append(el("div", { class: "empty" }, "No controls documented."));
-  o.controls.forEach((c) => {
-    const box = el("div", { class: "control-box" });
-    box.append(el("div", { class: "view-head" },
-      el("div", null, el("span", { class: "ref" }, c.ref), " ", el("strong", null, c.title), " ",
-        c.is_key ? badge("Key") : null, " ", badge(c.effectiveness),
-        el("div", { class: "muted" }, `${c.control_type} · ${c.nature} · ${c.frequency}`,
-          c.owner_email ? ` · owner ${c.owner_email}` : "",
-          ` · mitigates ${c.risk_ids.map((id) => riskRef[id] || `#${id}`).join(", ") || "no risk"}`)),
-      open ? el("div", { class: "actions" },
-        btn("+ Test", () => testCreateModal({ ...c, audit_id: o.audit_id }, reload)),
-        btn("Edit", () => controlModal(o, c, reload), "secondary")) : null));
-    if (c.tests.length) box.append(el("table", { class: "tests-table" },
-      el("thead", null, el("tr", null, el("th", null, "Test"), el("th", null, "Type"), el("th", null, "Sample"),
-        el("th", null, "Exceptions"), el("th", null, "Status"), el("th", null, "Conclusion"), el("th", null, ""))),
-      el("tbody", null, ...c.tests.map((t) => el("tr", { class: "no-click" },
-        el("td", { class: "ref" }, t.ref), el("td", null, t.test_type),
-        el("td", null, t.sample_size ? (t.population_size ? `${t.sample_size} of ${t.population_size}` : String(t.sample_size)) : "-"),
-        el("td", null, String(t.exceptions_found)), el("td", null, badge(t.status)), el("td", null, badge(t.conclusion)),
-        el("td", null, el("div", { class: "actions" },
-          btn("Open", () => testModal({ ...c, audit_id: o.audit_id }, t, open, reload), "secondary"),
-          open && t.status === "Completed" && t.performed_by !== state.user.id ? btn("Review (e-sign)", () => eSignModal({
-            title: `Review ${t.ref}`, pathOverride: `/api/control-tests/${t.id}/review`, actionLabel: "Sign review",
-            allowReject: true, onDone: reload })) : null,
-          open && t.conclusion === "Ineffective" && ["Completed", "Reviewed"].includes(t.status) ? btn("Raise issue", async () => {
-            try { await API.post(`/api/control-tests/${t.id}/raise-issue`); toast("Issue raised - see Findings"); reload(); }
-            catch (err) { toast(err.message, "error"); }
-          }) : null)))))));
-    card.append(box);
+      open ? btn("+ Risk", () => riskModal(o, null, reload), "secondary") : null,
+      open ? btn("+ Control", () => controlModal(o, null, reload), "secondary") : null,
+      open ? aiRiskAction(o, reload) : null,
+      moreMenu([
+        open ? ["Add controls from the library", () => fromLibraryDialog(o, reload)] : null,
+        open ? ["Edit objective", () => objectiveForm(o.audit_id, o, reload)] : null,
+        attrs ? ["Objective attributes", () => editAttributes("objectives", o.id, o.ref, reload, !open)] : null,
+        open ? ["Delete objective", async () => {
+          const ok = await confirmDialog({ title: "Delete objective", text: `${o.ref} and its risks and controls will be deleted.`, confirmLabel: "Delete", danger: true });
+          if (!ok.ok) return;
+          try { await API.del(`/api/objectives/${o.id}`); toast("Objective deleted"); reload(); } catch (err) { toast(err.message, "error"); }
+        }, true] : null,
+      ]))));
+  if (o.description) card.append(el("p", { class: "muted small" }, o.description));
+  if (!o.risks.length && !o.controls.length) {
+    card.append(el("p", { class: "muted small" }, "No risks or controls yet. Add the risks that could stop this objective being met, then the controls that mitigate them."));
+    return card;
+  }
+  const byId = Object.fromEntries(o.controls.map((c) => [c.id, c]));
+  const linked = new Set(o.risks.flatMap((r) => r.control_ids));
+  const riskCell = (r, span) => el("td", { class: "rcm-risk", rowspan: span > 1 ? String(span) : null, "data-label": "Risk" },
+    el("button", { class: "rcm-link", type: "button", disabled: open ? null : "1", title: open ? "Edit the risk" : null, onclick: () => riskModal(o, r, reload) },
+      el("span", { class: "ref" }, r.ref), ` ${r.title}`),
+    r.enterprise_risk ? el("div", { class: "rcm-sub" }, el("i", { class: "bi bi-link-45deg" }), ` ${r.enterprise_risk}`) : null,
+    attrs ? el("button", { class: "icon-link", type: "button", title: `${r.ref} attributes`, "aria-label": `${r.ref} attributes`,
+      onclick: () => editAttributes("risks", r.id, r.ref, reload, !open) }, el("i", { class: "bi bi-sliders" })) : null);
+  const ratingCell = (label, node, span) => el("td", { rowspan: span > 1 ? String(span) : null, "data-label": label }, node);
+  const controlCells = (c) => {
+    const res = controlResults(c);
+    return [
+      el("td", { "data-label": "Control" },
+        el("button", { class: "rcm-link", type: "button", disabled: open ? null : "1", title: open ? "Edit the control" : null, onclick: () => controlModal(o, c, reload) },
+          el("span", { class: "ref" }, c.ref), ` ${c.title}`),
+        attrs ? el("button", { class: "icon-link", type: "button", title: `${c.ref} attributes`, "aria-label": `${c.ref} attributes`,
+          onclick: () => editAttributes("controls", c.id, c.ref, reload, !open) }, el("i", { class: "bi bi-sliders" })) : null,
+        c.owner_email ? el("div", { class: "rcm-sub" }, c.owner_email) : null),
+      el("td", { "data-label": "Key" }, c.is_key ? "Yes" : "No"),
+      el("td", { "data-label": "Type" }, c.control_type, el("div", { class: "rcm-sub" }, `${c.nature} · ${c.frequency}`)),
+      el("td", { "data-label": "Design" }, el("span", { class: `outcome ${res.design[1] === "danger" ? "bad" : res.design[1]}` }, res.design[0])),
+      el("td", { "data-label": "Operating" }, el("span", { class: `outcome ${res.operating[1] === "danger" ? "bad" : res.operating[1]}` }, res.operating[0])),
+    ];
+  };
+  const rows = [];
+  o.risks.forEach((r) => {
+    const cs = r.control_ids.map((id) => byId[id]).filter(Boolean);
+    const span = Math.max(cs.length, 1);
+    if (!cs.length) {
+      rows.push(el("tr", { class: "no-click rcm-first" }, riskCell(r, 1), ratingCell("Inherent", heat(r.inherent_score), 1),
+        el("td", { colspan: "5", class: "rcm-gap", "data-label": "Control" }, el("i", { class: "bi bi-exclamation-triangle" }), " No mitigating control"),
+        ratingCell("Residual", badge(r.residual_rating), 1)));
+      return;
+    }
+    cs.forEach((c, i) => rows.push(el("tr", { class: `no-click ${i === 0 ? "rcm-first" : ""}` },
+      ...(i === 0 ? [riskCell(r, span), ratingCell("Inherent", heat(r.inherent_score), span)] : []),
+      ...controlCells(c),
+      ...(i === 0 ? [ratingCell("Residual", badge(r.residual_rating), span)] : []))));
   });
+  const orphans = o.controls.filter((c) => !linked.has(c.id));
+  orphans.forEach((c, i) => rows.push(el("tr", { class: `no-click ${i === 0 ? "rcm-first" : ""}` },
+    ...(i === 0 ? [el("td", { class: "rcm-risk muted", rowspan: orphans.length > 1 ? String(orphans.length) : null, "data-label": "Risk" }, "Not linked to a risk"),
+      el("td", { rowspan: orphans.length > 1 ? String(orphans.length) : null }, "-")] : []),
+    ...controlCells(c),
+    ...(i === 0 ? [el("td", { rowspan: orphans.length > 1 ? String(orphans.length) : null }, "-")] : []))));
+  card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense rcm-matrix" },
+    el("thead", null, el("tr", null, ...["Risk", "Inherent", "Control", "Key", "Type", "Design", "Operating", "Residual"].map((h) => el("th", { scope: "col" }, h)))),
+    el("tbody", null, ...rows))));
   return card;
 }
 
@@ -467,22 +482,6 @@ function controlModal(o, control, reload) {
       return API.post(`/api/objectives/${o.id}/controls`, { ...body, risk_ids: riskIds });
     },
     onDone: () => { toast("Control saved"); reload(); },
-  });
-}
-
-function testCreateModal(control, reload) {
-  openForm({
-    title: `New test on ${control.ref}`,
-    key: `rcm:${control.audit_id || "x"}:test:new:${control.id}`,
-    meta: { title: `New test (${control.ref})`, record_type: "audit", record_id: control.audit_id || null },
-    fields: [
-      { name: "test_type", label: "Test type", type: "select", required: true, options: TEST_TYPES },
-      { name: "procedure", label: "Test procedure (steps the auditor will perform)", type: "textarea", maxLength: 20000 },
-    ],
-    initial: { test_type: "Operating Effectiveness" },
-    submitLabel: "Add",
-    onSubmit: (v) => API.post(`/api/controls/${control.id}/tests`, { ...v, procedure: v.procedure || "" }),
-    onDone: () => { toast("Test added"); reload(); },
   });
 }
 
@@ -687,7 +686,6 @@ function registerPlanningOpeners() {
       return o && controlModal(o, o.controls.find((c) => String(c.id) === id), reload);
     }
     if (kind === "test") {
-      if (mode === "new") return testCreateModal(controls.find((c) => String(c.id) === id), reload);
       const c = controls.find((x) => x.tests.some((t) => String(t.id) === id));
       return c && testModal(c, c.tests.find((t) => String(t.id) === id), !rcm.locked, reload);
     }

@@ -82,6 +82,8 @@ class AuditRow(BaseModel):
     ref: str
     title: str
     audit_type: str | None
+    nature: str = "Assurance"
+    phase: str = "Plan"
     status: str
     approval_status: str | None
     port: str | None
@@ -94,8 +96,8 @@ class AuditRow(BaseModel):
     planned_end: date | None
     budget_hours: int | None
     open_findings: int
+    open_high: int = 0
     findings: int
-    working_papers: int
     report_status: str | None
     progress: int = 0
     favorite: bool = False
@@ -107,8 +109,13 @@ _AUDIT_SORT = {
     "audit_type": lambda r: r["audit_type"], "port": lambda r: r["port"], "plan": lambda r: r["plan"],
     "lead": lambda r: r["lead"], "planned_start": lambda r: r["planned_start"],
     "open_findings": lambda r: r["open_findings"], "updated_at": lambda r: r["updated_at"],
-    "progress": lambda r: r["progress"],
+    "progress": lambda r: r["progress"], "phase": lambda r: _PHASES.index(r["phase"]),
+    "nature": lambda r: r["nature"], "open_high": lambda r: r["open_high"],
 }
+
+# Engagement phase in the IIA GIAS cycle: Plan (13), Perform (14), Communicate (15.1), Monitor (15.2).
+_PHASE = {"Planned": "Plan", "In Progress": "Perform", "Review": "Communicate", "Closed": "Monitor"}
+_PHASES = ["Plan", "Perform", "Communicate", "Monitor", "Completed"]
 
 
 @router.get("/register", response_model=Page[AuditRow])
@@ -129,6 +136,7 @@ def audit_register(
     """
     from app.domains.assurance.planning.coverage import engagement_progress
     from app.domains.assurance.planning.models import AssurancePlan, PlanEngagement
+    from app.domains.audit.audits.nature import nature
     from app.domains.audit.fieldwork.extras import favorite_ids
     from app.domains.audit.reports.models import AuditReport
     from app.platform.organizations.models import Organization
@@ -153,14 +161,13 @@ def audit_register(
     ids = [a.id for a in audits] or [0]
 
     counts: dict[int, list[int]] = {}
-    for aid, st in db.execute(select(Finding.audit_id, Finding.status).where(Finding.audit_id.in_(ids))).all():
-        c = counts.setdefault(aid, [0, 0])
+    for aid, st, rating in db.execute(select(Finding.audit_id, Finding.status, Finding.risk_rating)
+                                      .where(Finding.audit_id.in_(ids))).all():
+        c = counts.setdefault(aid, [0, 0, 0])
         c[0] += 1
-        c[1] += 0 if st.value == "Closed" else 1
-    papers = dict(db.execute(
-        select(WorkingPaper.audit_id, func.count()).where(WorkingPaper.audit_id.in_(ids),
-                                                          WorkingPaper.is_deleted.is_(False))
-        .group_by(WorkingPaper.audit_id)).all())
+        if st.value != "Closed":
+            c[1] += 1
+            c[2] += 1 if getattr(rating, "value", rating) == "High" else 0
     reports = {r.audit_id: r.status.value for r in
                db.execute(select(AuditReport).where(AuditReport.audit_id.in_(ids))).scalars()}
     engagements = {e.audit_id: e for e in
@@ -180,9 +187,11 @@ def audit_register(
     for a in audits:
         e = engagements.get(a.id)
         p = plans.get(a.plan_id) if a.plan_id else None
-        f_total, f_open = counts.get(a.id, [0, 0])
+        f_total, f_open, f_high = counts.get(a.id, [0, 0, 0])
         rows.append({
             "id": a.id, "ref": f"AUD-{a.id:04d}", "title": a.title, "audit_type": a.audit_type,
+            "nature": nature(a),
+            "phase": "Completed" if a.status.value == "Closed" and not f_open else _PHASE.get(a.status.value, "Plan"),
             "status": a.status.value, "approval_status": a.approval_status.value if a.approval_status else None,
             "port": ports.get(a.port_entity_id), "port_id": a.port_entity_id,
             "plan": f"FY{p.fiscal_year} · {p.plan_ref}" if p else None, "plan_id": a.plan_id,
@@ -190,7 +199,7 @@ def audit_register(
             or (leads.get(e.lead_auditor_id) if e and e.lead_auditor_id else None),
             "planned_quarter": e.planned_quarter if e else None, "planned_start": e.planned_start if e else None,
             "planned_end": e.planned_end if e else None, "budget_hours": e.budget_hours if e else None,
-            "open_findings": f_open, "findings": f_total, "working_papers": papers.get(a.id, 0),
+            "open_findings": f_open, "open_high": f_high, "findings": f_total,
             "report_status": reports.get(a.id), "progress": engagement_progress(db, a), "updated_at": a.updated_at,
             "favorite": a.id in favs,
         })

@@ -1286,20 +1286,20 @@ async function renderAudits() {
   clear(viewRoot);
   viewRoot.append(viewHeader("Audits",
     canWriteModule("audits") && hasPerm("audit.create") ? el("button", { class: "btn", onclick: newAuditModal }, el("i", { class: "bi bi-plus-lg" }), " New audit") : null,
-    { sub: "Engagements you can see, with plan, lead, location and progress. Search, filter, sort and export work on the server." }));
+    { sub: "The engagement register: every audit you can see, with its phase in the IIA cycle (plan, perform, communicate, monitor)." }));
   let types = []; let ports = [];
   try { const c = await loadEntityConfig(); types = c.types.audit_types || []; ports = c.entities.filter((e) => e.is_port); } catch { /* filters are optional */ }
   const card = el("div", { class: "card" });
   viewRoot.append(card);
   const t = serverTable({
     url: "/api/audits/register",
-    storageKey: "audits",
+    storageKey: "audits.register",
     defaultSort: "-updated_at",
     exportName: "Audits register",
     onRow: (a) => openAudit(a.id),
     filters: [
       { key: "status", label: "Status", options: ["Planned", "In Progress", "Review", "Closed"] },
-      ...(types.length ? [{ key: "audit_type", label: "Stream", options: types }] : []),
+      ...(types.length ? [{ key: "audit_type", label: "Audit type", options: types }] : []),
       ...(ports.length ? [{ key: "port_id", label: "Port", options: ports.map((p) => ({ value: p.id, label: p.name })) }] : []),
       ...(state.user.work_entity_id ? [{ key: "mine", label: "Scope", options: [{ value: "true", label: "My port" }] }] : []),
       { key: "fav_first", label: "Order", options: [{ value: "true", label: "Show favorites first" }] },
@@ -1307,20 +1307,24 @@ async function renderAudits() {
     emptyTitle: "No audits yet",
     emptyText: "Audits are started from an approved plan engagement or created here.",
     columns: [
-      { key: "favorite", label: "Favorite", render: (a) => favoriteStar(a, () => t.reload()), csv: (a) => (a.favorite ? "Yes" : "") },
-      { key: "ref", label: "Ref", sort: true, render: (a) => el("span", { class: "ref" }, a.ref) },
-      { key: "title", label: "Audit", sort: true, render: (a) => el("a", { href: "#", onclick: (e) => { e.preventDefault(); e.stopPropagation(); openAudit(a.id); } }, a.title) },
-      { key: "audit_type", label: "Stream", sort: true },
-      { key: "port", label: "Port", sort: true },
+      { key: "ref", label: "Ref", sort: true, render: (a) => el("span", { class: "ref-star" }, favoriteStar(a, () => t.reload()), el("span", { class: "ref" }, a.ref)), csv: (a) => a.ref },
+      { key: "title", label: "Engagement", sort: true, wide: true, render: (a) => el("div", null,
+        el("a", { href: "#", onclick: (e) => { e.preventDefault(); e.stopPropagation(); openAudit(a.id); } }, a.title),
+        el("div", { class: "muted small" }, [a.nature, a.audit_type].filter(Boolean).join(" · "))) },
+      { key: "nature", label: "Nature", sort: true, hidden: true },
+      { key: "audit_type", label: "Audit type", sort: true, hidden: true },
+      { key: "port", label: "Port", sort: true, hidden: true },
       { key: "plan", label: "Plan", sort: true, hidden: true },
-      { key: "lead", label: "Lead", sort: true },
-      { key: "planned_start", label: "Planned", sort: true, render: (a) => a.planned_start ? `${fmtDay(a.planned_start)} – ${a.planned_end ? fmtDay(a.planned_end) : "?"}` : (a.planned_quarter || "-"), csv: (a) => a.planned_start || a.planned_quarter || "" },
+      { key: "lead", label: "Lead auditor", sort: true },
+      { key: "planned_start", label: "Planned period", sort: true, render: (a) => a.planned_start ? `${fmtDay(a.planned_start)} – ${a.planned_end ? fmtDay(a.planned_end) : "?"}` : (a.planned_quarter || "-"), csv: (a) => a.planned_start || a.planned_quarter || "" },
+      { key: "phase", label: "Phase", sort: true, render: (a) => el("span", { class: `phase-chip ph-${a.phase.toLowerCase()}`, title: { Plan: "IIA GIAS 13", Perform: "IIA GIAS 14", Communicate: "IIA GIAS 15.1", Monitor: "IIA GIAS 15.2" }[a.phase] || "" }, a.phase) },
       { key: "status", label: "Status", sort: true, render: (a) => statusBadge(a.status), csv: (a) => a.status },
-      { key: "open_findings", label: "Open findings", sort: true, num: true, render: (a) => a.findings ? `${a.open_findings} / ${a.findings}` : "0", csv: (a) => a.open_findings },
-      { key: "working_papers", label: "Working papers", num: true, hidden: true },
-      { key: "progress", label: "Progress", sort: true, num: true, render: (a) => progressBar(a.progress), csv: (a) => a.progress },
+      { key: "open_findings", label: "Open findings", sort: true, num: true,
+        render: (a) => (a.findings ? el("span", null, `${a.open_findings} of ${a.findings}`, a.open_high ? el("span", { class: "text-danger small" }, ` · ${a.open_high} high`) : null) : "-"),
+        csv: (a) => a.open_findings },
       { key: "report_status", label: "Report", render: (a) => a.report_status ? statusBadge(a.report_status) : "-", csv: (a) => a.report_status || "" },
-      { key: "updated_at", label: "Updated", sort: true, render: (a) => fmtDay(a.updated_at), csv: (a) => a.updated_at },
+      { key: "progress", label: "Progress", sort: true, num: true, render: (a) => progressBar(a.progress), csv: (a) => a.progress },
+      { key: "updated_at", label: "Updated", sort: true, hidden: true, render: (a) => fmtDay(a.updated_at), csv: (a) => a.updated_at },
     ],
   });
   card.append(t.root);
@@ -1414,15 +1418,17 @@ async function openAudit(id, startTab = null) {
   ].filter(Boolean);
 
   // Phase tabs straight under the title; supporting views open from the utility links on the right.
+  // Tabs follow the engagement as the IIA Global Internal Audit Standards describe it: plan (13), perform (14),
+  // communicate (15.1); supervision (12.3) and evidence requests support every phase.
   const tabs = [
-    { key: "dashboard", label: "Dashboard" },
+    { key: "dashboard", label: "Overview" },
     ...(canWrite ? [{ key: "memo", label: termOf(terms, "planning", "Planning") }, { key: "fieldwork", label: termOf(terms, "fieldwork", "Fieldwork") }] : []),
-    ...(canWrite ? [{ key: "quality", label: termOf(terms, "reviews", "Reviews") }] : []),
-    { key: "report", label: termOf(terms, "results", "Results") },
-    { key: "findings", label: `${termOf(terms, "issue", "Issue")}s` },
+    { key: "findings", label: `${termOf(terms, "issue", "Finding")}s` },
+    { key: "report", label: termOf(terms, "results", "Report") },
+    ...(canWrite ? [{ key: "quality", label: termOf(terms, "reviews", "Supervision & review") }] : []),
+    { key: "evidence", label: `${termOf(terms, "request", "Evidence request")}s` },
     ...(canWrite ? [{ key: "progress", label: "Progress" }] : []),
-    { key: "evidence", label: `${termOf(terms, "request", "Request")}s` },
-    { key: "survey", label: "Survey" },
+    { key: "survey", label: "Feedback survey" },
   ];
   const utility = [
     ...(canWrite ? [{ label: "Review notes", icon: "chat-square-text", key: "notes" }, { label: "Time entries", icon: "clock", key: "time" }] : []),
@@ -1436,6 +1442,7 @@ async function openAudit(id, startTab = null) {
     back: () => navigate("audits"),
     title: audit.title, ref, status: audit.status,
     meta: audit.approval_status ? [statusBadge(audit.approval_status)] : [],
+    band: phaseTracker(audit, canWrite, (k) => layout.select(k)),
     actions,
     utility: utility.map((u) => ({ ...u, onClick: () => layout.select(u.key) })),
     tabs,
@@ -1479,6 +1486,25 @@ async function openAudit(id, startTab = null) {
   layout.select(startTab ? (legacy[startTab] || startTab) : (remembered || "dashboard"));
 }
 
+// Where the engagement is in the IIA GIAS cycle: Plan (13) > Perform (14) > Communicate (15.1) > Monitor (15.2).
+const AUDIT_PHASES = [
+  { key: "plan", label: "Plan", std: "GIAS 13", tab: "memo", status: "Planned" },
+  { key: "perform", label: "Perform", std: "GIAS 14", tab: "fieldwork", status: "In Progress" },
+  { key: "communicate", label: "Communicate", std: "GIAS 15.1", tab: "report", status: "Review" },
+  { key: "monitor", label: "Monitor", std: "GIAS 15.2", tab: "findings", status: "Closed" },
+];
+function phaseTracker(audit, canWrite, goTo) {
+  const at = Math.max(0, AUDIT_PHASES.findIndex((p) => p.status === audit.status));
+  return el("ol", { class: "phase-track", "aria-label": "Engagement phase" }, ...AUDIT_PHASES.map((p, i) => {
+    const cls = i < at ? "done" : i === at ? "current" : "";
+    const tab = !canWrite && ["memo", "fieldwork"].includes(p.tab) ? "dashboard" : p.tab;
+    return el("li", { class: `phase ${cls}`, "aria-current": i === at ? "step" : null },
+      el("button", { type: "button", class: "phase-btn", onclick: () => goTo(tab), title: `${p.label} (IIA ${p.std})` },
+        el("span", { class: "phase-dot", "aria-hidden": "true" }, i < at ? el("i", { class: "bi bi-check-lg" }) : String(i + 1)),
+        el("span", { class: "phase-l" }, p.label), el("span", { class: "phase-s" }, p.std)));
+  }));
+}
+
 // Right-hand summary of an audit: key facts, status control and close-out readiness.
 function renderAuditSide(side, audit, canWrite) {
   const control = canWrite && audit.status !== "Closed"
@@ -1500,7 +1526,7 @@ function renderAuditSide(side, audit, canWrite) {
   side.append(el("div", { class: "card" }, el("h3", null, "Engagement"),
     el("dl", { class: "kv" },
       el("dt", null, "Plan"), el("dd", null, plan),
-      el("dt", null, "Stream"), el("dd", null, audit.audit_type || el("span", { class: "muted" }, "Not set")),
+      el("dt", null, "Audit type"), el("dd", null, audit.audit_type || el("span", { class: "muted" }, "Not set")),
       el("dt", null, "Nature"), el("dd", null, audit.nature || "Assurance"),
       el("dt", null, "Port"), el("dd", null, port),
       el("dt", null, "Created"), el("dd", null, fmtDay(audit.created_at)),
@@ -1568,14 +1594,14 @@ async function renderAuditDashboard(pane, audit, canWrite, goTo) {
     el("button", { class: "link-btn", type: "button", onclick: () => goTo("report") }, "Open supporting workpapers")));
   const fsum = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Findings"),
     el("button", { class: "link-btn", type: "button", onclick: () => goTo("findings") }, "Open findings")));
-  pane.append(review, fsum);
+  pane.append(fsum, review);
   if (isStaff()) { const dslot = el("div"); pane.append(dslot); renderDeclarationCard(dslot, audit); }
 
   const [papers, findings] = await Promise.all([
     safeGet(`/api/audits/${id}/working-papers`, []), safeGet(`/api/audits/${id}/findings`, [])]);
   // Latest version of each paper; columns follow the GPHA chain levels seen on this audit's papers.
   const latest = Object.values(papers.reduce((acc, p) => { if (!acc[p.title] || acc[p.title].version_number < p.version_number) acc[p.title] = p; return acc; }, {}));
-  if (!latest.length) review.append(emptyState({ icon: "file-earmark-text", title: "No working papers yet", text: "Create one on the Working papers tab." }));
+  if (!latest.length) review.append(el("p", { class: "muted small" }, "No working papers yet. They are created under Report › Supporting workpapers."));
   else {
     const order = ["Unit Head", "Audit Manager", "PIA", "GM Audit (CAE)"];
     const seen = new Set();
@@ -1597,17 +1623,14 @@ async function renderAuditDashboard(pane, audit, canWrite, goTo) {
             el("i", { class: "on" }), ...cols.map((c) => el("i", { class: signedAt(p, c) ? "on" : "" }))))))))));
     if (latest.length > 10) review.append(el("p", { class: "muted small" }, `Showing 10 of ${latest.length}.`));
   }
-  if (!findings.length) fsum.append(emptyState({ icon: "flag", title: "No findings recorded" }));
+  if (!findings.length) fsum.append(el("p", { class: "muted small" }, "No findings recorded."));
   else {
     const by = (r) => findings.filter((f) => f.risk_rating === r).length;
     const resp = findings.filter((f) => f.management_response).length;
-    const client = findings.filter((f) => f.client_response).length;
     const open = findings.filter((f) => f.status !== "Closed").length;
-    fsum.append(el("div", { class: "stats" },
-      ...[["Open", open, open ? "warn" : "ok"], ["High", by("High"), by("High") ? "danger" : ""], ["Medium", by("Medium"), ""], ["Low", by("Low"), ""],
-        ["Client responses", `${client}/${findings.length}`, client === findings.length ? "ok" : "warn"],
-        ["Management responses", `${resp}/${findings.length}`, resp === findings.length ? "ok" : "warn"]]
-        .map(([l, n, k]) => el("div", { class: `stat ${k}` }, el("div", { class: "l" }, l), el("div", { class: "n" }, String(n))))));
+    fsum.append(statusLine([[findings.length, `finding${findings.length === 1 ? "" : "s"}`], [open, "open", "warn"],
+      [by("High"), "high", "danger"], [by("Medium"), "medium"], [by("Low"), "low"]]));
+    if (resp < findings.length) fsum.append(el("p", { class: "muted small" }, `Management response received for ${resp} of ${findings.length}.`));
   }
 }
 

@@ -119,6 +119,37 @@ class FieldworkSettingsIn(BaseModel):
     testing_rounds: int | None = None
 
 
+def _steps(db: DBSession, audit_id: int) -> dict:
+    """Progress of each fieldwork step (IIA GIAS 13.2-14.2), for the step navigation."""
+    from app.domains.audit.rcm.models import Narrative, RiskControl
+
+    obj_ids = list(db.execute(select(Objective.id).where(Objective.audit_id == audit_id)).scalars())
+    ids = obj_ids or [0]
+    risks = set(db.execute(select(Risk.id).where(Risk.objective_id.in_(ids))).scalars())
+    controls = db.execute(select(Control.id, Control.is_key, Control.test_method)
+                          .where(Control.objective_id.in_(ids))).all()
+    ctl_ids = [c.id for c in controls] or [0]
+    linked = set(db.execute(select(RiskControl.risk_id).where(RiskControl.control_id.in_(ctl_ids))).scalars())
+    tests = db.execute(select(ControlTest.control_id, ControlTest.test_type, ControlTest.status,
+                              ControlTest.conclusion, ControlTest.in_scope)
+                       .where(ControlTest.control_id.in_(ctl_ids))).all()
+    done = (TestStatus.Completed, TestStatus.Reviewed)
+    walked = {t.control_id for t in tests if t.test_type in (TestType.Walkthrough, TestType.Design)
+              and t.status in done and t.conclusion != TestConclusion.NotTested}
+    oe = [t for t in tests if t.test_type == TestType.OperatingEffectiveness and t.in_scope]
+    procs = db.execute(select(Procedure.status).where(Procedure.objective_id.in_(ids))).scalars().all()
+    narratives = db.execute(select(func.count()).select_from(Narrative)
+                            .where(Narrative.objective_id.in_(ids))).scalar_one()
+    keys = [c for c in controls if c.is_key]
+    return {
+        "objectives": len(obj_ids), "narratives": narratives, "risks": len(risks), "controls": len(controls),
+        "key_controls": len(keys), "risks_without_controls": len(risks - linked),
+        "walked": len(walked), "key_planned": sum(1 for c in keys if c.test_method),
+        "tests": len(oe), "tests_done": sum(1 for t in oe if t.status in done),
+        "procedures": len(procs), "procedures_done": sum(1 for x in procs if x in (P_PREPARED, P_REVIEWED)),
+    }
+
+
 def _settings(db: DBSession, audit: Audit) -> dict:
     procs, ctls = _counts(db, audit.id)
     workflow_lock = "" if not (procs or ctls) else (
@@ -128,7 +159,7 @@ def _settings(db: DBSession, audit: Audit) -> dict:
             "testing_rounds": audit.testing_rounds, "round_options": sorted(ROUND_LABELS),
             "round_labels": ROUND_LABELS.get(audit.testing_rounds, ["Testing"]),
             "workflow_locked": workflow_lock, "rounds_locked": rounds_lock,
-            "procedures": procs, "controls": ctls}
+            "procedures": procs, "controls": ctls, "steps": _steps(db, audit.id)}
 
 
 @router.get("/api/audits/{audit_id}/fieldwork")

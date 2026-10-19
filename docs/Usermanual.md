@@ -145,7 +145,7 @@ Everything waiting for you across all apps, grouped, with **Waiting for you**, *
 | Section | Button | What it opens |
 |-----------------------------|----------------------|---------------------------------------------|
 | Attest to policies | **Read and attest** | The policy, its statement and **Later**, **I cannot attest** (comment required), **I confirm** |
-| Evidence requests | **Provide evidence** | The Requests tab |
+| Evidence requests | **Provide evidence** | The Evidence requests tab |
 | Agreed actions | **Update progress** | The remediation action |
 | Assess your risks | **Assess** | The risk record |
 | Record indicators | **Record reading** | The indicator reading form |
@@ -234,13 +234,13 @@ This chapter shows every hand-over in GIAW. Each row is one step; the chapters t
 | 9 | IAA submission recorded | GM Audit | Assurance Plans › Versions & cycle | 6.2 |
 | 10 | Distribution and acknowledgement | GM Audit → PIAs / Audit Managers | Assurance Plans | 6.2 |
 | 11 | **Start** each engagement → audit created | Auditors / Managers | Assurance Plans | 6.4 |
-| 12 | Team, auditees, declarations | Lead auditor / Manager; every member | Audit › Dashboard | 9 |
+| 12 | Team, auditees, declarations | Lead auditor / Manager; every member | Audit › Overview | 9 |
 | 13 | Planning memo → approval | Lead auditor → Audit Manager / PIA / GM Audit | Audit › Planning | 9.6 |
 | 14 | **Move to In Progress** (fieldwork gate) | Lead auditor | Audit › side panel | 9.4 |
 | 15 | Fieldwork, evidence, sign-offs, review notes | Team → reviewers | Audit › Fieldwork, Requests | 10 |
-| 16 | Issues raised and published; responses | Team → auditee | Audit › Issues | 11 |
-| 17 | Report: draft → management → review chain → GM Audit issues → distribution | Team → auditee → Unit Head → Audit Manager → PIA → GM Audit | Audit › Results | 12 |
-| 18 | Quality review; close audit (e-sign) | Another auditor; GM Audit | Audit › Reviews; header | 10.9, 9.5 |
+| 16 | Issues raised and published; responses | Team → auditee | Audit › Findings | 11 |
+| 17 | Report: draft → management → review chain → GM Audit issues → distribution | Team → auditee → Unit Head → Audit Manager → PIA → GM Audit | Audit › Report | 12 |
+| 18 | Quality review; close audit (e-sign) | Another auditor; GM Audit | Audit › Supervision & review; header | 10.9, 9.5 |
 | 19 | Follow-up of actions → validation → close; risk acceptance | Owner → auditor → follow-up manager / GM Audit / Committee | Issue Tracker › Actions | 13 |
 | 20 | Quarterly report and annual statement | Follow-up manager | Issue Tracker › Actions › Statutory reports | 13.8 |
 | 21 | Committee meetings, decisions, minutes | Committee secretary (`committee.record`) | Audit Committee | 15 |
@@ -252,13 +252,13 @@ This chapter shows every hand-over in GIAW. Each row is one step; the chapters t
 |------------------------------------|----------------------|------------------------------|---------------------------------|
 | Lead auditor for each planned engagement | Planner | Plan › **Add engagement** › **Lead auditor** | Named lead on the plan |
 | Audit created with its team | Whoever clicks **Start** | Plan › engagement › **Start** | Planned lead becomes **Lead auditor**; the starter becomes **Auditor** (or Lead if none was planned) |
-| Team members added | Lead auditor / Manager (`audit.create`) | Audit › Dashboard › **Engagement team** › **Add a person…** | Members can work on the audit even outside their port |
-| Auditees given access | Audit staff | Audit › Dashboard › **Add auditee...** | Auditee sees the audit; can receive requests |
+| Team members added | Lead auditor / Manager (`audit.create`) | Audit › Overview › **Engagement team** › **Add a person…** | Members can work on the audit even outside their port |
+| Auditees given access | Audit staff | Audit › Overview › **Add auditee...** | Auditee sees the audit; can receive requests |
 | Procedures and tests assigned | Lead auditor | Fieldwork › procedure **Assigned to** / test **Assigned** | Only engagement team members can be chosen |
 | Next reviewer of a page | Preparer (after signing) | Sign-offs › **Next Reviewer…** › **Set and Notify Reviewer** | Reviewer notified; item in their My work |
 | Issue owner | Auditor | Issue › **Owner** | Owner notified when published |
 | Action owner | From the issue owner or the response's **Responsible officer** | Issue › **Raise remediation** | Owner sees **Update progress** in Priorities |
-| Evidence request owner | Auditor | Requests › **Owner (provides the evidence)** | Auditee notified, with reminders |
+| Evidence request owner | Auditor | Evidence requests › **Owner (provides the evidence)** | Auditee notified, with reminders |
 
 ## 2.3 Plan approval chain
 
@@ -323,7 +323,7 @@ The review chain is set by an administrator (default **Unit Head → Audit Manag
 | Distribution | Audit team | **Record copy sent** | (unchanged) |
 | Correction | GM Audit | **Correct** › **Open version N+1** | Draft (version N+1) |
 
-A higher level may sign for an absent lower level. Working papers use the same levels with **Sign off as <level>** on the Results tab.
+A higher level may sign for an absent lower level. Working papers use the same levels with **Sign off as <level>** on the Report tab.
 
 ## 2.8 Follow-up chain
 
@@ -349,7 +349,7 @@ A higher level may sign for an absent lower level. Working papers use the same l
 
 | Step | Who | Button | Request status |
 |---------------|----------------------|--------------------------------------|------------------|
-| Request | Auditor | Requests › **Request evidence** › **Send request** | Requested |
+| Request | Auditor | Evidence requests › **Request evidence** › **Send request** | Requested |
 | Provide | Auditee (owner) | **Upload**, **Response**, **Submit** | Submitted |
 | Review | Auditor | **Accept** or **Return for more** | Accepted (filed as working papers) / Returned |
 
@@ -358,7 +358,7 @@ A higher level may sign for an absent lower level. Working papers use the same l
 | Step | Who | Button |
 |---------------------------|----------------------|------------------------------------|
 | Annual declaration | Every auditor, each year | Professional practice › **Sign now** › **Sign declaration** |
-| Engagement declaration | Every team member | Audit › Dashboard › **Declare for this engagement** › **Sign declaration** |
+| Engagement declaration | Every team member | Audit › Overview › **Declare for this engagement** › **Sign declaration** |
 | Conflict review | Reviewer (`proficiency.manage`, not yourself) | Professional practice › **Team** › row › **Cleared** / **Reassigned** › **Record review** |
 | Previous roles | Each auditor | Professional practice › **Previous roles** › **Add** |
 
@@ -376,7 +376,7 @@ A higher level may sign for an absent lower level. Working papers use the same l
 
 | Role | Every day |
 |----------------------|---------------------------------------------|
-| Auditor | **My work** › open each item; Audit › **Fieldwork** (tests and procedures assigned to you); **Requests** (check submitted evidence); answer **Review notes** |
+| Auditor | **My work** › open each item; Audit › **Fieldwork** (tests and procedures assigned to you); **Evidence requests** (check submitted evidence); answer **Review notes** |
 | Unit Head / Audit Manager / PIA | **My work** › **To review** tab: sign working papers, tests and reports; clear review notes; approve planning memos; validate or close actions |
 | GM Audit | **My work** › *Approve and issue report*; plan approvals; risk acceptances to decide (Issue Tracker › Actions); plan change requests |
 | Auditee | **Task Tracker › Priorities** › use each button (chapter 18) |
@@ -644,7 +644,7 @@ The **Annual planning cycle** card on **Overview** shows the next button. Steps 
 **Who:** Auditors and Managers (`audit.create`). The plan must be approved and distributed.
 
 1. On a **Planned** engagement row click **Start**.
-2. **Result:** *"Audit project created"*. The audit opens on its **Dashboard** with the planned lead as **Lead auditor** and you as **Auditor**; scope and plan links are filled in. The row now shows **Open audit**.
+2. **Result:** *"Audit project created"*. The audit opens on its **Overview** with the planned lead as **Lead auditor** and you as **Auditor**; scope and plan links are filled in. The row now shows **Open audit**.
 
 Next: chapter 9.
 
@@ -694,8 +694,12 @@ Managers also use **Team capacity** (available, planned and logged hours; load t
 
 ![Audits list](manuals/images/03-audits-list.jpg){width=100%}
 
-1. Filter with **Status** (*Planned*, *In Progress*, *Review*, *Closed*), **Stream** (audit type), **Port**, **Scope: My port**, **Order: Show favorites first**, or type in the search box.
-2. Click a row to open the audit. The star marks a favourite.
+The list is the engagement register. Each row shows the **Ref** (with the favourite star), the **Engagement** (with its nature, *Assurance* or *Advisory*, and audit type underneath), **Lead auditor**, **Planned period**, **Phase**, **Status**, **Open findings** (with how many are rated High), **Report** and **Progress**. **Columns** adds **Nature**, **Audit type**, **Port**, **Plan** and **Updated**.
+
+**Phase** places each audit in the IIA cycle: **Plan** (GIAS 13, status Planned), **Perform** (GIAS 14, In Progress), **Communicate** (GIAS 15.1, Review), **Monitor** (GIAS 15.2, closed with findings still open) and **Completed**.
+
+1. Filter with **Status** (*Planned*, *In Progress*, *Review*, *Closed*), **Audit type**, **Port**, **Scope: My port**, **Order: Show favorites first**, or type in the search box.
+2. Click a row to open the audit. Click the star to mark a favourite.
 
 **Creating an audit outside the plan** (normally audits are started from the plan, 6.4):
 
@@ -718,13 +722,14 @@ Managers also use **Team capacity** (available, planned and logged hours; load t
 | Printer icon | Prints the page |
 | **Submit for approval** | (status Review) marks the audit *In Approval* |
 | **Close (e-sign)** | (status Review, GM Audit) closes the audit (9.5) |
-| Tabs | **Dashboard · Planning · Fieldwork · Reviews · Results · Issues · Progress · Requests · Survey** |
+| Phase tracker | **Plan (GIAS 13) › Perform (GIAS 14) › Communicate (GIAS 15.1) › Monitor (GIAS 15.2)**. The current phase is highlighted; click a phase to open its tab |
+| Tabs | **Overview · Planning · Fieldwork · Findings · Report · Supervision & review · Evidence requests · Progress · Feedback survey** |
 | Utility links (right) | **Review notes** (10.8), **Time entries** (10.12), **To-dos**, **History**, **Approvals** |
-| Side panel | **Engagement** facts (Plan, Stream, Nature, Port), **Move to**, **Engagement team**, **Closure readiness** |
+| Side panel | **Engagement** facts (Plan, Audit type, Nature, Port), **Move to**, **Engagement team**, **Closure readiness** |
 
 The tab names can differ slightly for some audit types (set by administrators).
 
-## 9.2 Dashboard: auditees and the engagement team
+## 9.2 Overview: auditees and the engagement team
 
 **Give auditees access** (do this before any evidence request)
 
@@ -743,7 +748,7 @@ Each member shows a chip: **Not declared**, **Conflict pending review**, **Reass
 
 **Who:** every team member.
 
-1. On the Dashboard, in **Independence declarations**, click **Declare for this engagement**.
+1. On the Overview, in **Independence declarations**, click **Declare for this engagement**.
 2. Tick *I confirm my independence and objectivity as stated*, *I will comply with the Code of Ethics and the Standards*, *I will keep information confidential (Act 658 s.20)*.
 3. If you have a conflict or a rotation / cooling-off flag, also tick *I have a relationship, interest or circumstance to disclose* and write the **Details of the conflict or impairment**.
 4. Click **Sign declaration**. **Result:** *"Declaration signed"*, or *"Signed - your disclosure was sent for review"*.
@@ -773,7 +778,7 @@ The **Closure readiness** card lists: *Audit is in Review*, *All control tests r
 **Who closes:** the GM Audit (`audit.close`), never the preparer.
 
 1. With the audit in **Review**, click **Close (e-sign)**.
-2. Type **Password** and **Comment**, click **Sign & Close**. **Result:** status **Closed**; the entities' last-audit date is updated (not for advisory work) and auditees are invited to the **Survey**.
+2. Type **Password** and **Comment**, click **Sign & Close**. **Result:** status **Closed**; the entities' last-audit date is updated (not for advisory work) and auditees are invited to the **Feedback survey**.
 
 ## 9.6 Planning tab: the planning memo
 
@@ -788,68 +793,85 @@ The **Closure readiness** card lists: *Audit is in Review*, *All control tests r
 5. **Approver:** opens the memo › **Review & sign** › **Decision** (**Approve** or **Reject (return for rework)**) › **Password** › **Sign**. Approved: the preparer is told *"Fieldwork can start."* Returned: the memo shows *"Returned by the reviewer: …"*; edit and submit again.
 6. Send the **Engagement letter** (header) to the auditee.
 
-Next: Dashboard › **Move to** › **In Progress** (9.4), then the **Fieldwork** tab (chapter 10).
+Next: Overview › **Move to** › **In Progress** (9.4), then the **Fieldwork** tab (chapter 10).
 
 # 10. Fieldwork
 
-**Where:** audit › **Fieldwork**. **Who:** the team (`audit.fieldwork`). The matrix locks when the audit is closed.
+**Where:** audit › **Fieldwork**. **Who:** the team (`audit.fieldwork`). The work locks when the audit is closed.
 
-## 10.1 Set up the fieldwork
+The Fieldwork tab is laid out as the numbered steps of the IIA Global Internal Audit Standards. Each step in the step bar shows its progress (for example *"1 of 2 walked through"*, or a warning such as *"1 risk without a control"*); a green tick means the step is complete. The page opens on the first step not yet complete. Under the step bar, each step names its standard and says what to do. Counts appear as one short line, and only for what exists.
 
-1. **Workflow:** choose **Workplan** (objectives › risks › procedures › execute) or **Internal Control** (risk and control matrix, walkthroughs, tests). It locks once work exists.
+| Step (Internal Control) | Standard | What you do |
+|-------------------------------|-----------|-----------------------------------------------|
+| 1 **Process narratives** | GIAS 13.2 | Describe how the process works |
+| 2 **Risk & control matrix** | GIAS 13.2–13.4 | Rate the risks to each objective; map the controls |
+| 3 **Walkthroughs** | GIAS 14.1 | Test of design: is each control designed to address its risk? |
+| 4 **Test plan** | GIAS 13.6 | Method, sample size and attributes for each key control |
+| 5 **Testing** | GIAS 14.2–14.3 | Test operating effectiveness; exceptions become findings |
+
+The **Workplan** workflow has two steps: 1 **Work programme** (GIAS 13.3–13.6) and 2 **Execute procedures** (GIAS 14.1–14.2).
+
+## 10.1 Approach
+
+The **Approach** line at the top shows the workflow, the testing rounds and the auditable entities. Click it to open the settings:
+
+1. **Workflow:** choose **Workplan** (objectives › risks › procedures › execute) or **Internal Control** (narratives, risk & control matrix, walkthroughs, test plan, testing). It locks once work exists.
 2. **Testing rounds** (Internal Control): **1 round** (*Testing*), **2 rounds** (*Interim*, *Final*) or **4 rounds** (*Q1–Q4*).
-3. **Apply audit programme:** choose a **Programme** from the Project Library › **Apply**. Objectives, risks, controls and test steps (or procedures) are added.
-4. **Auditable entities:** **Choose entities** › tick › **Save**; **Scope from entities** › **Add N item(s)** copies their risks and controls.
+3. **Choose entities** › tick › **Save**; **Scope from entities** › **Add N item(s)** copies their risks and controls.
+4. **Apply audit programme:** choose a **Programme** from the Project Library › **Apply**. Objectives, risks, controls and test steps (or procedures) are added.
 
-## 10.2 Risk control matrix (Internal Control)
+## 10.2 Step 1: Process narratives
 
-![Risk control matrix](manuals/images/06-audit-fieldwork.jpg){width=100%}
+1. If there are no objectives yet, click **Add objective** › **Objective**, **Description** › **Add** (the engagement objectives, GIAS 13.3).
+2. Click **Add new narrative** › **Objective**, **Title**, **Description**, **Controls described in this narrative** › **Add narrative**.
+3. Click a narrative to **Edit**, sign off or **Delete Narrative**.
+
+## 10.3 Step 2: Risk & control matrix
+
+![Risk & control matrix](manuals/images/06-audit-fieldwork.jpg){width=100%}
+
+Each objective is one matrix, in the IIA format: a row for each risk and each control that mitigates it. Columns: **Risk**, **Inherent** rating, **Control** (with its owner), **Key**, **Type** (with nature and frequency), **Design** (from the walkthrough: *Adequate*, *Deficient* or *Not assessed*), **Operating** (from testing: *Effective*, *Ineffective* or *Not tested*) and **Residual** rating. A risk with no control shows *No mitigating control*; a control not linked to a risk is listed under *Not linked to a risk*.
 
 1. Click **Add objective** › **Objective**, **Description** › **Add**.
 2. On the objective click **+ Risk** › **Risk**, **Likelihood** (1–5), **Impact** (1–5), **Tests enterprise risk (Risk Manager)**, **Description** › **Save** (*"Risk saved - inherent High (16)"*).
 3. Click **+ Control** › **Control**, **Control owner email**, **Type** (*Preventive / Detective / Corrective*), **Nature** (*Manual / Automated / IT-Dependent Manual*), **Frequency**, **Key control**, **Mitigates risks** (at least one), **Control description** › **Save**.
-4. **From library** adds standard controls: filter, tick, optionally *Map them to these risks* and *Create a test from each suggested procedure*, **Add to matrix**.
+4. Click a risk or control in the matrix to edit it; the sliders icon opens its attributes.
 5. **Suggest risks** (when AI is on): tick suggestions › **Add ticked risks**.
-6. On each control, **+ Test** › **Test type** (*Walkthrough*, *Design*, *Operating Effectiveness*), **Test procedure**.
+6. The **⋯** menu on the objective: **Add controls from the library** (filter, tick, optionally *Map them to these risks*, **Add to matrix**), **Edit objective**, **Objective attributes**, **Delete objective**.
 
-The banner shows *Coverage gaps* (risks without controls, untested key controls).
+A banner lists *Risks without a mitigating control*.
 
-## 10.3 Narratives
+## 10.4 Steps 3 and 4: Walkthroughs and test plan
 
-1. **Narratives** › **Add new narrative** › **Objective**, **Title**, **Description**, **Controls described in this narrative** › **Add narrative**.
-2. Click a narrative to **Edit**, sign off or **Delete Narrative**.
+1. **Walkthroughs** › **Start walkthrough** (or **Open**) on a control. Record the walkthrough and give the **Design conclusion** (*Designed appropriately* / *Design failure*).
+2. **Test plan** › **Edit** on a control › **Testing method** (*Inquiry, Observation, Inspection, Re-performance, Data analytics*), **Total sample size** (blank uses the default for the frequency), **Test steps / attributes** › **Save**. The table shows **Method**, **Sample size** and **Attributes to test**.
 
-## 10.4 Walkthroughs and test plan
+## 10.5 Step 5: Testing
 
-1. **Walkthroughs** › **Start walkthrough** (or **Open**) on a control, record the walkthrough and answer *Is the control designed appropriately?* (*Designed appropriately* / *Design failure*).
-2. **Test plan** › **Edit** on a control › **Testing method** (*Inquiry, Observation, Inspection, Re-performance, Data analytics*), **Total sample size** (blank uses the default for the frequency), **Test steps / attributes** › **Save**.
-
-## 10.5 Testing rounds
-
-1. Open the round tab (for example **Testing** or **Interim**). If key controls have no test yet, click **Prepare <round> round** (*"N test(s) prepared"*).
+1. Open **Testing**. With 2 or 4 rounds, choose the round (for example **Interim**) above the table. If key controls have no test yet, click **Prepare <round> round** (*"N test(s) prepared"*).
 2. On each row: tick **Tested this round?**, set **Assigned** (a team member), click **Open**.
 3. In the test: fill **Population size**, click **Draw random sample** (or enter **Sample size**), record **Exceptions found**, **Results / exceptions noted**, choose **Conclusion** (*Effective / Ineffective*) and **Status** (*Completed*). Click **Save**.
-4. Sign the test (10.8). A reviewer then signs it (**Review (e-sign)** on the matrix, or the sign-off chain).
-5. If the conclusion is **Ineffective**, click **Raise issue**. **Result:** *"Issue raised - see Findings"* (chapter 11).
+4. Sign the test (10.8). The reviewer signs next in the sign-off chain; the last level marks it *Reviewed*.
+5. If the conclusion is **Ineffective**, click **Raise issue**. **Result:** the finding appears on the **Findings** tab (chapter 11).
 6. The paperclip **Request evidence** asks the auditee for documents for that test (10.7).
 
 GIAW checks: the sample cannot exceed the population; an ineffective conclusion needs exceptions; exceptions mean the control cannot be *Effective*.
 
 ## 10.6 Workplan procedures
 
-1. **Project plan** › **Add objective** › on it **+ Risk** and **+ Procedure** › **Procedure**, **Steps**, **Risks addressed**, **Assigned to** (team members only), **Due date** › **Add procedure**.
+1. **Work programme** › **Add objective** › on it **+ Risk** and **+ Procedure** › **Procedure**, **Steps**, **Risks addressed**, **Assigned to** (team members only), **Due date** › **Add procedure**.
 2. **Execute procedures** › filter **Assigned: Me** › click a row.
 3. Fill **Procedure results**, answer **Were issues identified?** (*No Issues* / *Issue(s) noted*).
 4. Click **Save and sign-off** (*"Signed off as Preparer"*), or **Save**. If issues were noted, click **Raise issue**.
 5. Set the **Next Reviewer** (10.8).
 
-## 10.7 Requests: asking the auditee for evidence
+## 10.7 Evidence requests: asking the auditee for evidence
 
 **Who:** auditors (`audit.evidence`). The auditee must be on **Auditees with access** (9.2).
 
 ![Requests](manuals/images/11-audit-requests.jpg){width=100%}
 
-1. Open **Requests** › **+ Request evidence** (or the paperclip on a test or procedure).
+1. Open **Evidence requests** › **+ Request evidence** (or the paperclip on a test or procedure).
 2. Fill **What is needed**, **Description (period, format, sample)**, **Owner (provides the evidence)**, **Due date**, **CC**, **Reminder** (*Send now only*, *…then a daily reminder*, *…weekly reminder*) and **Message**.
 3. Click **Send request**. **Result:** *"Evidence requested - the owner has been notified"*.
 
@@ -876,7 +898,7 @@ GIAW checks: the sample cannot exceed the population; an ineffective conclusion 
 2. **Preparer:** **Answer** › **Your answer** › **Send answer**.
 3. **Reviewer:** **Clear**. Open notes block closing the audit.
 
-## 10.9 Reviews tab: engagement quality review
+## 10.9 Supervision & review tab: engagement quality review
 
 **Who:** an auditor who did not prepare the audit; audit in Review or Closed.
 
@@ -888,7 +910,7 @@ GIAW checks: the sample cannot exceed the population; an ineffective conclusion 
 
 ## 10.10 Working papers
 
-**Where:** audit › **Results** › *Supporting workpapers*. **Who:** `audit.workpapers` or `audit.fieldwork`.
+**Where:** audit › **Report** › *Supporting workpapers*. **Who:** `audit.workpapers` or `audit.fieldwork`.
 
 1. Enter a **Title**, optionally choose a **File**, click **Create working paper**. Using an existing title creates a new version.
 2. **Form** opens the GPHA working paper template: **Fill in / edit** › **Save form**; **Print**.
@@ -907,7 +929,7 @@ Utility link **Time entries** › **+ Log time** › **Date**, **Hours**, **Cate
 
 # 11. Issues (findings)
 
-**Where:** audit › **Issues** (and across audits in **Issue Tracker › Issues**). **Who:** auditors (`audit.findings`) while the audit is not closed; auditees see published issues only.
+**Where:** audit › **Findings** (and across audits in **Issue Tracker › Issues**). **Who:** auditors (`audit.findings`) while the audit is not closed; auditees see published issues only.
 
 ![Issues](manuals/images/09-audit-issues.jpg){width=100%}
 
@@ -929,7 +951,7 @@ Many issues at once: **Import from Excel** › **Download the template** › fil
 
 ## 11.3 Management response (auditee)
 
-1. The auditee opens the issue (from the notification, Priorities or the audit's **Issues** tab).
+1. The auditee opens the issue (from the notification, Priorities or the audit's **Findings** tab).
 2. Under *Responses (GPHA working paper template)* fill **Audit client response (Head of Department)**, **Management response - action plan**, **Responsible officer** and **Target date**.
 3. Click **Save**. **Result:** the report records that a response was received; the open action takes the target date and owner.
 
@@ -946,7 +968,7 @@ Audit staff tick **Confirmed at the exit meeting** when the client response is a
 
 # 12. The audit report
 
-**Where:** audit › **Results**. **Who:** the team prepares; the review chain signs; the GM Audit issues; auditees see the report in Management Review and once Issued.
+**Where:** audit › **Report**. **Who:** the team prepares; the review chain signs; the GM Audit issues; auditees see the report in Management Review and once Issued.
 
 ![Results](manuals/images/08-audit-results.jpg){width=100%}
 
@@ -956,7 +978,7 @@ Audit staff tick **Confirmed at the exit meeting** when the client response is a
 2. Click **Edit report**. Fill **Report title**, **Overall rating** (*Satisfactory, Needs Improvement, Unsatisfactory*; not for advisory work), **Executive summary**, **Overall opinion** (*Conclusion* for advisory work), **Background**, **Scope and objectives**, **Methodology**, **Distribution list**.
 3. Click **Save report**.
 
-![Results tab: report buttons, the review chain stepper and the checklist before review](manuals/images/64-report-chain.jpg){width=100%}
+![Report tab: report buttons, the review chain stepper and the checklist before review](manuals/images/64-report-chain.jpg){width=100%}
 
 ## 12.2 Send the draft to management (recommended)
 
@@ -1142,11 +1164,11 @@ Click **Approve minutes** (needs attendees and minutes). **Result:** *"Minutes a
 
 ## 16.1 Quality reviews and the QAIP report
 
-Engagement quality reviews are done on each audit's **Reviews** tab (10.9). Here choose the year to see reviews completed, average conformance, survey responses and satisfaction, the weakest checklist areas and auditee comments. **Internal assessment report** downloads the Word report.
+Engagement quality reviews are done on each audit's **Supervision & review** tab (10.9). Here choose the year to see reviews completed, average conformance, survey responses and satisfaction, the weakest checklist areas and auditee comments. **Internal assessment report** downloads the Word report.
 
 ## 16.2 Post-audit survey (auditees)
 
-1. After the report is issued or the audit closed, the auditee opens the audit › **Survey**.
+1. After the report is issued or the audit closed, the auditee opens the audit › **Feedback survey**.
 2. Rate each statement from 1 to 5, add **Anything else? (optional)**, click **Send feedback**. Each auditee answers once.
 
 ## 16.3 Professional practice
@@ -1252,9 +1274,9 @@ You see only the audits you were added to and only the issues Internal Audit has
 
 ![Auditee requests](manuals/images/52-auditee-requests.jpg){width=100%}
 
-**3. Comment on the draft report.** When you receive *"Draft audit report for your comments"*, open the audit › **Results** › **Management comments** › write your comments › **Save comments**, before the due date shown.
+**3. Comment on the draft report.** When you receive *"Draft audit report for your comments"*, open the audit › **Report** › **Management comments** › write your comments › **Save comments**, before the due date shown.
 
-**4. Respond to each issue.** Open the audit › **Issues** › click the issue › fill **Audit client response (Head of Department)**, **Management response - action plan**, **Responsible officer**, **Target date** › **Save**.
+**4. Respond to each issue.** Open the audit › **Findings** › click the finding › fill **Audit client response (Head of Department)**, **Management response - action plan**, **Responsible officer**, **Target date** › **Save**.
 
 **5. Implement the agreed actions.** In Priorities, under *Agreed actions*, click **Update progress**:
 
@@ -1262,7 +1284,7 @@ You see only the audits you were added to and only the issues Internal Audit has
 2. **Evidence files** › **Attach file**.
 3. When finished, **Record implementation** › **Submit for validation**. Internal Audit validates and closes it; you cannot close it yourself.
 
-**6. Answer the survey.** After the report is issued, open the audit › **Survey** › rate each statement › **Send feedback**.
+**6. Answer the survey.** After the report is issued, open the audit › **Feedback survey** › rate each statement › **Send feedback**.
 
 **7. Attest to policies and assess your risks** when they appear in Priorities (**Read and attest** › **I confirm**; **Assess**).
 

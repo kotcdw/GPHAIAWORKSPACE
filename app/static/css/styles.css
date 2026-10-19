@@ -1855,3 +1855,97 @@ button.u-stat:hover, button.u-stat:focus-visible { border-color: var(--accent-li
 .rating-bar .track { height: 10px; border-radius: 999px; background: var(--panel-3); overflow: hidden; }
 .rating-bar .fill { display: block; height: 100%; border-radius: inherit; background: var(--muted); }
 .rating-bar strong { text-align: right; }
+
+/* ======================================================================
+   Fieldwork steps (IIA GIAS 13.2-14.3): numbered step bar, step header, approach line, status line
+   ====================================================================== */
+.fw-approach { padding: 0; margin-bottom: 12px; }
+.fw-approach > summary { display: flex; gap: 10px; align-items: center; padding: 10px 14px; cursor: pointer; font-size: var(--fs-sm); list-style: none; }
+.fw-approach > summary::-webkit-details-marker { display: none; }
+.fw-approach > summary::after { content: "\F282"; font-family: bootstrap-icons; margin-left: auto; color: var(--muted); transition: transform .15s; }
+.fw-approach[open] > summary::after { transform: rotate(180deg); }
+.fw-approach .fw-k { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+.fw-approach-grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px 14px; margin: 0; padding: 4px 14px 10px; align-items: center; font-size: var(--fs-sm); }
+.fw-approach-grid dt { color: var(--muted); }
+.fw-approach-grid dd { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fw-approach > .actions { padding: 0 14px 12px; }
+.fw-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; margin-bottom: 14px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; counter-reset: none; }
+.fw-step { display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 10px 12px; border: 0; border-right: 1px solid var(--border);
+  background: transparent; font: inherit; color: var(--text); cursor: pointer; position: relative; }
+.fw-step:last-child { border-right: 0; }
+.fw-step:hover { background: var(--panel-2); }
+.fw-step:focus-visible { outline: none; box-shadow: inset var(--focus); }
+.fw-step-n { flex: 0 0 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--border-strong); color: var(--text-2); font-weight: 600; font-size: 12px; background: var(--panel); }
+.fw-step-t { display: flex; flex-direction: column; min-width: 0; }
+.fw-step-l { font-weight: 600; font-size: var(--fs-sm); }
+.fw-step-m { color: var(--muted); font-size: 12px; }
+.fw-step.done .fw-step-n { background: var(--ok); border-color: var(--ok); color: #fff; }
+.fw-step.warn .fw-step-m { color: var(--warn-text, var(--warn)); }
+.fw-step.active { background: var(--accent-soft); }
+.fw-step.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--accent); }
+.fw-step.active .fw-step-n { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fw-step.active .fw-step-l { color: var(--accent-text); }
+.fw-step-head { margin: 0 0 10px; }
+.fw-step-head h3 { margin: 2px 0 2px; font-size: 17px; }
+.fw-step-head p { margin: 0; font-size: var(--fs-sm); max-width: 820px; }
+.fw-eyebrow { color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.status-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin: 0 0 10px; font-size: var(--fs-sm); color: var(--text-2); }
+.status-line .sep { color: var(--muted); }
+.status-line .sl-ok strong { color: var(--ok-text, var(--ok)); }
+.status-line .sl-warn strong { color: var(--warn-text, var(--warn)); }
+.status-line .sl-danger strong, .status-line .sl-danger { color: var(--danger-text, var(--danger)); }
+@media (max-width: 760px) {
+  .fw-steps { grid-template-columns: 1fr; }
+  .fw-step { border-right: 0; border-bottom: 1px solid var(--border); }
+  .fw-approach-grid { grid-template-columns: 1fr; }
+}
+.more-menu { position: relative; display: inline-block; }
+.more-menu > summary { list-style: none; }
+.more-menu > summary::-webkit-details-marker { display: none; }
+.more-menu-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 190px; background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: 0 10px 28px var(--shadow-color); padding: 4px; display: flex; flex-direction: column; }
+.more-menu-list button { border: 0; background: transparent; text-align: left; font: inherit; font-size: var(--fs-sm); padding: 7px 10px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text); }
+.more-menu-list button:hover, .more-menu-list button:focus-visible { background: var(--panel-2); outline: none; }
+.more-menu-list button.danger { color: var(--danger-text); }
+
+/* Risk & control matrix (IIA format: risk x control, inherent and residual rating, design and operating results) */
+.rcm-obj .card-head h3 { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.rcm-matrix { width: 100%; }
+.rcm-matrix th { white-space: nowrap; }
+.rcm-matrix td { vertical-align: top; }
+.rcm-matrix td.rcm-risk { background: var(--panel-2); border-right: 1px solid var(--border); min-width: 220px; }
+.rcm-matrix tbody tr.rcm-first td { border-top: 2px solid var(--border-strong); }
+.rcm-matrix .rcm-gap { color: var(--danger-text); }
+.rcm-matrix .rcm-sub { color: var(--muted); font-size: 12px; }
+.rcm-link { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.rcm-link:hover { color: var(--accent-text); text-decoration: underline; }
+.rcm-link:disabled { cursor: default; text-decoration: none; color: inherit; }
+.rcm-matrix td[data-label="Design"], .rcm-matrix td[data-label="Operating"] { white-space: nowrap; }
+.icon-link { background: none; border: 0; padding: 0 0 0 6px; color: var(--muted); cursor: pointer; font-size: 12px; }
+.icon-link:hover { color: var(--accent-text); }
+
+/* Engagement phase tracker under the audit title (IIA GIAS 13 > 14 > 15.1 > 15.2) */
+.phase-track { display: flex; list-style: none; margin: 8px 0 4px; padding: 0; gap: 0; max-width: 760px; }
+.phase { flex: 1; position: relative; }
+.phase + .phase::before { content: ""; position: absolute; top: 13px; left: -50%; right: 50%; height: 2px; background: var(--border-strong); z-index: 0; }
+.phase.done + .phase::before, .phase.done + .phase.current::before { background: var(--ok); }
+.phase-btn { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; background: none; border: 0; font: inherit; cursor: pointer; color: var(--text-2); padding: 0; }
+.phase-dot { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;
+  background: var(--panel); border: 1.5px solid var(--border-strong); }
+.phase.done .phase-dot { background: var(--ok); border-color: var(--ok); color: #fff; }
+.phase.current .phase-dot { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 4px var(--accent-soft); }
+.phase-l { font-size: var(--fs-sm); font-weight: 600; }
+.phase.current .phase-l { color: var(--accent-text); }
+.phase-s { font-size: 11px; color: var(--muted); }
+.phase-btn:focus-visible { outline: none; }
+.phase-btn:focus-visible .phase-dot { box-shadow: var(--focus); }
+@media (max-width: 760px) { .phase-s { display: none; } }
+.ref-star { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.phase-chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--border-strong); color: var(--text-2); white-space: nowrap; }
+.phase-chip.ph-perform { background: var(--accent-soft); border-color: var(--accent-line, var(--accent)); color: var(--accent-text); }
+.phase-chip.ph-communicate { background: var(--warn-soft); border-color: var(--warn-line); color: var(--warn-text); }
+.phase-chip.ph-monitor { background: var(--purple-soft, var(--panel-2)); color: var(--text); }
+.phase-chip.ph-completed { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok-text); }
+td.col-wide, th.col-wide { min-width: 240px; }
