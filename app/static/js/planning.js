@@ -523,7 +523,7 @@ async function testModal(control, t, open, reload) {
       await handle.flush();
       await API.post(`/api/control-tests/${t.id}/sample`, { population_size: v.population_size, sample_size: v.sample_size || null });
       toast("Sample drawn - reopen the test to see the selected items");
-      document.querySelector(".modal-backdrop")?.remove(); reload();
+      closeFormPanel(); reload();
     } catch (err) { toast(err.message, "error"); }
   } }, "Draw random sample");
   const initial = { ...t, status: t.status === "Not Started" ? "In Progress" : t.status };
@@ -587,7 +587,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     ]),
   ];
   const raiseAction = !isNew && canWrite ? el("button", { class: "btn secondary", type: "button", onclick: async () => {
-    try { const c = await API.post(`/api/findings/${f.id}/raise-action`); toast(`Action ${c.capa_ref} raised`); document.querySelector(".modal-backdrop")?.remove(); onSaved(); }
+    try { const c = await API.post(`/api/findings/${f.id}/raise-action`); toast(`Action ${c.capa_ref} raised`); closeFormPanel(); onSaved(); }
     catch (err) { toast(err.message, "error"); }
   } }, "Raise remediation") : null;
   const aiAction = !isNew && canWrite ? aiFindingAction(f.id, () => handle, fields) : null;

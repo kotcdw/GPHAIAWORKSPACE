@@ -99,12 +99,15 @@ function confirmDialog({ title = "Are you sure?", text = "", confirmLabel = "Con
 function detailPanel({ title, body, footer = null, width = 520, onClose = null }) {
   const prev = document.activeElement;
   const close = () => { wrap.remove(); document.removeEventListener("keydown", onKey); if (onClose) onClose(); if (prev && prev.focus) prev.focus(); };
-  const onKey = (e) => { if (e.key === "Escape") close(); };
+  // Once something has been typed in the panel, only its x closes it (not Esc or a click outside).
+  let edited = false;
+  const onKey = (e) => { if (e.key === "Escape" && !edited && !(e.target.closest && e.target.closest(".form-panel, .modal-backdrop"))) close(); };
   const aside = el("aside", { class: "side-panel", role: "dialog", "aria-modal": "true", "aria-label": title, style: `width:${width}px` },
     el("div", { class: "side-panel-head" }, el("h3", null, title),
       el("button", { class: "modal-close", type: "button", "aria-label": "Close", onclick: close }, "×")),
     el("div", { class: "side-panel-body" }, body), footer ? el("div", { class: "side-panel-foot" }, footer) : null);
-  const wrap = el("div", { class: "side-panel-wrap" }, el("div", { class: "side-panel-scrim", onclick: close }), aside);
+  aside.addEventListener("input", () => { edited = true; });
+  const wrap = el("div", { class: "side-panel-wrap" }, el("div", { class: "side-panel-scrim", onclick: () => { if (!edited) close(); } }), aside);
   document.body.append(wrap);
   document.addEventListener("keydown", onKey);
   setTimeout(() => { const f = aside.querySelector("button, a, input, select, textarea"); if (f) f.focus(); }, 30);

@@ -62,7 +62,7 @@ async function changeRequestEditor(plan, existing = null, onDone = null) {
     catch (err) { clear(impactBox); impactBox.append(el("div", { class: "msg error" }, err.message)); }
   };
   const m = modal({
-    title: existing ? `Rework ${existing.cr_ref}` : "Plan change request", width: 900,
+    drawer: true, title: existing ? `Rework ${existing.cr_ref}` : "Plan change request", width: 900,
     body: el("div", null,
       el("p", { class: "muted small" }, `Approved version ${plan.current_version} is not edited directly. Describe the change; it is reviewed independently, approved by the GM Audit and becomes version ${plan.current_version + 1}.`),
       field("Title", title), field("Reason for the change", reason),

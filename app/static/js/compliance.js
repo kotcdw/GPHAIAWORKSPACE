@@ -70,24 +70,34 @@ function capaFollowupExtras(card, c, refresh) {
   }
   const btns = el("div", { class: "actions" });
   if (open && (isStaff() || mine)) {
-    btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: `Progress update - ${c.capa_ref}`, key: `capa:${c.id}:progress`, width: 640,
-      fields: [{ name: "status", label: "Status now", type: "select", required: true, options: ["Partially Implemented", "Not Implemented"] },
-        { name: "note", label: "What has been done so far", type: "textarea", rows: 4, required: true, minLength: 10, maxLength: 10000 }],
-      initial: { status: "Partially Implemented" }, submitLabel: "Save progress",
-      onSubmit: (v) => API.post(`/api/capa/${c.id}/progress`, v), onDone: () => { toast("Progress recorded"); refresh(); },
-    }) }, el("i", { class: "bi bi-graph-up" }), " Progress update"));
+    btns.append(el("button", { class: "btn small secondary", onclick: () => capaProgressForm(c, refresh) }, el("i", { class: "bi bi-graph-up" }), " Progress update"));
   }
   if (c.status !== "Closed" && !c.withdrawal_proposed_at && hasPerm("followup.manage")) {
-    btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: `Propose withdrawal - ${c.capa_ref}`, key: `capa:${c.id}:withdraw`, width: 640,
-      intro: "Recommendations that are no longer relevant or feasible are withdrawn by the Audit Committee (MoF follow-up instructions s.6.1(8)).",
-      fields: [{ name: "reason", label: "Why it is no longer relevant or feasible", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
-      submitLabel: "Send to the Audit Committee",
-      onSubmit: (v) => API.post(`/api/capa/${c.id}/propose-withdrawal`, v), onDone: () => { toast("Sent to the Audit Committee for decision"); refresh(); },
-    }) }, el("i", { class: "bi bi-x-octagon" }), " Propose withdrawal"));
+    btns.append(el("button", { class: "btn small secondary", onclick: () => capaWithdrawForm(c, refresh) }, el("i", { class: "bi bi-x-octagon" }), " Propose withdrawal"));
   }
   if (btns.childNodes.length) card.append(btns);
+}
+
+// Progress update on an agreed action.
+function capaProgressForm(c, refresh) {
+  return openForm({
+    title: `Progress update - ${c.capa_ref}`, key: `capa:${c.id}:progress`, width: 640,
+    fields: [{ name: "status", label: "Status now", type: "select", required: true, options: ["Partially Implemented", "Not Implemented"] },
+      { name: "note", label: "What has been done so far", type: "textarea", rows: 4, required: true, minLength: 10, maxLength: 10000 }],
+    initial: { status: "Partially Implemented" }, submitLabel: "Save progress",
+    onSubmit: (v) => API.post(`/api/capa/${c.id}/progress`, v), onDone: () => { toast("Progress recorded"); refresh(); },
+  });
+}
+
+// Propose withdrawing a recommendation (Audit Committee decides).
+function capaWithdrawForm(c, refresh) {
+  return openForm({
+    title: `Propose withdrawal - ${c.capa_ref}`, key: `capa:${c.id}:withdraw`, width: 640,
+    intro: "Recommendations that are no longer relevant or feasible are withdrawn by the Audit Committee (MoF follow-up instructions s.6.1(8)).",
+    fields: [{ name: "reason", label: "Why it is no longer relevant or feasible", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
+    submitLabel: "Send to the Audit Committee",
+    onSubmit: (v) => API.post(`/api/capa/${c.id}/propose-withdrawal`, v), onDone: () => { toast("Sent to the Audit Committee for decision"); refresh(); },
+  });
 }
 
 // ------------------------------------------------------------------ Follow-up returns (quarterly report, annual statement)
@@ -186,19 +196,7 @@ async function reportComplianceCards(panel, r) {
     let d;
     try { d = await API.get(`/api/reports/${r.id}/distribution`); } catch { return; }
     card.append(el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-envelope-check" }), " Distribution of the issued report"),
-      isStaff() ? el("button", { class: "btn small", onclick: () => openForm({
-        title: "Record a copy sent", key: `dist:${r.id}`, width: 600, draftable: false,
-        fields: [
-          { name: "recipient", label: "Recipient", type: "select", required: true, options: [...new Set([...d.missing, ...d.required])] },
-          { name: "channel", label: "How", type: "select", required: true, options: d.channels },
-          { name: "sent_at", label: "Date sent", type: "date", required: true },
-          { name: "reference", label: "Letter / e-mail reference", maxLength: 120, singleLine: true },
-        ],
-        initial: { recipient: d.missing[0] || d.required[0], channel: "Letter", sent_at: isoDay(new Date().toISOString()) },
-        submitLabel: "Record",
-        onSubmit: (v) => API.post(`/api/reports/${r.id}/distribution`, { ...v, sent_at: `${v.sent_at}T12:00:00`, reference: v.reference || "" }),
-        onDone: () => { toast("Copy recorded"); paint(); },
-      }) }, el("i", { class: "bi bi-plus-lg" }), " Record copy sent") : null));
+      isStaff() ? el("button", { class: "btn small", onclick: () => distributionForm(r, d, paint) }, el("i", { class: "bi bi-plus-lg" }), " Record copy sent") : null));
     if (d.missing.length) {
       card.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
         el("div", null, el("strong", null, d.version > 1 ? `Still to receive version ${d.version}: ` : "Still to receive a copy: "), d.missing.join(", "),
@@ -213,6 +211,23 @@ async function reportComplianceCards(panel, r) {
   paint();
 }
 
+// Record a copy of an issued report sent to a recipient.
+function distributionForm(r, d, paint) {
+  return openForm({
+    title: "Record a copy sent", key: `dist:${r.id}`, width: 600, draftable: false,
+    fields: [
+      { name: "recipient", label: "Recipient", type: "select", required: true, options: [...new Set([...d.missing, ...d.required])] },
+      { name: "channel", label: "How", type: "select", required: true, options: d.channels },
+      { name: "sent_at", label: "Date sent", type: "date", required: true },
+      { name: "reference", label: "Letter / e-mail reference", maxLength: 120, singleLine: true },
+    ],
+    initial: { recipient: d.missing[0] || d.required[0], channel: "Letter", sent_at: isoDay(new Date().toISOString()) },
+    submitLabel: "Record",
+    onSubmit: (v) => API.post(`/api/reports/${r.id}/distribution`, { ...v, sent_at: `${v.sent_at}T12:00:00`, reference: v.reference || "" }),
+    onDone: () => { toast("Copy recorded"); paint(); },
+  });
+}
+
 // ------------------------------------------------------------------ Audit Committee meetings register
 async function renderCommitteeMeetings(body) {
   clear(body);
@@ -222,19 +237,7 @@ async function renderCommitteeMeetings(body) {
   const queue = await safeGet("/api/committee/for-decision", []);
   body.append(el("div", { class: "card" },
     el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-people" }), " Meetings, minutes and decisions"),
-      canRecord ? el("button", { class: "btn small", onclick: () => openForm({
-        title: "Schedule a Committee meeting", key: "acm:new", width: 640, draftable: false,
-        fields: [
-          { name: "meeting_date", label: "Date and time", type: "datetime-local", required: true },
-          { name: "meeting_type", label: "Type", type: "select", required: true, options: data.types },
-          { name: "venue", label: "Venue", maxLength: 160, singleLine: true },
-          { name: "agenda", label: "Agenda", type: "textarea", rows: 5, maxLength: 20000 },
-        ],
-        initial: { meeting_type: "Ordinary", agenda: "1. Opening and apologies\n2. Minutes of the previous meeting\n3. Quarterly follow-up report on audit recommendations\n4. Audit reports issued\n5. Internal audit plan progress\n6. Any other business" },
-        submitLabel: "Create",
-        onSubmit: (v) => API.post("/api/committee/meetings", v),
-        onDone: (m) => { toast("Meeting created"); openMeeting(m.id, () => renderCommitteeMeetings(body)); },
-      }) }, el("i", { class: "bi bi-plus-lg" }), " New meeting") : null),
+      canRecord ? el("button", { class: "btn small", onclick: () => newMeetingForm(data.types, () => renderCommitteeMeetings(body)) }, el("i", { class: "bi bi-plus-lg" }), " New meeting") : null),
     el("p", { class: "muted small" }, "PFM Act 2016 (Act 921) ss.86-88: the Audit Committee considers the quarterly follow-up report at each meeting and decides on the closure, withdrawal or extension of recommendations."),
     dataTable(data.items, [
       { key: "meeting_ref", label: "Ref" }, { key: "meeting_date", label: "Date", render: (m) => dayOnly(m.meeting_date) },
@@ -248,6 +251,23 @@ async function renderCommitteeMeetings(body) {
       { key: "implementation_status", label: "Status", render: (q) => badge(q.implementation_status) },
       { key: "reasons", label: "For decision", render: (q) => q.reasons.join("; ") },
     ], { onRow: (q) => openRecord("capa", q.id), emptyText: "Nothing waiting for the Committee.", pageSize: 10 })));
+}
+
+// Schedule an Audit Committee meeting.
+function newMeetingForm(types, back) {
+  return openForm({
+    title: "Schedule a Committee meeting", key: "acm:new", width: 640, draftable: false,
+    fields: [
+      { name: "meeting_date", label: "Date and time", type: "datetime-local", required: true },
+      { name: "meeting_type", label: "Type", type: "select", required: true, options: types },
+      { name: "venue", label: "Venue", maxLength: 160, singleLine: true },
+      { name: "agenda", label: "Agenda", type: "textarea", rows: 5, maxLength: 20000 },
+    ],
+    initial: { meeting_type: "Ordinary", agenda: "1. Opening and apologies\n2. Minutes of the previous meeting\n3. Quarterly follow-up report on audit recommendations\n4. Audit reports issued\n5. Internal audit plan progress\n6. Any other business" },
+    submitLabel: "Create",
+    onSubmit: (v) => API.post("/api/committee/meetings", v),
+    onDone: (m) => { toast("Meeting created"); openMeeting(m.id, back); },
+  });
 }
 
 async function openMeeting(id, back) {
@@ -270,24 +290,7 @@ async function openMeeting(id, back) {
     ], { emptyText: "No decisions recorded.", pageSize: 20 }));
   const actions = [];
   if (canRecord && !locked) {
-    actions.push(el("button", { class: "btn secondary", onclick: () => openForm({
-      title: `Record proceedings - ${m.meeting_ref}`, key: `acm:${id}:edit`, width: 820,
-      fields: [
-        { name: "status", label: "Status", type: "select", required: true, options: ["Scheduled", "Held", "Cancelled"] },
-        { name: "meeting_date", label: "Date and time", type: "datetime-local", required: true },
-        { name: "venue", label: "Venue", maxLength: 160, singleLine: true },
-        { name: "attendees", label: "Present", type: "textarea", rows: 3 },
-        { name: "apologies", label: "Apologies", type: "textarea", rows: 2 },
-        { name: "quorum", label: "Quorum formed", type: "checkbox" },
-        { name: "followup_report_considered", label: "Quarterly follow-up report considered", type: "checkbox" },
-        { name: "agenda", label: "Agenda", type: "textarea", rows: 4, full: true },
-        { name: "minutes", label: "Minutes", type: "textarea", rows: 10, full: true, maxLength: 100000 },
-      ],
-      initial: { ...m, meeting_date: String(m.meeting_date).slice(0, 16) },
-      submitLabel: "Save",
-      onSubmit: (v) => API.patch(`/api/committee/meetings/${id}`, v),
-      onDone: () => { toast("Meeting saved"); reopen(); },
-    }) }, el("i", { class: "bi bi-pencil" }), " Record proceedings"));
+    actions.push(el("button", { class: "btn secondary", onclick: () => meetingProceedingsForm(m, id, reopen) }, el("i", { class: "bi bi-pencil" }), " Record proceedings"));
   }
   if (canRecord && m.status === "Held") {
     actions.push(el("button", { class: "btn secondary", onclick: async () => {
@@ -322,6 +325,28 @@ async function openMeeting(id, back) {
   actions.push(el("a", { class: "btn secondary", href: `/api/committee/meetings/${id}/minutes.docx` }, el("i", { class: "bi bi-file-earmark-word" }), " Minutes (Word)"));
   const dlg = modal({ title: `Audit Committee meeting ${m.meeting_ref}`, body, width: 900,
     footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", onclick: () => dlg.close() }, "Close"), el("div", { class: "actions" }, ...actions)) });
+}
+
+// Record the proceedings of an Audit Committee meeting.
+function meetingProceedingsForm(m, id, reopen) {
+  return openForm({
+    title: `Record proceedings - ${m.meeting_ref}`, key: `acm:${id}:edit`, width: 820,
+    fields: [
+      { name: "status", label: "Status", type: "select", required: true, options: ["Scheduled", "Held", "Cancelled"] },
+      { name: "meeting_date", label: "Date and time", type: "datetime-local", required: true },
+      { name: "venue", label: "Venue", maxLength: 160, singleLine: true },
+      { name: "attendees", label: "Present", type: "textarea", rows: 3 },
+      { name: "apologies", label: "Apologies", type: "textarea", rows: 2 },
+      { name: "quorum", label: "Quorum formed", type: "checkbox" },
+      { name: "followup_report_considered", label: "Quarterly follow-up report considered", type: "checkbox" },
+      { name: "agenda", label: "Agenda", type: "textarea", rows: 4, full: true },
+      { name: "minutes", label: "Minutes", type: "textarea", rows: 10, full: true, maxLength: 100000 },
+    ],
+    initial: { ...m, meeting_date: String(m.meeting_date).slice(0, 16) },
+    submitLabel: "Save",
+    onSubmit: (v) => API.patch(`/api/committee/meetings/${id}`, v),
+    onDone: () => { toast("Meeting saved"); reopen(); },
+  });
 }
 
 // ------------------------------------------------------------------ Engagement declarations (audit page)
@@ -398,22 +423,7 @@ async function paintMine(body) {
   if (!cpd) return;
   const pct = cpd.target ? Math.min(100, Math.round((100 * cpd.hours) / cpd.target)) : 100;
   body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, `CPD ${year}: ${cpd.hours} of ${cpd.target} hours (${cpd.ethics_hours} of ${cpd.ethics_target} ethics)`),
-    el("button", { class: "btn small", onclick: () => openForm({
-      title: "Record CPD", key: "cpd:new", width: 640, draftable: false,
-      fields: [
-        { name: "activity", label: "Activity", required: true, maxLength: 255, singleLine: true, full: true },
-        { name: "provider", label: "Provider", maxLength: 160, singleLine: true },
-        { name: "category", label: "Category", type: "select", required: true, options: cpd.categories },
-        { name: "activity_date", label: "Date", type: "date", required: true },
-        { name: "hours", label: "Hours", type: "number", required: true, min: 0.5, max: 200, step: "0.5" },
-        { name: "ethics_hours", label: "Of which ethics hours", type: "number", min: 0, max: 200, step: "0.5" },
-        { name: "evidence_ref", label: "Certificate / evidence reference", maxLength: 255, singleLine: true },
-      ],
-      initial: { ethics_hours: 0 },
-      submitLabel: "Save",
-      onSubmit: (v) => API.post("/api/proficiency/cpd", { ...v, activity_date: `${v.activity_date}T00:00:00`, ethics_hours: v.ethics_hours || 0, provider: v.provider || "", evidence_ref: v.evidence_ref || "" }),
-      onDone: () => { toast("CPD recorded"); renderPractice("mine"); },
-    }) }, el("i", { class: "bi bi-plus-lg" }), " Record CPD")),
+    el("button", { class: "btn small", onclick: () => cpdForm(cpd.categories) }, el("i", { class: "bi bi-plus-lg" }), " Record CPD")),
   el("div", { class: "progress" }, el("div", { class: "bar", style: `width:${pct}%` })),
   dataTable(cpd.records, [
     { key: "activity_date", label: "Date", render: (r) => dayOnly(r.activity_date) }, { key: "activity", label: "Activity" },
@@ -421,18 +431,7 @@ async function paintMine(body) {
     { key: "verified_at", label: "Verified", render: (r) => (r.verified_at ? dayOnly(r.verified_at) : "-") },
   ], { emptyText: "No CPD recorded this year.", pageSize: 10 })));
   body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Certifications"),
-    el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: "Add certification", key: "cert:new", width: 600, draftable: false,
-      fields: [
-        { name: "name", label: "Certification", required: true, maxLength: 160, singleLine: true, placeholder: "e.g. CIA, ACCA, ICAG, CISA" },
-        { name: "issuer", label: "Issuer", maxLength: 160, singleLine: true }, { name: "number", label: "Membership / certificate no.", maxLength: 80, singleLine: true },
-        { name: "obtained_on", label: "Obtained", type: "date" }, { name: "expires_on", label: "Expires / renewal due", type: "date" },
-      ],
-      submitLabel: "Add",
-      onSubmit: (v) => API.post("/api/proficiency/certifications", { ...v, issuer: v.issuer || "", number: v.number || "",
-        obtained_on: v.obtained_on ? `${v.obtained_on}T00:00:00` : null, expires_on: v.expires_on ? `${v.expires_on}T00:00:00` : null }),
-      onDone: () => { toast("Certification added"); renderPractice("mine"); },
-    }) }, el("i", { class: "bi bi-plus-lg" }), " Add")),
+    el("button", { class: "btn small secondary", onclick: () => certificationForm() }, el("i", { class: "bi bi-plus-lg" }), " Add")),
   dataTable(cpd.certifications, [
     { key: "name", label: "Certification" }, { key: "issuer", label: "Issuer" }, { key: "number", label: "Number" },
     { key: "expires_on", label: "Expires", render: (c) => (c.expires_on ? el("span", { class: c.expired ? "text-danger" : "" }, dayOnly(c.expires_on)) : "-") },
@@ -440,22 +439,48 @@ async function paintMine(body) {
   priorRolesCard(body);
 }
 
+// Record a CPD activity.
+function cpdForm(categories) {
+  return openForm({
+    title: "Record CPD", key: "cpd:new", width: 640, draftable: false,
+    fields: [
+      { name: "activity", label: "Activity", required: true, maxLength: 255, singleLine: true, full: true },
+      { name: "provider", label: "Provider", maxLength: 160, singleLine: true },
+      { name: "category", label: "Category", type: "select", required: true, options: categories },
+      { name: "activity_date", label: "Date", type: "date", required: true },
+      { name: "hours", label: "Hours", type: "number", required: true, min: 0.5, max: 200, step: "0.5" },
+      { name: "ethics_hours", label: "Of which ethics hours", type: "number", min: 0, max: 200, step: "0.5" },
+      { name: "evidence_ref", label: "Certificate / evidence reference", maxLength: 255, singleLine: true },
+    ],
+    initial: { ethics_hours: 0 },
+    submitLabel: "Save",
+    onSubmit: (v) => API.post("/api/proficiency/cpd", { ...v, activity_date: `${v.activity_date}T00:00:00`, ethics_hours: v.ethics_hours || 0, provider: v.provider || "", evidence_ref: v.evidence_ref || "" }),
+    onDone: () => { toast("CPD recorded"); renderPractice("mine"); },
+  });
+}
+
+// Add a professional certification.
+function certificationForm() {
+  return openForm({
+    title: "Add certification", key: "cert:new", width: 600, draftable: false,
+    fields: [
+      { name: "name", label: "Certification", required: true, maxLength: 160, singleLine: true, placeholder: "e.g. CIA, ACCA, ICAG, CISA" },
+      { name: "issuer", label: "Issuer", maxLength: 160, singleLine: true }, { name: "number", label: "Membership / certificate no.", maxLength: 80, singleLine: true },
+      { name: "obtained_on", label: "Obtained", type: "date" }, { name: "expires_on", label: "Expires / renewal due", type: "date" },
+    ],
+    submitLabel: "Add",
+    onSubmit: (v) => API.post("/api/proficiency/certifications", { ...v, issuer: v.issuer || "", number: v.number || "",
+      obtained_on: v.obtained_on ? `${v.obtained_on}T00:00:00` : null, expires_on: v.expires_on ? `${v.expires_on}T00:00:00` : null }),
+    onDone: () => { toast("Certification added"); renderPractice("mine"); },
+  });
+}
+
 // Units the auditor worked in before: audits of them within the cooling-off period are flagged (IIA GIAS 2.2).
 async function priorRolesCard(body) {
   const d = await safeGet("/api/proficiency/prior-roles", null);
   if (!d) return;
   body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Previous roles"),
-    el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: "Add a previous role", key: "prior:new", width: 600, draftable: false,
-      fields: [
-        { name: "org_unit_id", label: "Org unit", type: "select", required: true, options: d.units.map((u) => ({ value: u.id, label: u.name })), full: true },
-        { name: "role", label: "Role", required: true, minLength: 2, maxLength: 160, singleLine: true },
-        { name: "from_date", label: "From", type: "date" }, { name: "to_date", label: "To (empty if current)", type: "date" },
-      ],
-      submitLabel: "Add",
-      onSubmit: (v) => API.post("/api/proficiency/prior-roles", { org_unit_id: Number(v.org_unit_id), role: v.role, from_date: v.from_date || null, to_date: v.to_date || null }),
-      onDone: () => { toast("Role added"); renderPractice("mine"); },
-    }) }, el("i", { class: "bi bi-plus-lg" }), " Add")),
+    el("button", { class: "btn small secondary", onclick: () => priorRoleForm(d.units) }, el("i", { class: "bi bi-plus-lg" }), " Add")),
   d.cooling_off_months ? el("p", { class: "muted small" }, `Audits of these units within ${d.cooling_off_months} months of leaving are flagged.`) : null,
   dataTable(d.items, [
     { key: "unit", label: "Org unit" }, { key: "role", label: "Role" },
@@ -467,6 +492,21 @@ async function priorRolesCard(body) {
   ], { emptyText: "None recorded.", pageSize: 10 })));
 }
 
+// Record a role held before joining Internal Audit (cooling-off).
+function priorRoleForm(units) {
+  return openForm({
+    title: "Add a previous role", key: "prior:new", width: 600, draftable: false,
+    fields: [
+      { name: "org_unit_id", label: "Org unit", type: "select", required: true, options: units.map((u) => ({ value: u.id, label: u.name })), full: true },
+      { name: "role", label: "Role", required: true, minLength: 2, maxLength: 160, singleLine: true },
+      { name: "from_date", label: "From", type: "date" }, { name: "to_date", label: "To (empty if current)", type: "date" },
+    ],
+    submitLabel: "Add",
+    onSubmit: (v) => API.post("/api/proficiency/prior-roles", { org_unit_id: Number(v.org_unit_id), role: v.role, from_date: v.from_date || null, to_date: v.to_date || null }),
+    onDone: () => { toast("Role added"); renderPractice("mine"); },
+  });
+}
+
 async function paintTeam(body) {
   const t = await safeGet("/api/proficiency/team", null);
   if (!t) return;
@@ -475,14 +515,7 @@ async function paintTeam(body) {
       dataTable(t.pending_reviews, [
         { key: "user", label: "Auditor" }, { key: "audit_title", label: "Engagement", render: (d) => d.audit_title || `Annual ${d.year}` },
         { key: "conflict_details", label: "Disclosure" }, { key: "signed_at", label: "Signed", render: (d) => dayOnly(d.signed_at) },
-      ], { onRow: (d) => openForm({
-        title: `Review disclosure - ${d.user}`, key: `declrev:${d.id}`, width: 640, draftable: false, intro: d.conflict_details,
-        fields: [{ name: "decision", label: "Decision", type: "select", required: true, options: ["Cleared", "Reassigned"] },
-          { name: "notes", label: "Safeguards / reasons", type: "textarea", rows: 3, required: true, minLength: 5 }],
-        submitLabel: "Record review",
-        onSubmit: (v) => API.post(`/api/proficiency/declarations/${d.id}/review`, v),
-        onDone: () => { toast("Review recorded"); renderPractice("team"); },
-      }), pageSize: 10 })));
+      ], { onRow: (d) => declarationReviewForm(d), pageSize: 10 })));
   }
   body.append(el("div", { class: "card" }, el("h3", null, `Team ${t.year}: declarations and CPD (target ${t.target} hours)`),
     dataTable(t.staff, [
@@ -495,6 +528,18 @@ async function paintTeam(body) {
     ], { pageSize: 25, exportName: `team-proficiency-${t.year}` })));
 }
 
+// Review a declared conflict of interest.
+function declarationReviewForm(d) {
+  return openForm({
+    title: `Review disclosure - ${d.user}`, key: `declrev:${d.id}`, width: 640, draftable: false, intro: d.conflict_details,
+    fields: [{ name: "decision", label: "Decision", type: "select", required: true, options: ["Cleared", "Reassigned"] },
+      { name: "notes", label: "Safeguards / reasons", type: "textarea", rows: 3, required: true, minLength: 5 }],
+    submitLabel: "Record review",
+    onSubmit: (v) => API.post(`/api/proficiency/declarations/${d.id}/review`, v),
+    onDone: () => { toast("Review recorded"); renderPractice("team"); },
+  });
+}
+
 async function paintCharter(body) {
   const [ch, eqa, conf] = await Promise.all([safeGet("/api/charter", null), safeGet("/api/quality/external-assessments", null), safeGet("/api/quality/conformance", null)]);
   if (conf) {
@@ -505,16 +550,7 @@ async function paintCharter(body) {
   if (ch) {
     const draft = ch.versions.find((v) => ["Draft", "Submitted"].includes(v.status));
     const canEdit = hasPerm("governance.charter");
-    const editForm = (v) => openForm({
-      title: v ? `Edit charter v${v.version}` : "New charter version", key: v ? `charter:${v.id}` : "charter:new", width: 900,
-      fields: [{ name: "title", label: "Title", required: true, maxLength: 200, singleLine: true, full: true },
-        { name: "change_summary", label: "What changed", type: "textarea", rows: 2, full: true },
-        { name: "content", label: "Charter text", type: "textarea", rows: 22, required: true, full: true, maxLength: 60000 }],
-      initial: v || { title: "Internal Audit Charter - Ghana Ports and Harbours Authority", content: ch.current ? ch.current.content : ch.template },
-      submitLabel: "Save draft",
-      onSubmit: (x) => (v ? API.put(`/api/charter/${v.id}`, x) : API.post("/api/charter", x)),
-      onDone: () => { toast("Charter saved"); renderPractice("charter"); },
-    });
+    const editForm = (v) => charterForm(v, ch);
     const head = el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-journal-text" }), " Internal audit charter (GIAS 6.2)"),
       el("div", { class: "actions" },
         canEdit && !draft ? el("button", { class: "btn small", onclick: () => editForm(null) }, el("i", { class: "bi bi-plus-lg" }), " New version") : null,
@@ -546,22 +582,7 @@ async function paintCharter(body) {
   }
   if (eqa) {
     body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-award" }), " External quality assessment (GIAS 8.4)"),
-      hasPerm("governance.charter") ? el("button", { class: "btn small", onclick: () => openForm({
-        title: "Record an external quality assessment", key: "eqa:new", width: 720, draftable: false,
-        fields: [{ name: "assessment_type", label: "Type", type: "select", required: true, options: eqa.types },
-          { name: "assessor", label: "Assessor / team", required: true, maxLength: 200, singleLine: true },
-          { name: "assessor_independent", label: "The assessor is qualified and independent of GPHA", type: "checkbox" },
-          { name: "completed_at", label: "Completed", type: "date", required: true },
-          { name: "conclusion", label: "Conclusion", type: "select", required: true, options: eqa.conclusions },
-          { name: "report_reference", label: "Report reference", maxLength: 120, singleLine: true },
-          { name: "reported_to_committee_at", label: "Reported to the Audit Committee", type: "date" },
-          { name: "scope", label: "Scope", type: "textarea", rows: 2, full: true }, { name: "action_plan", label: "Improvement action plan", type: "textarea", rows: 3, full: true }],
-        initial: { assessor_independent: true },
-        submitLabel: "Record",
-        onSubmit: (v) => API.post("/api/quality/external-assessments", { ...v, completed_at: `${v.completed_at}T00:00:00`,
-          reported_to_committee_at: v.reported_to_committee_at ? `${v.reported_to_committee_at}T00:00:00` : null, scope: v.scope || "", action_plan: v.action_plan || "", report_reference: v.report_reference || "" }),
-        onDone: () => { toast("Assessment recorded"); renderPractice("charter"); },
-      }) }, el("i", { class: "bi bi-plus-lg" }), " Record assessment") : null),
+      hasPerm("governance.charter") ? el("button", { class: "btn small", onclick: () => externalAssessmentForm(eqa) }, el("i", { class: "bi bi-plus-lg" }), " Record assessment") : null),
     el("div", { class: `callout ${eqa.status.overdue ? "warn" : "ok"}` }, el("i", { class: "bi bi-calendar-check" }), el("div", null, eqa.status.message)),
     dataTable(eqa.items, [
       { key: "completed_at", label: "Completed", render: (e) => dayOnly(e.completed_at) }, { key: "assessment_type", label: "Type" },
@@ -569,6 +590,40 @@ async function paintCharter(body) {
       { key: "next_due", label: "Next due", render: (e) => dayOnly(e.next_due) },
     ], { emptyText: "None recorded.", pageSize: 10 })));
   }
+}
+
+// New or edited Internal Audit Charter version.
+function charterForm(v, ch) {
+  return openForm({
+    title: v ? `Edit charter v${v.version}` : "New charter version", key: v ? `charter:${v.id}` : "charter:new", width: 900,
+    fields: [{ name: "title", label: "Title", required: true, maxLength: 200, singleLine: true, full: true },
+      { name: "change_summary", label: "What changed", type: "textarea", rows: 2, full: true },
+      { name: "content", label: "Charter text", type: "textarea", rows: 22, required: true, full: true, maxLength: 60000 }],
+    initial: v || { title: "Internal Audit Charter - Ghana Ports and Harbours Authority", content: ch.current ? ch.current.content : ch.template },
+    submitLabel: "Save draft",
+    onSubmit: (x) => (v ? API.put(`/api/charter/${v.id}`, x) : API.post("/api/charter", x)),
+    onDone: () => { toast("Charter saved"); renderPractice("charter"); },
+  });
+}
+
+// Record an external quality assessment.
+function externalAssessmentForm(eqa) {
+  return openForm({
+    title: "Record an external quality assessment", key: "eqa:new", width: 720, draftable: false,
+    fields: [{ name: "assessment_type", label: "Type", type: "select", required: true, options: eqa.types },
+      { name: "assessor", label: "Assessor / team", required: true, maxLength: 200, singleLine: true },
+      { name: "assessor_independent", label: "The assessor is qualified and independent of GPHA", type: "checkbox" },
+      { name: "completed_at", label: "Completed", type: "date", required: true },
+      { name: "conclusion", label: "Conclusion", type: "select", required: true, options: eqa.conclusions },
+      { name: "report_reference", label: "Report reference", maxLength: 120, singleLine: true },
+      { name: "reported_to_committee_at", label: "Reported to the Audit Committee", type: "date" },
+      { name: "scope", label: "Scope", type: "textarea", rows: 2, full: true }, { name: "action_plan", label: "Improvement action plan", type: "textarea", rows: 3, full: true }],
+    initial: { assessor_independent: true },
+    submitLabel: "Record",
+    onSubmit: (v) => API.post("/api/quality/external-assessments", { ...v, completed_at: `${v.completed_at}T00:00:00`,
+      reported_to_committee_at: v.reported_to_committee_at ? `${v.reported_to_committee_at}T00:00:00` : null, scope: v.scope || "", action_plan: v.action_plan || "", report_reference: v.report_reference || "" }),
+    onDone: () => { toast("Assessment recorded"); renderPractice("charter"); },
+  });
 }
 
 // ------------------------------------------------------------------ Automation rules
@@ -683,7 +738,7 @@ function ruleEditor(rule) {
         try { await API.del(`/api/automations/${rule.id}`); dlg.close(); toast("Rule deleted"); renderAutomations(); } catch (err) { toast(err.message, "error"); }
       } }, "Delete") : null,
       el("button", { class: "btn", onclick: save }, "Save rule")));
-  const dlg = modal({ title: rule ? `Rule: ${rule.name}` : "New automation rule", body, footer, width: 860 });
+  const dlg = modal({ drawer: true, title: rule ? `Rule: ${rule.name}` : "New automation rule", body, footer, width: 860 });
 }
 
 // ------------------------------------------------------------------ Custom fields for more record types (Configuration)
@@ -703,7 +758,17 @@ async function renderRecordFieldsCard(container) {
       { key: "required", label: "Required", render: (d) => (d.required ? "Yes" : "No") }, { key: "active", label: "Status", render: (d) => badge(d.active ? "Active" : "Inactive") },
     ], { onRow: (d) => fieldForm(d), emptyText: "No custom fields yet.", pageSize: 10 }));
   };
-  const fieldForm = (def) => openForm({
+  const fieldForm = (def) => customRecordFieldForm(def, module, modules, types, paint);
+  sel.addEventListener("change", () => { module = sel.value; paint(); });
+  card.append(el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-input-cursor" }), " Fields on audits, findings and recommendations"),
+    el("div", { class: "actions" }, sel, el("button", { class: "btn small", onclick: () => fieldForm(null) }, el("i", { class: "bi bi-plus-lg" }), " Add field"))),
+  list);
+  paint();
+}
+
+// Add or edit a custom field on a register.
+function customRecordFieldForm(def, module, modules, types, paint) {
+  return openForm({
     key: def ? `rf:${def.id}` : `rf:new:${module}`, title: def ? `Edit field · ${def.label}` : `Add field to ${modules[module]}`, width: 600, draftable: false,
     fields: [
       { name: "label", label: "Field name", required: true, maxLength: 100, singleLine: true },
@@ -721,9 +786,4 @@ async function renderRecordFieldsCard(container) {
     },
     onDone: () => { toast("Saved"); paint(); },
   });
-  sel.addEventListener("change", () => { module = sel.value; paint(); });
-  card.append(el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-input-cursor" }), " Fields on audits, findings and recommendations"),
-    el("div", { class: "actions" }, sel, el("button", { class: "btn small", onclick: () => fieldForm(null) }, el("i", { class: "bi bi-plus-lg" }), " Add field"))),
-  list);
-  paint();
 }

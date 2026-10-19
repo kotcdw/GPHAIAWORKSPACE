@@ -51,7 +51,7 @@ function linkPickerDialog(kind, id, other, refresh) {
     } }, el("span", { class: "ref" }, r.ref), el("span", null, r.title), r.extra ? el("span", { class: "muted small" }, r.extra) : null)));
   }
   search.addEventListener("input", () => { clearTimeout(search._t); search._t = setTimeout(load, 250); });
-  const m = modal({ title: `Link ${(LINK_LABEL[other] || other).toLowerCase()}`, width: 640, body: el("div", null, search, list),
+  const m = modal({ drawer: true, title: `Link ${(LINK_LABEL[other] || other).toLowerCase()}`, width: 640, body: el("div", null, search, list),
     footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", onclick: () => m.close() }, "Close")) });
   load();
   search.focus();
@@ -472,7 +472,7 @@ function assessRequirementForm(g, r) {
 function requirementImport(g) {
   const file = el("input", { type: "file", accept: ".csv,text/csv", "aria-label": "CSV file" });
   const out = el("div");
-  const m = modal({ title: `Import requirements into ${g.code}`, width: 640,
+  const m = modal({ drawer: true, title: `Import requirements into ${g.code}`, width: 640,
     body: el("div", null, el("p", { class: "muted small" }, "Columns: ref, title, text, owner_email, applicable (yes/no), control_refs (FRAMEWORK REF; separated by ;). An existing ref is updated."),
       el("a", { href: "/api/grc/requirements/template.csv" }, el("i", { class: "bi bi-download" }), " Download the template"), el("div", { class: "form-field" }, file), out),
     footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", onclick: () => { m.close(); openRegulation(g.id); } }, "Close"),

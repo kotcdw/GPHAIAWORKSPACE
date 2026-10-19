@@ -357,20 +357,24 @@ async function renderAuditTypes(tab = state.auditTypesTab || "terms") {
           el("td", null, d.required ? "Yes" : "No"),
           el("td", null, canEdit && d.audit_type === type.name ? el("button", { class: "btn small secondary", onclick: async () => { await API.patch(`/api/custom-fields/${d.id}`, { active: !d.active }); renderAuditTypes(tab); } }, d.active ? "Active · retire" : "Retired · restore") : (d.active ? "Active" : "Retired"))))))
         : el("p", { class: "muted small" }, "No custom attributes."),
-      canEdit && own.length < 10 ? el("div", null, btn(`Add attribute to ${pg.label.toLowerCase()}`, () => openForm({
-        title: `New ${pg.label.toLowerCase()} attribute (${type.name})`, draftable: false,
-        fields: [
-          { name: "label", label: "Attribute", required: true, maxLength: 100, singleLine: true },
-          { name: "field_type", label: "Type", type: "select", required: true, options: ATTR_TYPES.map(([v, l]) => ({ value: v, label: l })) },
-          { name: "options", label: "Choices (Dropdown, one per line)", type: "textarea", maxLength: 5000 },
-          { name: "required", label: "Required", type: "checkbox" },
-        ],
-        initial: { field_type: "text" },
-        onSubmit: (v) => API.post("/api/custom-fields", { module: pg.module, audit_type: type.name, label: v.label, field_type: v.field_type,
-          options: (v.options || "").split("\n").map((x) => x.trim()).filter(Boolean), required: !!v.required }),
-        onDone: () => { toast("Attribute added"); renderAuditTypes(tab); },
-      }), "secondary")) : null);
+      canEdit && own.length < 10 ? el("div", null, btn(`Add attribute to ${pg.label.toLowerCase()}`, () => auditTypeAttributeForm(pg, type, tab), "secondary")) : null);
   }
+}
+
+function auditTypeAttributeForm(pg, type, tab) {
+  return openForm({
+    title: `New ${pg.label.toLowerCase()} attribute (${type.name})`, draftable: false,
+    fields: [
+      { name: "label", label: "Attribute", required: true, maxLength: 100, singleLine: true },
+      { name: "field_type", label: "Type", type: "select", required: true, options: ATTR_TYPES.map(([v, l]) => ({ value: v, label: l })) },
+      { name: "options", label: "Choices (Dropdown, one per line)", type: "textarea", maxLength: 5000 },
+      { name: "required", label: "Required", type: "checkbox" },
+    ],
+    initial: { field_type: "text" },
+    onSubmit: (v) => API.post("/api/custom-fields", { module: pg.module, audit_type: type.name, label: v.label, field_type: v.field_type,
+      options: (v.options || "").split("\n").map((x) => x.trim()).filter(Boolean), required: !!v.required }),
+    onDone: () => { toast("Attribute added"); renderAuditTypes(tab); },
+  });
 }
 
 // ------------------------------------------------------------------ plan Timeline and Include audits
@@ -440,7 +444,7 @@ async function includeAuditsDialog(plan, reload) {
   search.addEventListener("input", paint);
   const body = el("div", null, el("div", { class: "tl-tools" }, search, el("label", null, "Quarter ", quarter)),
     approved ? el("div", null, el("p", { class: "muted small" }, "The plan is approved: each audit you include is recorded as a plan change."), reason) : null, list);
-  const m = modal({ title: "Include audits", body, width: 820, footer: el("div", { class: "actions" },
+  const m = modal({ drawer: true, title: "Include audits", body, width: 820, footer: el("div", { class: "actions" },
     el("button", { class: "btn secondary", onclick: () => m.close() }, "Cancel"),
     el("button", { class: "btn", onclick: async () => {
       if (!chosen.size) { toast("Select at least one audit", "error"); return; }
@@ -472,10 +476,7 @@ async function renderResults(tableId = state.resultsTable || null) {
   clear(viewRoot);
   navCrumbs("results");
   const canBuild = hasPerm("oversight.reporting", "system.automation");
-  viewRoot.append(viewHeader("Results", canBuild ? [btn("+ Add collection", () => openForm({
-    title: "Create collection", draftable: false,
-    fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true }, { name: "description", label: "Description", type: "textarea", maxLength: 5000 }],
-    onSubmit: (v) => API.post("/api/results/collections", v), onDone: () => { toast("Collection created"); renderResults(tableId); } }))] : null,
+  viewRoot.append(viewHeader("Results", canBuild ? [btn("+ Add collection", () => collectionForm(tableId))] : null,
   { sub: "Collections of analytic tables. Robots publish records here; triage them by priority, status and assignee." }));
   let cols;
   try { cols = await API.get("/api/results/collections"); } catch (err) { viewRoot.append(errorState(err, () => renderResults(tableId))); return; }
@@ -489,9 +490,7 @@ async function renderResults(tableId = state.resultsTable || null) {
   }
   cols.forEach((c) => nav.append(el("div", { class: "res-col" },
     el("div", { class: "res-col-head" }, el("strong", null, c.name),
-      canBuild ? el("button", { class: "btn small secondary icon", title: "Add table", "aria-label": `Add table to ${c.name}`, onclick: () => openForm({
-        title: `New table in ${c.name}`, draftable: false, fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true }, { name: "description", label: "Description", type: "textarea", maxLength: 5000 }],
-        onSubmit: (v) => API.post(`/api/results/collections/${c.id}/tables`, v), onDone: () => renderResults(tableId) }) }, el("i", { class: "bi bi-plus" })) : null),
+      canBuild ? el("button", { class: "btn small secondary icon", title: "Add table", "aria-label": `Add table to ${c.name}`, onclick: () => resultsTableForm(c, tableId) }, el("i", { class: "bi bi-plus" })) : null),
     ...c.tables.map((t) => el("button", { type: "button", class: `res-table ${t.id === tableId ? "active" : ""}`, onclick: () => renderResults(t.id) },
       el("i", { class: "bi bi-table", "aria-hidden": "true" }), ` ${t.name}`, t.open_records ? el("span", { class: "count-pill" }, String(t.open_records)) : null)),
     c.tables.length ? null : el("p", { class: "muted small" }, "No tables"))));
@@ -541,16 +540,7 @@ async function renderResults(tableId = state.resultsTable || null) {
   }
   const fieldOptions = [{ value: "priority", label: "Priority" }, { value: "status", label: "Status" }, ...t.columns.map((c) => ({ value: c, label: c }))];
   if (state.resultsTab === "interpretations") {
-    if (canBuild) pane.append(el("div", { class: "actions" }, btn("New interpretation", () => openForm({
-      title: "New interpretation", draftable: false,
-      fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true },
-        { name: "chart", label: "Visualization", type: "select", required: true, options: [{ value: "bar", label: "Bar chart" }, { value: "donut", label: "Donut chart" }, { value: "metric", label: "Metric (count)" }, { value: "table", label: "Summary table" }] },
-        { name: "group_by", label: "Group by", type: "select", required: true, options: fieldOptions },
-        { name: "f_field", label: "Filter: field", type: "select", options: fieldOptions }, { name: "f_value", label: "Filter: value is", maxLength: 255, singleLine: true }],
-      initial: { chart: "bar", group_by: "priority" },
-      onSubmit: (v) => API.post(`/api/results/tables/${tableId}/interpretations`, { name: v.name, chart: v.chart, group_by: v.group_by,
-        filters: v.f_field && v.f_value ? [{ field: v.f_field, op: "is", value: v.f_value }] : [] }),
-      onDone: () => renderResults(tableId) }))));
+    if (canBuild) pane.append(el("div", { class: "actions" }, btn("New interpretation", () => interpretationForm(tableId, fieldOptions))));
     if (!t.interpretations.length) { pane.append(emptyState({ icon: "bar-chart", title: "No interpretations", text: "Save a chart of this table to use it in a storyboard." })); return; }
     const grid = el("div", { class: "prog-grid" });
     pane.append(grid);
@@ -564,25 +554,7 @@ async function renderResults(tableId = state.resultsTable || null) {
     return;
   }
   // triggers
-  if (canBuild) pane.append(el("div", { class: "actions" }, btn("New", () => openForm({
-    title: "New trigger", draftable: false, width: 720,
-    fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true },
-      { name: "match", label: "Conditions must match", type: "select", required: true, options: ["ALL", "ANY"] },
-      { name: "c_priority", label: "When Priority is", type: "select", options: t.priorities },
-      { name: "c_status", label: "When Status is", type: "select", options: t.statuses },
-      { name: "a_assign", label: "Assign > Users > Assignee", type: "select", options: people.map((p) => ({ value: p.id, label: p.name })) },
-      { name: "a_notify", label: "Notify", type: "checklist", full: true, options: people.map((p) => ({ value: p.id, label: p.name })) },
-      { name: "a_status", label: "Set Status", type: "select", options: t.statuses },
-      { name: "a_priority", label: "Set Priority", type: "select", options: t.priorities },
-      { name: "only_new", label: "Real-time > Record: only for new records", type: "checkbox" }],
-    initial: { match: "ALL", only_new: true },
-    onSubmit: (v) => {
-      const conditions = [...(v.c_priority ? [{ field: "priority", value: v.c_priority }] : []), ...(v.c_status ? [{ field: "status", value: v.c_status }] : [])];
-      const actions = [...(v.a_assign ? [{ type: "assign", user_id: Number(v.a_assign) }] : []), ...((v.a_notify || []).length ? [{ type: "notify", user_ids: v.a_notify.map(Number) }] : []),
-        ...(v.a_status ? [{ type: "status", value: v.a_status }] : []), ...(v.a_priority ? [{ type: "priority", value: v.a_priority }] : [])];
-      return API.post(`/api/results/tables/${tableId}/triggers`, { name: v.name, match: v.match, conditions, actions, only_new: !!v.only_new });
-    },
-    onDone: () => renderResults(tableId) }))));
+  if (canBuild) pane.append(el("div", { class: "actions" }, btn("New", () => resultsTriggerForm(tableId, t, people))));
   if (!t.triggers.length) { pane.append(emptyState({ icon: "lightning", title: "No triggers", text: "A trigger assigns, notifies or updates records that meet its conditions." })); return; }
   pane.append(el("table", { class: "dense" },
     el("thead", null, el("tr", null, ...["Trigger", "Conditions", "Actions", "Frequency", "Last run", ""].map((h) => el("th", { scope: "col" }, h)))),
@@ -595,6 +567,54 @@ async function renderResults(tableId = state.resultsTable || null) {
       el("td", { class: "actions-cell" }, canBuild ? [
         btn("Run", async () => { const r = await API.post(`/api/results/triggers/${g.id}/run`); toast(`${r.matched} record(s) matched`); renderResults(tableId); }, "secondary"),
         btn("Delete", () => confirmThen({ title: "Delete trigger", message: `Delete ${g.name}?`, confirmLabel: "Delete", onConfirm: async () => { await API.del(`/api/results/triggers/${g.id}`); renderResults(tableId); } }), "secondary")] : null))))));
+}
+
+function collectionForm(tableId) {
+  return openForm({
+  title: "Create collection", draftable: false,
+  fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true }, { name: "description", label: "Description", type: "textarea", maxLength: 5000 }],
+  onSubmit: (v) => API.post("/api/results/collections", v), onDone: () => { toast("Collection created"); renderResults(tableId); } });
+}
+
+function resultsTableForm(c, tableId) {
+  return openForm({
+  title: `New table in ${c.name}`, draftable: false, fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true }, { name: "description", label: "Description", type: "textarea", maxLength: 5000 }],
+  onSubmit: (v) => API.post(`/api/results/collections/${c.id}/tables`, v), onDone: () => renderResults(tableId) });
+}
+
+function interpretationForm(tableId, fieldOptions) {
+  return openForm({
+  title: "New interpretation", draftable: false,
+  fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true },
+    { name: "chart", label: "Visualization", type: "select", required: true, options: [{ value: "bar", label: "Bar chart" }, { value: "donut", label: "Donut chart" }, { value: "metric", label: "Metric (count)" }, { value: "table", label: "Summary table" }] },
+    { name: "group_by", label: "Group by", type: "select", required: true, options: fieldOptions },
+    { name: "f_field", label: "Filter: field", type: "select", options: fieldOptions }, { name: "f_value", label: "Filter: value is", maxLength: 255, singleLine: true }],
+  initial: { chart: "bar", group_by: "priority" },
+  onSubmit: (v) => API.post(`/api/results/tables/${tableId}/interpretations`, { name: v.name, chart: v.chart, group_by: v.group_by,
+    filters: v.f_field && v.f_value ? [{ field: v.f_field, op: "is", value: v.f_value }] : [] }),
+  onDone: () => renderResults(tableId) });
+}
+
+function resultsTriggerForm(tableId, t, people) {
+  return openForm({
+  title: "New trigger", draftable: false, width: 720,
+  fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true },
+    { name: "match", label: "Conditions must match", type: "select", required: true, options: ["ALL", "ANY"] },
+    { name: "c_priority", label: "When Priority is", type: "select", options: t.priorities },
+    { name: "c_status", label: "When Status is", type: "select", options: t.statuses },
+    { name: "a_assign", label: "Assign > Users > Assignee", type: "select", options: people.map((p) => ({ value: p.id, label: p.name })) },
+    { name: "a_notify", label: "Notify", type: "checklist", full: true, options: people.map((p) => ({ value: p.id, label: p.name })) },
+    { name: "a_status", label: "Set Status", type: "select", options: t.statuses },
+    { name: "a_priority", label: "Set Priority", type: "select", options: t.priorities },
+    { name: "only_new", label: "Real-time > Record: only for new records", type: "checkbox" }],
+  initial: { match: "ALL", only_new: true },
+  onSubmit: (v) => {
+    const conditions = [...(v.c_priority ? [{ field: "priority", value: v.c_priority }] : []), ...(v.c_status ? [{ field: "status", value: v.c_status }] : [])];
+    const actions = [...(v.a_assign ? [{ type: "assign", user_id: Number(v.a_assign) }] : []), ...((v.a_notify || []).length ? [{ type: "notify", user_ids: v.a_notify.map(Number) }] : []),
+      ...(v.a_status ? [{ type: "status", value: v.a_status }] : []), ...(v.a_priority ? [{ type: "priority", value: v.a_priority }] : [])];
+    return API.post(`/api/results/tables/${tableId}/triggers`, { name: v.name, match: v.match, conditions, actions, only_new: !!v.only_new });
+  },
+  onDone: () => renderResults(tableId) });
 }
 
 function interpretationVisual(d) {
@@ -618,9 +638,7 @@ async function renderStoryboards(id = null, edit = false) {
   navCrumbs("storyboards");
   const canBuild = hasPerm("oversight.reporting", "system.automation");
   if (!id) {
-    viewRoot.append(viewHeader("Storyboards", canBuild ? [btn("Add Storyboard", () => openForm({ title: "Add Storyboard", draftable: false,
-      fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true }],
-      onSubmit: (v) => API.post("/api/storyboards", { name: v.name, blocks: [] }), onDone: (sb) => renderStoryboards(sb.id, true) }))] : null,
+    viewRoot.append(viewHeader("Storyboards", canBuild ? [btn("Add Storyboard", () => newStoryboardForm())] : null,
     { sub: "Charts, metrics and text from Results, shared read-only" }));
     const list = await safeGet("/api/storyboards", []);
     const card = el("div", { class: "card" });
@@ -669,6 +687,12 @@ async function renderStoryboards(id = null, edit = false) {
   }
 }
 
+function newStoryboardForm() {
+  return openForm({ title: "Add Storyboard", draftable: false,
+  fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true }],
+  onSubmit: (v) => API.post("/api/storyboards", { name: v.name, blocks: [] }), onDone: (sb) => renderStoryboards(sb.id, true) });
+}
+
 async function shareStoryboard(sb) {
   const people = await safeGet("/api/results/people", []);
   openForm({
@@ -688,9 +712,7 @@ async function renderRobots(tab = state.robotsTab || "robots") {
   state.robotsTab = tab;
   clear(viewRoot);
   const canRun = hasPerm("system.automation");
-  viewRoot.append(viewHeader("Robots", canRun ? [btn("+ Create", () => openForm({ title: "Create robot", draftable: false,
-    fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true }, { name: "description", label: "Description", type: "textarea", maxLength: 5000 }],
-    onSubmit: (v) => API.post("/api/robots", v), onDone: () => renderRobots("robots") }))] : null,
+  viewRoot.append(viewHeader("Robots", canRun ? [btn("+ Create", () => newRobotForm())] : null,
   { sub: "Tasks run catalogue analytics on GIAW data, now or on a schedule, and publish the records into Results. No scripts run on the server." }));
   viewRoot.append(tabBar([{ key: "robots", label: "Robots and tasks" }, { key: "runs", label: "Task runs" }], tab, (k) => renderRobots(k)));
   const card = el("div", { class: "card" });
@@ -726,6 +748,12 @@ async function renderRobots(tab = state.robotsTab || "robots") {
           btn("Run now", async () => { try { const r = await API.post(`/api/robot-tasks/${t.id}/run`); toast(`Run ${r.status}: ${r.message}`, r.status === "Success" ? "" : "error"); renderRobots(); } catch (err) { toast(err.message, "error"); } }),
           btn(t.enabled ? "Turn off" : "Turn on", async () => { await API.patch(`/api/robot-tasks/${t.id}`, { enabled: !t.enabled }); renderRobots(); }, "secondary"),
           btn("Delete", () => confirmThen({ title: "Delete task", message: `Delete ${t.name}?`, confirmLabel: "Delete", onConfirm: async () => { await API.del(`/api/robot-tasks/${t.id}`); renderRobots(); } }), "secondary")] : null)))))) : el("p", { class: "muted small" }, "No tasks yet."))));
+}
+
+function newRobotForm() {
+  return openForm({ title: "Create robot", draftable: false,
+  fields: [{ name: "name", label: "Name", required: true, maxLength: 255, singleLine: true }, { name: "description", label: "Description", type: "textarea", maxLength: 5000 }],
+  onSubmit: (v) => API.post("/api/robots", v), onDone: () => renderRobots("robots") });
 }
 
 function robotTaskForm(robot, catalog) {

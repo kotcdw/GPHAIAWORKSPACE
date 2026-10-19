@@ -274,6 +274,38 @@ def test_shared_components(browser, base_url):
     ctx.close()
 
 
+def test_form_panel_stays_open_and_survives_refresh(browser, base_url):
+    """Creators open in a right-hand panel: no outside-click/Esc close, reopen after refresh, stay open after save."""
+    ctx, page, watch = _signed_in(browser, base_url)
+    tag = str(int(time.time() * 1000))[-7:]
+    page.evaluate("navigate('users')")
+    page.click("button:has-text('Add user')")
+    page.wait_for_selector(".form-panel")
+    page.fill(".form-panel input[name=full_name]", f"Panel User {tag}")
+    page.mouse.click(400, 500)
+    page.keyboard.press("Escape")
+    assert page.is_visible(".form-panel")
+    assert page.evaluate("document.body.classList.contains('has-form-panel')")
+    page.wait_for_timeout(300)
+    page.reload()
+    page.wait_for_selector(".form-panel", timeout=15000)
+    _wait_for(page, f"document.querySelector('.form-panel input[name=full_name]').value === 'Panel User {tag}'")
+    page.fill(".form-panel input[name=username]", f"panel{tag}")
+    page.fill(".form-panel input[name=email]", f"panel{tag}@example.com")
+    page.fill(".form-panel input[type=password]", "Panel-Pass-2026")
+    page.click(".form-panel .actions .btn:not(.secondary)")
+    page.wait_for_selector(".form-panel .form-banner.ok")
+    assert "Saved" in page.inner_text(".form-panel .form-banner")
+    assert page.is_disabled(".form-panel input[name=full_name]")
+    page.click(".form-panel .modal-close")
+    assert page.locator(".form-panel").count() == 0
+    page.reload()
+    page.wait_for_load_state("networkidle")
+    assert page.locator(".form-panel").count() == 0
+    assert not watch.take()
+    ctx.close()
+
+
 @pytest.mark.parametrize("width,label", [(768, "tablet"), (375, "phone")])
 def test_small_screens(browser, base_url, width, label):
     ctx, page, watch = _signed_in(browser, base_url, width=width, height=900)

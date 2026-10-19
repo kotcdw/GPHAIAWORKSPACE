@@ -22,21 +22,21 @@ function setRoute(hash) {
   };
 });
 
-// Reopen the page in the address bar. Returns true when it handled the route.
+// Reopen the page in the address bar. Returns a truthy value (the page's promise) when it handled the route.
 function restoreRoute() {
   const h = window.location.hash;
   let m = /^#\/audit\/(\d+)(?:\/([a-z_]+))?$/.exec(h);
-  if (m) { openAudit(Number(m[1]), m[2] || null); return true; }
+  if (m) return openAudit(Number(m[1]), m[2] || null) || true;
   m = /^#\/record\/([a-z_]+)\/(\d+)$/.exec(h);
-  if (m && typeof MODULES !== "undefined" && MODULES[m[1]] && viewAllowed(m[1])) { openRecord(m[1], Number(m[2])); return true; }
+  if (m && typeof MODULES !== "undefined" && MODULES[m[1]] && viewAllowed(m[1])) return openRecord(m[1], Number(m[2])) || true;
   m = /^#\/(plan|risk|regulation|policy|asset|entity|assessment)\/(\d+)$/.exec(h);
   if (m) {
     if (["entity", "assessment"].includes(m[1]) && !viewAllowed("universe")) return false;
     const fn = { plan: openPlan, risk: openRisk, regulation: openRegulation, policy: openPolicy, asset: openAsset, entity: openEntity, assessment: openAssessment }[m[1]];
-    if (typeof fn === "function") { fn(Number(m[2])); return true; }
+    if (typeof fn === "function") return fn(Number(m[2])) || true;
   }
   m = /^#\/([a-z_]+)$/.exec(h);
-  if (m && viewAllowed(m[1])) { navigate(m[1]); return true; }
+  if (m && viewAllowed(m[1])) return navigate(m[1]) || true;
   return false;
 }
 
@@ -192,6 +192,7 @@ async function signOut(message = "", { callServer = true, broadcast = true } = {
   state.csrf = null;
   API.csrf = null;
   document.querySelectorAll("#modalRoot .modal-backdrop").forEach((n) => n.remove());
+  closeFormPanels(); // still listed for this tab: they reopen after signing in again
   appView.classList.add("hidden");
   authView.classList.remove("hidden");
   if (message) notify(authMsg, message, "ok");
@@ -211,3 +212,6 @@ function handleSessionEnded(detail) {
   signOut(detail && detail !== "Not authenticated" ? detail : "Your session has ended. Sign in again to continue.",
     { callServer: false });
 }
+
+// Creator / editor panels reopen after a refresh: record the calls that open them.
+trackFormOpeners();

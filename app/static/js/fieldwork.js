@@ -560,12 +560,12 @@ async function renderAuditIssues(panel, audit, canWrite) {
 // Extra actions on the issue form: publish, review sign-off, request evidence.
 function issueExtraActions(f, auditId, canWrite, onSaved) {
   if (!f || !canWrite) return [];
-  const closeForm = () => document.querySelector(".modal-backdrop")?.remove();
+  const closeForm = () => closeFormPanel();
   return [
     !f.published ? el("button", { class: "btn secondary", type: "button", title: "Make the issue visible to the auditee and notify its owner", onclick: async () => {
       try { await API.post(`/api/findings/${f.id}/publish`); toast("Published - the owner has been notified"); closeForm(); onSaved(); } catch (err) { toast(err.message, "error"); }
     } }, el("i", { class: "bi bi-send" }), " Publish") : null,
-    el("button", { class: "btn secondary", type: "button", onclick: () => { closeForm(); openSignoffs("finding", f.id, auditId, `Issue #${f.id}`, onSaved); } },
+    el("button", { class: "btn secondary", type: "button", onclick: () => { openSignoffs("finding", f.id, auditId, `Issue #${f.id}`, onSaved); } },
       el("i", { class: "bi bi-pen" }), " Sign-offs"),
     hasPerm("audit.evidence") ? el("button", { class: "btn secondary", type: "button", onclick: () => requestEvidenceDialog(auditId, { type: "finding", id: f.id, label: `Issue #${f.id}` }, onSaved) },
       el("i", { class: "bi bi-paperclip" }), " Request evidence") : null,
@@ -767,7 +767,7 @@ async function scopingDialog(audit, reload) {
           ...g.controls.map((c) => el("tr", { class: "no-click" }, el("td", null, el("span", { class: "ref" }, c.ref), ` ${c.title}`), el("td", null, wp ? "Procedure" : "Control"),
             el("td", null, c.in_audit ? el("span", { class: "outcome ok" }, "Already in") : el("span", { class: "outcome" }, "Will be added"))))))))))
       : emptyState({ icon: "link-45deg", title: "Nothing linked yet", text: "Link enterprise risks and standard controls to the entity or its processes (Process library > Risks & controls)." }));
-  const m = modal({ title: "Detailed scoping from the auditable entities", width: 820, body,
+  const m = modal({ drawer: true, title: "Detailed scoping from the auditable entities", width: 820, body,
     footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", type: "button", onclick: () => m.close() }, "Cancel"),
       el("button", { class: "btn", type: "button", disabled: fresh ? null : "1", onclick: async () => {
         try {

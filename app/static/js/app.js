@@ -42,7 +42,10 @@ function toast(text, kind = "ok") {
 }
 
 // Generic modal. `body` is a node; `footer` optional node (buttons).
-function modal({ title, body, footer, width, onClose }) {
+// `drawer: true` opens it as a right-hand form panel instead (see formPanel in forms.js).
+// Clicking outside a dialog never closes it.
+function modal({ title, body, footer, width, onClose, drawer = false }) {
+  if (drawer) return formPanel({ title, body, footer, width, onClose });
   const root = qs("#modalRoot");
   const backdrop = el("div", { class: "modal-backdrop" });
   let closed = false;
@@ -72,7 +75,6 @@ function modal({ title, body, footer, width, onClose }) {
     else if (!backdrop.contains(document.activeElement)) { first.focus(); e.preventDefault(); }
   };
   document.addEventListener("keydown", onKey, true);
-  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) close(); });
   const dialog = el("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId, style: width ? `width:${width}px` : null },
     el("div", { class: "modal-head" }, el("h3", { id: titleId }, title),
       el("button", { class: "modal-close", type: "button", onclick: () => close(), title: "Close", "aria-label": "Close dialog" }, "\u00d7")),
@@ -550,11 +552,16 @@ function showApp() {
   if (typeof Idle !== "undefined") Idle.start(state.idleMinutes);
   // Deep link from an e-mail: #open/<type>/<id>
   const link = /^#open\/([a-z_]+)\/(\d+)$/.exec(window.location.hash);
-  if (link) { history.replaceState(null, "", window.location.pathname); openLink(link[1], Number(link[2])); return; }
+  let routed;
+  if (link) { history.replaceState(null, "", window.location.pathname); routed = openLink(link[1], Number(link[2])); }
   // A refresh (or signing in again after an idle sign-out) reopens the page in the address bar.
-  if (typeof restoreRoute === "function" && restoreRoute()) return;
-  const home = isCommittee() ? "governance" : state.user.role === "Auditee" ? "portal" : "dashboard";
-  navigate(state.view && viewAllowed(state.view) && !(isCommittee() && state.view === "dashboard") ? state.view : home);
+  else routed = typeof restoreRoute === "function" && restoreRoute();
+  if (!routed) {
+    const home = isCommittee() ? "governance" : state.user.role === "Auditee" ? "portal" : "dashboard";
+    routed = navigate(state.view && viewAllowed(state.view) && !(isCommittee() && state.view === "dashboard") ? state.view : home);
+  }
+  // ...and the form panels that were open in this tab, with their typed entries.
+  Promise.resolve(routed).catch(() => {}).then(() => restoreFormPanels());
 }
 
 // ------------------------------------------------------------------ nav
@@ -1048,7 +1055,7 @@ async function linkPicker(title, endpoint, onPick, onDone) {
   let instance;
   body.append(field("Related record", select), msg);
   instance = modal({
-    title, body,
+    drawer: true, title, body,
     footer: el("div", { class: "actions" },
       el("button", { class: "btn secondary", onclick: () => instance.close() }, "Cancel"),
       el("button", { class: "btn", onclick: async () => {

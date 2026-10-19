@@ -221,7 +221,7 @@ async function programEditor(p) {
       paint();
     } }, el("i", { class: "bi bi-plus" }), " Add step") : null);
   const m = modal({
-    title: p ? `${p.prog_ref} · ${p.name}` : "New audit programme", width: 900, body,
+    drawer: true, title: p ? `${p.prog_ref} · ${p.name}` : "New audit programme", width: 900, body,
     footer: canEdit ? el("div", { class: "actions" },
       p ? el("button", { class: "btn secondary", onclick: async () => {
         try { await API.patch(`/api/audit-programs/${p.id}`, { status: p.status === "Active" ? "Retired" : "Active" }); m.close(); renderProgramsPage(); }
@@ -246,7 +246,7 @@ async function applyProgramDialog(audit, onDone) {
   const preferred = rows.filter((r) => !audit.audit_type || !r.audit_type || r.audit_type === audit.audit_type);
   const pick = el("select", { "aria-label": "Programme" }, ...(preferred.length ? preferred : rows).map((r) =>
     el("option", { value: r.id }, `${r.prog_ref} · ${r.name} (${r.step_count} steps${r.audit_type ? ` · ${r.audit_type}` : ""})`)));
-  const m = modal({ title: "Apply an audit programme", body: el("div", null,
+  const m = modal({ drawer: true, title: "Apply an audit programme", body: el("div", null,
     el("p", { class: "muted small" }, audit.workflow === "Workplan"
       ? "The programme's objectives and risks are added to this audit's Workplan, and each step becomes a procedure addressing its risk. Objectives with the same name are reused."
       : "The programme's objectives, risks, controls and test steps are added to this audit's risk & control matrix. Objectives with the same name are reused."),

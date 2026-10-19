@@ -328,7 +328,7 @@ function importDialog({ title, templateKind, path, intro, onDone }) {
     else if (r && r.errors && r.errors.length) out.replaceChildren(el("div", { class: "form-banner error" }, "The import stopped; nothing was written."), importProblems(r.errors));
   });
   instance = modal({
-    title, width: 720,
+    drawer: true, title, width: 720,
     body: el("div", null,
       intro ? el("p", { class: "muted small" }, intro) : null,
       el("p", null, el("a", { href: `/api/import/${templateKind}/template.xlsx`, class: "btn small secondary" }, el("i", { class: "bi bi-download" }), " Download the template")),

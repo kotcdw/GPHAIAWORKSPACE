@@ -14,6 +14,8 @@
 //     fails - only a successful save removes it.
 // Password fields are never written to drafts.
 //
+// Forms open in a right-hand panel (see formPanel below).
+//
 // Loaded after api.js and before planning.js/app.js. Uses el/modal/toast
 // helpers from app.js at call time.
 
@@ -201,8 +203,15 @@ function _validateField(f, value) {
 function mountForm(container, opts) {
   const {
     key, meta = {}, fields, initial = {}, submitLabel = "Save", onSubmit, validate,
-    intro, extra, onDone, actions = [], draftable = true, columns = 2,
+    intro, extra, onDone, actions = [], draftable = true, columns = 2, keepInTab = false,
   } = opts;
+  // Forms without server drafts still keep their entries in this tab while their panel is open (survives a refresh).
+  const tabKey = keepInTab && !draftable && key ? `gpha.pv.${typeof state !== "undefined" && state.user ? state.user.id : "anon"}.${key}` : null;
+  const tabStore = {
+    read() { try { return tabKey ? JSON.parse(sessionStorage.getItem(tabKey) || "null") : null; } catch { return null; } },
+    write(v) { try { if (tabKey) sessionStorage.setItem(tabKey, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+    clear() { try { if (tabKey) sessionStorage.removeItem(tabKey); } catch { /* storage unavailable */ } },
+  };
   const nodes = {};
   const errs = {};
   const banner = el("div", { class: "form-banner hidden" });
@@ -228,6 +237,8 @@ function mountForm(container, opts) {
     .filter((f) => nodes[f.name] && f.type !== "password" && !f.noDraft)
     .map((f) => [f.name, _rawValue(f, nodes[f.name])]));
   const baseline = JSON.stringify(rawValues());
+  const kept = tabStore.read();
+  if (kept) fields.forEach((f) => { if (nodes[f.name] && f.type !== "password" && !f.noDraft && f.name in kept) _setValue(f, nodes[f.name], kept[f.name]); });
 
   function showError(name, message) {
     const node = nodes[name];
@@ -288,6 +299,7 @@ function mountForm(container, opts) {
     const name = e.target.name || e.target.closest("[data-name]")?.dataset.name;
     const f = fields.find((x) => x.name === name);
     if (f && errs[name] && errs[name].textContent) showError(name, _validateField(f, _getValue(f, nodes[name])) || "");
+    if (tabKey) tabStore.write(rawValues());
     saveDraft();
   };
   grid.addEventListener("input", onInput);
@@ -340,6 +352,7 @@ function mountForm(container, opts) {
       clearTimeout(serverTimer);
       await saving.catch(() => {});
       if (draftable && key) await Drafts.discard(key);
+      tabStore.clear();
       dirty = false;
       refreshDraftCount();
       statusLine.textContent = "";
@@ -373,36 +386,216 @@ function mountForm(container, opts) {
     el("div", { class: "actions" }, ...actions, draftBtn, submitBtn));
   container.append(body);
 
+  let locked = false;
+  function lock(text) {
+    locked = true;
+    clearTimeout(serverTimer);
+    grid.querySelectorAll("input, select, textarea, button").forEach((n) => { n.disabled = true; });
+    footer.querySelector(".actions")?.classList.add("hidden");
+    statusLine.textContent = "";
+    setBanner(text, "ok");
+  }
+
   restoreDraft();
   return {
-    body, footer, submit, values, saveDraft, nodes,
+    body, footer, submit, values, saveDraft, nodes, lock, forgetTabCopy: () => tabStore.clear(),
     get dirty() { return dirty; },
+    get locked() { return locked; },
     flush: () => saveDraft(true),
   };
 }
 
-// Modal form.
+// ------------------------------------------------------------------ form panels
+// Every creator / editor opens as a panel docked at the right of the workspace:
+//   * clicking elsewhere in the app or pressing Esc never closes it - only its
+//     x / Close buttons do, so a half-filled form is never lost by accident;
+//   * the open panels are remembered in this browser tab and reopen (with the
+//     typed entries, from the draft) after a page refresh or signing in again;
+//   * after a successful save the panel stays open, locked, showing "Saved",
+//     until the person closes it.
+
+const FormPanels = [];
+
+const OpenPanels = {
+  _key() {
+    const uid = typeof state !== "undefined" && state.user ? state.user.id : "anon";
+    return `gpha.panels.${uid}`;
+  },
+  list() {
+    try { return JSON.parse(sessionStorage.getItem(this._key()) || "[]"); } catch { return []; }
+  },
+  _save(list) { try { sessionStorage.setItem(this._key(), JSON.stringify(list)); } catch { /* storage unavailable */ } },
+  add(entry) { this._save([...this.list().filter((e) => e.id !== entry.id), entry]); },
+  remove(id) { if (id) this._save(this.list().filter((e) => e.id !== id)); },
+};
+
+// Calls to the functions that open forms are recorded (name + arguments) so a
+// refresh can open the same form again. Callbacks are replaced by "reload the
+// page" on restore; calls that receive page elements cannot be replayed.
+const _formCalls = [];
+function _encodeArgs(args) {
+  const out = [];
+  for (const a of args) {
+    if (typeof a === "function") out.push({ __reload: 1 });
+    else if (a === undefined) out.push({ __undef: 1 });
+    else if ((typeof Node !== "undefined" && a instanceof Node) || (typeof Event !== "undefined" && a instanceof Event)) return null;
+    else out.push(a);
+  }
+  try { return JSON.parse(JSON.stringify(out)); } catch { return null; }
+}
+function _decodeArgs(args) {
+  return (args || []).map((a) => {
+    if (a && typeof a === "object" && !Array.isArray(a)) {
+      if (a.__reload) return reloadCurrentPage;
+      if (a.__undef) return undefined;
+    }
+    return a;
+  });
+}
+function reloadCurrentPage() {
+  if (!(typeof restoreRoute === "function" && restoreRoute()) && typeof navigate === "function") navigate(state.view);
+}
+
+// Wrap every global function that opens a form panel (called once, after all scripts load).
+function trackFormOpeners() {
+  const skip = new Set(["openForm", "formPanel", "modal", "mountForm", "inlineForm", "trackFormOpeners"]);
+  Object.getOwnPropertyNames(window).forEach((name) => {
+    if (skip.has(name)) return;
+    let fn;
+    try { fn = window[name]; } catch { return; }
+    if (typeof fn !== "function" || fn.__formTracked) return;
+    let src = "";
+    try { src = Function.prototype.toString.call(fn); } catch { return; }
+    if (!src.includes("openForm(") && !src.includes("drawer: true")) return;
+    const tracked = function trackedFormOpener(...args) {
+      const call = { name, args };
+      _formCalls.push(call);
+      const done = () => { const i = _formCalls.indexOf(call); if (i >= 0) _formCalls.splice(i, 1); };
+      let res;
+      try { res = fn.apply(this, args); } catch (err) { done(); throw err; }
+      if (res && typeof res.then === "function") res.then(done, done); else done();
+      return res;
+    };
+    tracked.__formTracked = true;
+    try { window[name] = tracked; } catch { /* read-only global */ }
+  });
+}
+
+function _layoutPanels() {
+  const top = FormPanels[FormPanels.length - 1];
+  document.body.classList.toggle("has-form-panel", !!top);
+  if (top) document.body.style.setProperty("--dock-w", `${top.width}px`);
+  else document.body.style.removeProperty("--dock-w");
+  FormPanels.forEach((p, i) => p.root.classList.toggle("is-covered", i < FormPanels.length - 1));
+}
+
+// A panel docked at the right. Same call shape as modal(); returns { close, root, forget }.
+function formPanel({ title, body, footer, width = 760, onClose, persistId = null }) {
+  const host = qs("#drawerRoot") || document.body;
+  // A form replaces an open (centred) dialog, as before; confirmations opened later stack on top.
+  document.querySelectorAll("#modalRoot .modal-backdrop").forEach((n) => n.remove());
+  const opener = document.activeElement;
+  const titleId = `pnl-${Math.random().toString(36).slice(2, 8)}`;
+  const w = Math.max(420, Math.min(Number(width) || 760, 980));
+  let closed = false;
+  const call = _formCalls[_formCalls.length - 1];
+  const id = persistId || title;
+  const inst = { width: w, id };
+  const close = (submitted = false) => {
+    if (closed) return;
+    closed = true;
+    inst.root.remove();
+    const i = FormPanels.indexOf(inst);
+    if (i >= 0) FormPanels.splice(i, 1);
+    OpenPanels.remove(id);
+    _layoutPanels();
+    const next = FormPanels[FormPanels.length - 1];
+    if (opener && opener.focus && document.contains(opener)) opener.focus({ preventScroll: true });
+    else if (next) next.root.focus({ preventScroll: true });
+    if (onClose) onClose(submitted === true);
+  };
+  inst.root = el("section", { class: "modal form-panel", role: "dialog", "aria-labelledby": titleId, tabindex: "-1", style: `--drawer-w:${w}px` },
+    el("div", { class: "modal-head" }, el("h3", { id: titleId }, title),
+      el("button", { class: "modal-close", type: "button", onclick: () => close(), title: "Close", "aria-label": "Close panel" }, "\u00d7")),
+    el("div", { class: "modal-body" }, body),
+    footer ? el("div", { class: "modal-foot" }, footer) : null);
+  inst.close = close;
+  inst.forget = () => OpenPanels.remove(id);
+  host.append(inst.root);
+  FormPanels.push(inst);
+  _layoutPanels();
+  const args = call ? _encodeArgs(call.args) : null;
+  OpenPanels.add({ id, title, route: window.location.hash, call: call && args ? { name: call.name, args } : null });
+  setTimeout(() => {
+    const target = inst.root.querySelector(".modal-body input:not([disabled]), .modal-body select:not([disabled]), .modal-body textarea:not([disabled])")
+      || inst.root.querySelector(".modal-close");
+    if (target) target.focus({ preventScroll: true });
+  }, 0);
+  return inst;
+}
+
+function closeFormPanels() {
+  [...FormPanels].reverse().forEach((p) => { p.root.remove(); });
+  FormPanels.length = 0;
+  _layoutPanels();
+}
+
+// The panel holding `node` (or the top one) - for actions inside a form that finish the job another way.
+function closeFormPanel(node = null) {
+  const p = (node && FormPanels.find((x) => x.root.contains(node))) || FormPanels[FormPanels.length - 1];
+  if (p) p.close(true);
+}
+
+// After a refresh / sign-in: open again the panels that were open in this tab.
+async function restoreFormPanels() {
+  const list = OpenPanels.list();
+  if (!list.length) return;
+  for (const entry of list) {
+    if (FormPanels.some((p) => p.id === entry.id)) continue;
+    OpenPanels.remove(entry.id);
+    try {
+      if (entry.call && typeof window[entry.call.name] === "function") {
+        await window[entry.call.name](..._decodeArgs(entry.call.args));
+      } else {
+        const prefix = Object.keys(FormOpeners).sort((a, b) => b.length - a.length).find((p) => entry.id.startsWith(p));
+        if (prefix) await FormOpeners[prefix](entry.id, { form_key: entry.id, ...((Drafts.readLocal(entry.id) || {}).meta || {}) });
+      }
+    } catch { /* the record is gone or no longer allowed: leave it closed */ }
+  }
+}
+
+// Form in a right-hand panel.
 function openForm(opts) {
-  let handle;
+  const id = opts.key || opts.title;
+  const existing = FormPanels.find((p) => p.id === id && p.handle);
+  if (existing) { existing.root.focus({ preventScroll: true }); return existing.handle; }
   const holder = el("div");
   let instance;
-  handle = mountForm(holder, {
+  const handle = mountForm(holder, {
     ...opts,
-    onDone: (result) => { instance.close(true); if (opts.onDone) opts.onDone(result); },
+    keepInTab: true,
+    onDone: (result) => {
+      instance.forget();
+      handle.lock(`Saved ${formatClock(zonedParts(new Date()))}. Close this panel when you have finished.`);
+      if (opts.onDone) opts.onDone(result);
+    },
   });
-  instance = modal({
+  instance = formPanel({
     title: opts.title,
     body: handle.body,
     footer: el("div", { class: "form-foot-wrap" },
       el("button", { class: "btn secondary", type: "button", onclick: () => instance.close() }, "Close"), handle.footer),
     width: opts.width || 760,
+    persistId: id,
     onClose: (submitted) => {
-      if (!submitted && handle.dirty) {
+      handle.forgetTabCopy();
+      if (!submitted && handle.dirty && !handle.locked) {
         handle.flush();
         toast("Draft kept - reopen this form to continue where you left off");
       }
     },
   });
+  instance.handle = handle;
   return handle;
 }
 

@@ -188,10 +188,15 @@ Everything you type in a form is saved automatically until you submit it.
 
 ## 1.8 Forms, drafts and signatures (how every form behaves)
 
-1. Required fields have a red **\***. Errors appear under the field in plain words.
-2. Drafts save as you type (*"Draft saved HH:MM"*). **Save draft** keeps the form for later.
-3. Click the main button (**Create**, **Save**, **Save changes**…). If something is wrong: *"Please correct N field(s) highlighted below. Your entries are saved as a draft."*
-4. Closing a changed form keeps the draft. Reopening it shows *"Restored your unsaved entries from…"* with **Discard draft**.
+1. Every form for creating or editing a record opens in a **panel on the right** of the workspace. You can still read and click the page on the left.
+2. The panel does **not** close when you click elsewhere or press **Esc**. It closes only when you click **×** or **Close**.
+3. Required fields have a red **\***. Errors appear under the field in plain words.
+4. Drafts save as you type (*"Draft saved HH:MM"*). **Save draft** keeps the form for later.
+5. If you refresh the page (or sign in again after being signed out), the panels you had open come back with what you typed.
+6. Click the main button (**Create**, **Save**, **Save changes**…). If something is wrong: *"Please correct N field(s) highlighted below. Your entries are saved as a draft."*
+7. After a successful save the panel stays open, locked, with *"Saved HH:MM. Close this panel when you have finished."* Check the result, then click **Close**.
+8. Closing a changed form before saving keeps the draft. Reopening it shows *"Restored your unsaved entries from…"* with **Discard draft**.
+9. A form opened from inside another (for example **Request evidence** from an issue) opens on top. Closing it shows the first one again.
 
 **Electronic signature dialog.** Used for every approval. It says *"By signing you certify this action. Your password is verified and never stored."*
 
@@ -1191,7 +1196,7 @@ Engagement quality reviews are done on each audit's **Reviews** tab (10.9). Here
 
 1. Click **+ Add user**.
 2. Fill **Full name**, **Username**, **Email**, **Role**, **Initial password** (at least 8 characters).
-3. Click **Create user**.
+3. Click **Create user**. The panel shows *"Saved"*; click **Close**.
 4. Click the new user's row. In **Role** choose the job role (*Super Administrator, Administrator, Manager, Auditor, Read-only User, Audit Client*). For a **Manager**, choose the approval level: **Unit Head**, **Audit Manager**, **PIA** or **GM Audit (CAE)**. The change saves at once and the person is signed out.
 5. **Edit details** › **Workplace** (decides which port's audits they see) › **Save changes**.
 

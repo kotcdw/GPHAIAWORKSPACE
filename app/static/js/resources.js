@@ -120,7 +120,7 @@ function controlsImportDialog(frameworks) {
   const sel = el("select", { id: "imp-fw" }, ...frameworks.map((f) => el("option", { value: f.id }, `${f.code} · ${f.name}`)));
   const file = el("input", { type: "file", id: "imp-file", accept: ".csv,text/csv" });
   const out = el("div");
-  const m = modal({ title: "Import standard controls (CSV)", width: 640,
+  const m = modal({ drawer: true, title: "Import standard controls (CSV)", width: 640,
     body: el("div", null,
       el("p", { class: "muted small" }, "Columns: ref, title, description, process_area, risk_statement, control_type, nature, frequency, is_key, test_procedure. A ref that already exists in the framework is updated. Save from Excel as CSV UTF-8."),
       el("a", { href: "/api/library/controls/template.csv" }, el("i", { class: "bi bi-download" }), " Download the template"),
@@ -167,7 +167,7 @@ async function fromLibraryDialog(o, reload) {
   const risks = o.risks.map((r) => { const b = el("input", { type: "checkbox", id: `lr-${r.id}`, value: r.id }); return [b, el("label", { class: "check", for: `lr-${r.id}` }, b, ` ${r.ref} ${r.title}`)]; });
   const tests = el("input", { type: "checkbox", id: "lp-tests", checked: "1" });
   paint();
-  const m = modal({ title: `Add controls from the library to ${o.ref}`, width: 820,
+  const m = modal({ drawer: true, title: `Add controls from the library to ${o.ref}`, width: 820,
     body: el("div", null, el("div", { class: "actions", style: "margin-bottom:8px" }, area, q), listBox,
       o.risks.length ? el("div", null, el("h4", null, "Map them to these risks"), ...risks.map((x) => x[1])) : el("p", { class: "muted small" }, "This objective has no risks yet; you can map the controls later."),
       el("label", { class: "check", for: "lp-tests" }, tests, " Create a test from each suggested procedure")),
@@ -315,7 +315,7 @@ function bookingForm(b, t) {
     validate: (v) => (v.kind === "Engagement" && !v.plan_engagement_id ? { plan_engagement_id: "Choose the engagement" }
       : (v.end_date && v.start_date && v.end_date < v.start_date ? { end_date: "The end is before the start" } : null)),
     actions: b ? [el("button", { class: "btn danger-ghost", type: "button", onclick: async () => {
-      try { await API.del(`/api/schedule/bookings/${b.id}`); document.querySelector(".modal-backdrop")?.remove(); toast("Booking removed"); renderScheduler(); }
+      try { await API.del(`/api/schedule/bookings/${b.id}`); closeFormPanel(); toast("Booking removed"); renderScheduler(); }
       catch (err) { toast(err.message, "error"); }
     } }, "Remove")] : [],
     submitLabel: b ? "Save" : "Book",

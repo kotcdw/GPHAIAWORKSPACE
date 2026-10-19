@@ -684,7 +684,7 @@ function mapUnitsDialog(processIds, units, mode, proc = null) {
     selected: proc ? proc.units.map((u) => u.id) : [], placeholder: "Search units" });
   const err = el("div", { class: "field-error", role: "alert" });
   const save = el("button", { class: "btn", type: "button" }, "Save");
-  const m = modal({ title: proc ? `Units performing ${proc.name}` : `Map ${processIds.length} process${processIds.length === 1 ? "" : "es"} to units`, width: 560,
+  const m = modal({ drawer: true, title: proc ? `Units performing ${proc.name}` : `Map ${processIds.length} process${processIds.length === 1 ? "" : "es"} to units`, width: 560,
     body: el("div", null, mode === "add" ? el("p", { class: "muted small" }, "The units are added to each selected process.") : null, picker.root, err),
     footer: el("div", { class: "actions end" }, el("button", { class: "btn secondary", type: "button", onclick: () => m.close() }, "Cancel"), save) });
   save.addEventListener("click", async () => {
@@ -1287,7 +1287,7 @@ async function addAssessmentWizard(preset = {}) {
       m.close(true); toast("Audit risk assessment added (Draft)"); openAssessment(a.id);
     } catch (e2) { err.textContent = e2.message; if (e2.errors && e2.errors[0] && e2.errors[0].field === "name") { st.step = 0; paint(); err.textContent = e2.message; } }
   });
-  const m = modal({ title: "Add audit risk assessment", width: 860, body: el("div", null, bodyBox, err),
+  const m = modal({ drawer: true, title: "Add audit risk assessment", width: 860, body: el("div", null, bodyBox, err),
     footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", type: "button", onclick: () => m.close() }, "Cancel"), el("div", { class: "actions" }, back, next)) });
   paint();
 }

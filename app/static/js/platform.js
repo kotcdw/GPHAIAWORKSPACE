@@ -47,7 +47,7 @@ function aiReview(title, rows, onAccept) {
           el("div", null, el("div", { class: "muted small" }, "Current"), el("div", { class: "ai-text" }, r.current || el("span", { class: "muted" }, "(empty)"))),
           el("div", null, el("div", { class: "muted small" }, "AI draft"), el("div", { class: "ai-text ai-draft" }, r.draft))));
     }));
-  const m = modal({ title, body, width: 900,
+  const m = modal({ drawer: true, title, body, width: 900,
     footer: el("div", { class: "form-foot-wrap" },
       el("button", { class: "btn secondary", type: "button", onclick: () => m.close() }, "Discard"),
       el("button", { class: "btn", type: "button", onclick: () => {
@@ -96,7 +96,7 @@ function aiRiskAction(o, reload) {
           r.description ? el("div", { class: "muted small" }, r.description) : null,
           r.controls.length ? el("ul", { class: "small" }, ...r.controls.map((x) => el("li", null, x))) : null);
       }));
-    const m = modal({ title: `AI suggestions for ${o.ref}`, body, width: 760,
+    const m = modal({ drawer: true, title: `AI suggestions for ${o.ref}`, body, width: 760,
       footer: el("div", { class: "form-foot-wrap" },
         el("button", { class: "btn secondary", type: "button", onclick: () => m.close() }, "Discard"),
         el("button", { class: "btn", type: "button", onclick: async () => {

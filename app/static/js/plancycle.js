@@ -139,7 +139,7 @@ async function cycleUniverse(plan, reload) {
   let u;
   try { u = await API.get(`/api/assurance-plans/${plan.id}/cycle/universe`); } catch (err) { toast(err.message, "error"); return; }
   const notes = el("textarea", { rows: "4", maxlength: "8000", "aria-label": "Review notes", placeholder: "What was reviewed, ratings changed, new risks or units added" });
-  const m = modal({ title: "Risk / universe review", width: 760, body: el("div", null,
+  const m = modal({ drawer: true, title: "Risk / universe review", width: 760, body: el("div", null,
     el("div", { class: "stats" }, stat(u.units, "Active units"), stat(u.by_rating.High, "High risk", null, u.by_rating.High ? "warn" : ""),
       stat(u.by_rating.Medium, "Medium"), stat(u.by_rating.Low, "Low"), stat(u.due_count, "Due under the audit cycle", null, u.due_count ? "warn" : "")),
     u.due.length ? el("div", { class: "table-wrap", style: "max-height:240px;overflow:auto" }, el("table", { class: "compact" },

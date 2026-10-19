@@ -71,13 +71,7 @@ async function renderReportTab(panel, auditId, canWrite) {
     r.can_cae_approve ? el("button", { class: "btn small", onclick: () => eSignModal({
       title: "GM Audit approval - issue report", pathOverride: `/api/reports/${r.id}/cae-approve`, actionLabel: "Approve & issue",
       allowReject: true, onDone: reload }) }, el("i", { class: "bi bi-patch-check" }), " Approve & issue (e-sign)") : null,
-    r.can_correct ? el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: `Correct ${r.report_ref}`, key: `report:${r.id}:correct`, draftable: false, width: 640,
-      fields: [{ name: "reason", label: "Error or omission to correct", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
-      submitLabel: `Open version ${r.version + 1}`,
-      onSubmit: (v) => API.post(`/api/reports/${r.id}/correction`, v),
-      onDone: () => { toast(`Version ${r.version + 1} opened`); reload(); },
-    }) }, el("i", { class: "bi bi-arrow-repeat" }), " Correct") : null,
+    r.can_correct ? el("button", { class: "btn small secondary", onclick: () => reportCorrectionForm(r, reload) }, el("i", { class: "bi bi-arrow-repeat" }), " Correct") : null,
     el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/export.docx` }, el("i", { class: "bi bi-file-earmark-word" }), " Word"),
     el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/print`, target: "_blank", rel: "noopener" },
       el("i", { class: "bi bi-printer" }), " Print / PDF"));
@@ -126,6 +120,17 @@ async function renderReportTab(panel, auditId, canWrite) {
       el("tbody", null, ...r.signoffs.map((s) => el("tr", { class: "no-click" },
         el("td", null, s.role), el("td", null, s.name || el("span", { class: "muted" }, "Pending")),
         el("td", null, s.name && s.at ? fmtDate(s.at).split(",")[0] : "-"))))))));
+}
+
+// Open a corrected version of an issued report.
+function reportCorrectionForm(r, reload) {
+  return openForm({
+    title: `Correct ${r.report_ref}`, key: `report:${r.id}:correct`, draftable: false, width: 640,
+    fields: [{ name: "reason", label: "Error or omission to correct", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
+    submitLabel: `Open version ${r.version + 1}`,
+    onSubmit: (v) => API.post(`/api/reports/${r.id}/correction`, v),
+    onDone: () => { toast(`Version ${r.version + 1} opened`); reload(); },
+  });
 }
 
 async function reportVersionsCard(panel, r) {
@@ -220,17 +225,7 @@ function renderCapaFollowup(panel, c, refresh) {
     card.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-shield-exclamation" }),
       el("div", null, el("strong", null, RISK_STEP[c.risk_acceptance_status]), c.risk_acceptance,
         c.risk_acceptance_status === "Proposed" && state.user.review_level === "CAE" && ![c.risk_proposed_by, c.created_by].includes(state.user.id)
-          ? el("div", { class: "actions" }, el("button", { class: "btn small", onclick: () => openForm({
-            title: `Risk acceptance - ${c.capa_ref}`, key: `capa:${c.id}:riskdecide`, draftable: false, width: 640,
-            fields: [
-              { name: "decision", label: "Decision", type: "select", required: true, options: ["Agree", "Disagree"] },
-              { name: "comment", label: "Discussion with senior management and conclusion", type: "textarea", rows: 4, required: true, minLength: 10, maxLength: 5000 },
-            ],
-            initial: { decision: "Agree" },
-            submitLabel: "Record decision",
-            onSubmit: (v) => API.post(`/api/capa/${c.id}/risk-acceptance/decision`, v),
-            onDone: () => { toast("Decision recorded"); refresh(); },
-          }) }, el("i", { class: "bi bi-check2-square" }), " Decide")) : null)));
+          ? el("div", { class: "actions" }, el("button", { class: "btn small", onclick: () => capaRiskDecisionForm(c, refresh) }, el("i", { class: "bi bi-check2-square" }), " Decide")) : null)));
   }
   if (c.reopen_count) card.append(el("p", { class: "muted small" }, `Reopened ${c.reopen_count} time(s) after validation.`));
   card.append(longBlock("Implementation evidence", c.implementation_evidence, "Not recorded yet"));
@@ -251,45 +246,75 @@ function renderCapaFollowup(panel, c, refresh) {
   panel.append(capaTimelineCard(c));
 }
 
+// GM Audit decision on a proposed risk acceptance.
+function capaRiskDecisionForm(c, refresh) {
+  return openForm({
+    title: `Risk acceptance - ${c.capa_ref}`, key: `capa:${c.id}:riskdecide`, draftable: false, width: 640,
+    fields: [
+      { name: "decision", label: "Decision", type: "select", required: true, options: ["Agree", "Disagree"] },
+      { name: "comment", label: "Discussion with senior management and conclusion", type: "textarea", rows: 4, required: true, minLength: 10, maxLength: 5000 },
+    ],
+    initial: { decision: "Agree" },
+    submitLabel: "Record decision",
+    onSubmit: (v) => API.post(`/api/capa/${c.id}/risk-acceptance/decision`, v),
+    onDone: () => { toast("Decision recorded"); refresh(); },
+  });
+}
+
 // Revise the target date, accept the risk, reopen (follow-up manager: Audit Manager / CAE).
 function capaManageActions(card, c, refresh) {
   if (!hasPerm("followup.manage")) return;
   const btns = el("div", { class: "actions" });
   if (c.status !== "Closed" && c.due_date) {
-    btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: `Revise target date - ${c.capa_ref}`, key: `capa:${c.id}:extend`, draftable: false, width: 600,
-      intro: `Current target date: ${fmtDate(c.due_date).split(",")[0]}. The original date, the new date and your reason are kept in the follow-up timeline, and escalation restarts from the new date.`,
-      fields: [
-        { name: "due_date", label: "New target date", type: "date", required: true, notPast: true },
-        { name: "reason", label: "Reason (agreed with management)", type: "textarea", rows: 3, required: true, minLength: 10, maxLength: 2000 },
-      ],
-      submitLabel: "Revise target date",
-      onSubmit: (v) => API.patch(`/api/capa/${c.id}`, { due_date: `${v.due_date}T00:00:00`, due_date_reason: v.reason }),
-      onDone: () => { toast("Target date revised"); refresh(); },
-    }) }, el("i", { class: "bi bi-calendar-plus" }), " Revise target date"));
+    btns.append(el("button", { class: "btn small secondary", onclick: () => capaReviseDateForm(c, refresh) }, el("i", { class: "bi bi-calendar-plus" }), " Revise target date"));
   }
   if (c.status !== "Closed" && c.created_by !== state.user.id && !["Proposed", "Committee"].includes(c.risk_acceptance_status)) {
-    btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: `Propose risk acceptance - ${c.capa_ref}`, key: `capa:${c.id}:risk`, draftable: false, width: 640,
-      fields: [
-        { name: "accepted_by", label: "Accepted by (name and position)", required: true, minLength: 3, maxLength: 255, singleLine: true },
-        { name: "reason", label: "Why the risk is accepted, and any compensating controls", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 },
-      ],
-      submitLabel: "Send to the GM Audit",
-      onSubmit: (v) => API.post(`/api/capa/${c.id}/accept-risk`, v),
-      onDone: () => { toast("Sent to the GM Audit"); refresh(); },
-    }) }, el("i", { class: "bi bi-shield-exclamation" }), " Propose risk acceptance"));
+    btns.append(el("button", { class: "btn small secondary", onclick: () => capaRiskProposalForm(c, refresh) }, el("i", { class: "bi bi-shield-exclamation" }), " Propose risk acceptance"));
   }
   if (c.status === "Closed") {
-    btns.append(el("button", { class: "btn small secondary", onclick: () => openForm({
-      title: `Reopen ${c.capa_ref}`, key: `capa:${c.id}:reopen`, draftable: false, width: 600,
-      fields: [{ name: "reason", label: "Why the action is reopened", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
-      submitLabel: "Reopen",
-      onSubmit: (v) => API.post(`/api/capa/${c.id}/reopen`, v),
-      onDone: () => { toast("Action reopened"); refresh(); },
-    }) }, el("i", { class: "bi bi-arrow-counterclockwise" }), " Reopen"));
+    btns.append(el("button", { class: "btn small secondary", onclick: () => capaReopenForm(c, refresh) }, el("i", { class: "bi bi-arrow-counterclockwise" }), " Reopen"));
   }
   if (btns.childNodes.length) card.append(btns);
+}
+
+// Revise an action's target date.
+function capaReviseDateForm(c, refresh) {
+  return openForm({
+    title: `Revise target date - ${c.capa_ref}`, key: `capa:${c.id}:extend`, draftable: false, width: 600,
+    intro: `Current target date: ${fmtDate(c.due_date).split(",")[0]}. The original date, the new date and your reason are kept in the follow-up timeline, and escalation restarts from the new date.`,
+    fields: [
+      { name: "due_date", label: "New target date", type: "date", required: true, notPast: true },
+      { name: "reason", label: "Reason (agreed with management)", type: "textarea", rows: 3, required: true, minLength: 10, maxLength: 2000 },
+    ],
+    submitLabel: "Revise target date",
+    onSubmit: (v) => API.patch(`/api/capa/${c.id}`, { due_date: `${v.due_date}T00:00:00`, due_date_reason: v.reason }),
+    onDone: () => { toast("Target date revised"); refresh(); },
+  });
+}
+
+// Propose accepting the risk instead of implementing.
+function capaRiskProposalForm(c, refresh) {
+  return openForm({
+    title: `Propose risk acceptance - ${c.capa_ref}`, key: `capa:${c.id}:risk`, draftable: false, width: 640,
+    fields: [
+      { name: "accepted_by", label: "Accepted by (name and position)", required: true, minLength: 3, maxLength: 255, singleLine: true },
+      { name: "reason", label: "Why the risk is accepted, and any compensating controls", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 },
+    ],
+    submitLabel: "Send to the GM Audit",
+    onSubmit: (v) => API.post(`/api/capa/${c.id}/accept-risk`, v),
+    onDone: () => { toast("Sent to the GM Audit"); refresh(); },
+  });
+}
+
+// Reopen a closed action.
+function capaReopenForm(c, refresh) {
+  return openForm({
+    title: `Reopen ${c.capa_ref}`, key: `capa:${c.id}:reopen`, draftable: false, width: 600,
+    fields: [{ name: "reason", label: "Why the action is reopened", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
+    submitLabel: "Reopen",
+    onSubmit: (v) => API.post(`/api/capa/${c.id}/reopen`, v),
+    onDone: () => { toast("Action reopened"); refresh(); },
+  });
 }
 
 function capaEvidenceCard(c, refresh) {
@@ -1174,19 +1199,7 @@ async function renderCommittee(year = null, tab = state.committeeTab || "pack") 
 function exitMeetingCard(r, canWrite, refresh) {
   const held = !!r.exit_meeting_date;
   const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Exit meeting"),
-    canWrite && r.status !== "Issued" ? el("button", { class: "btn small secondary", onclick: () => openForm({
-      key: `exit:${r.id}`, title: "Exit meeting", width: 640,
-      meta: { title: `Exit meeting ${r.report_ref}`, record_type: "audit_report", record_id: r.id },
-      fields: [
-        { name: "meeting_date", label: "Date held", type: "date", required: true, notFuture: true },
-        { name: "attendees", label: "Attendees (names and roles)", type: "textarea", rows: 2, required: true, minLength: 3, maxLength: 5000, full: true },
-        { name: "notes", label: "What was agreed", type: "textarea", rows: 4, maxLength: 20000, full: true },
-      ],
-      initial: { meeting_date: r.exit_meeting_date, attendees: r.exit_meeting_attendees || "", notes: r.exit_meeting_notes || "" },
-      submitLabel: "Save",
-      onSubmit: (v) => API.put(`/api/reports/${r.id}/exit-meeting`, { ...v, meeting_date: `${v.meeting_date}T00:00:00` }),
-      onDone: () => { toast("Exit meeting recorded"); refresh(); },
-    }) }, el("i", { class: "bi bi-people" }), held ? " Edit" : " Record exit meeting") : null));
+    canWrite && r.status !== "Issued" ? el("button", { class: "btn small secondary", onclick: () => exitMeetingForm(r, refresh) }, el("i", { class: "bi bi-people" }), held ? " Edit" : " Record exit meeting") : null));
   if (!held) card.append(el("p", { class: "muted" }, "Hold the exit meeting with management to discuss the findings before the report is final."));
   else {
     card.append(el("dl", { class: "kv" }, el("dt", null, "Held on"), el("dd", null, fmtDate(r.exit_meeting_date).split(",")[0]),
@@ -1194,6 +1207,23 @@ function exitMeetingCard(r, canWrite, refresh) {
     if (r.exit_meeting_notes) card.append(longBlock("What was agreed", r.exit_meeting_notes, ""));
   }
   return card;
+}
+
+// Record the exit meeting.
+function exitMeetingForm(r, refresh) {
+  return openForm({
+    key: `exit:${r.id}`, title: "Exit meeting", width: 640,
+    meta: { title: `Exit meeting ${r.report_ref}`, record_type: "audit_report", record_id: r.id },
+    fields: [
+      { name: "meeting_date", label: "Date held", type: "date", required: true, notFuture: true },
+      { name: "attendees", label: "Attendees (names and roles)", type: "textarea", rows: 2, required: true, minLength: 3, maxLength: 5000, full: true },
+      { name: "notes", label: "What was agreed", type: "textarea", rows: 4, maxLength: 20000, full: true },
+    ],
+    initial: { meeting_date: r.exit_meeting_date, attendees: r.exit_meeting_attendees || "", notes: r.exit_meeting_notes || "" },
+    submitLabel: "Save",
+    onSubmit: (v) => API.put(`/api/reports/${r.id}/exit-meeting`, { ...v, meeting_date: `${v.meeting_date}T00:00:00` }),
+    onDone: () => { toast("Exit meeting recorded"); refresh(); },
+  });
 }
 
 // ==================================================================== review notes (supervision, GIAS 12.3)
@@ -1220,19 +1250,24 @@ async function renderReviewNotesTab(panelEl, audit) {
         el("div", null, n.response)) : null,
       n.cleared_at ? el("div", { class: "muted small" }, `Cleared by ${n.cleared_by_name}, ${fmtDate(n.cleared_at)}`) : null,
       el("div", { class: "actions" },
-        n.can_respond ? el("button", { class: "btn small secondary", onclick: () => openForm({
-          key: `note:respond:${n.id}`, title: "Answer review note", width: 560, draftable: true,
-          meta: { title: `Answer review note #${n.id}`, record_type: "audit", record_id: audit.id },
-          fields: [{ name: "response", label: "Your answer", type: "textarea", rows: 4, required: true, minLength: 3, maxLength: 5000, full: true }],
-          initial: { response: n.response || "" },
-          submitLabel: "Send answer",
-          onSubmit: (v) => API.post(`/api/review-notes/${n.id}/respond`, v),
-          onDone: () => { toast("Answer sent"); refresh(); },
-        }) }, n.response ? "Edit answer" : "Answer") : null,
+        n.can_respond ? el("button", { class: "btn small secondary", onclick: () => answerNoteForm(n, audit, refresh) }, n.response ? "Edit answer" : "Answer") : null,
         n.can_clear ? el("button", { class: "btn small", onclick: async () => {
           try { await API.post(`/api/review-notes/${n.id}/clear`); toast("Note cleared"); refresh(); } catch (err) { toast(err.message, "error"); }
         } }, el("i", { class: "bi bi-check2" }), " Clear") : null));
     card.append(item);
+  });
+}
+
+// Answer a review note.
+function answerNoteForm(n, audit, refresh) {
+  return openForm({
+    key: `note:respond:${n.id}`, title: "Answer review note", width: 560, draftable: true,
+    meta: { title: `Answer review note #${n.id}`, record_type: "audit", record_id: audit.id },
+    fields: [{ name: "response", label: "Your answer", type: "textarea", rows: 4, required: true, minLength: 3, maxLength: 5000, full: true }],
+    initial: { response: n.response || "" },
+    submitLabel: "Send answer",
+    onSubmit: (v) => API.post(`/api/review-notes/${n.id}/respond`, v),
+    onDone: () => { toast("Answer sent"); refresh(); },
   });
 }
 
