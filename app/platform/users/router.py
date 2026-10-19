@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session as DBSession
 from app.core import permissions as perms
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_perm
+from app.core.deps import require_active_user, require_perm
 from app.core.enums import utcnow
 from app.core.schemas import MessageOut
 from app.core.security import hash_password
@@ -46,6 +46,20 @@ def _last_sign_ins(db: DBSession, ids: list[int] | None = None) -> dict[int, dat
     if ids is not None:
         stmt = stmt.where(AuditLog.user_id.in_(ids))
     return dict(db.execute(stmt).all())
+
+
+@router.get("/directory")
+def staff_directory(db: DBSession = Depends(get_db), user: User = Depends(require_active_user)) -> list[dict]:
+    """Active internal audit staff, for choosing a lead auditor, an assignee or a reviewer. Names and approval
+    levels only; audit staff only (auditees do not browse the staff list)."""
+    from app.core.enums import Role
+
+    if user.role not in (Role.Admin, Role.Auditor):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="The staff directory is for audit staff")
+    rows = db.execute(select(User).where(User.is_active.is_(True), User.role.in_((Role.Admin, Role.Auditor)))
+                      .order_by(User.full_name, User.username)).scalars()
+    return [{"id": u.id, "name": u.full_name or u.username, "approval_level": u.review_level.value if u.review_level
+             else None} for u in rows]
 
 
 @router.get("/search")

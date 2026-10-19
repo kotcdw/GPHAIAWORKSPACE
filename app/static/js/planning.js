@@ -261,9 +261,11 @@ async function renderEngagements(panel, plan) {
   }
 }
 
+const APPROVAL_LABEL = { "Unit Head": "Unit Head", Manager: "Audit Manager", PIA: "PIA", CAE: "GM Audit" };
+
 async function addEngagement(plan, eng = null) {
   const units = await safeGet("/api/entity-units?active_only=true", []);
-  const leads = isAdmin() ? await safeGet("/api/users", null) : null; // user list is Admin-only
+  const leads = await safeGet("/api/users/directory", null);
   let sites = [];
   try { sites = await planSites(); } catch { /* optional */ }
   openForm({
@@ -279,7 +281,7 @@ async function addEngagement(plan, eng = null) {
       { name: "planned_quarter", label: "Quarter", type: "select", required: true, options: QUARTERS },
       { name: "budget_hours", label: "Budget hours", type: "number", min: 0, max: 10000 },
       ...(Array.isArray(leads) ? [{ name: "lead_auditor_id", label: "Lead auditor", type: "select", emptyLabel: "- not assigned -",
-        options: leads.filter((u) => u.is_active && u.role !== "Auditee").map((u) => ({ value: u.id, label: `${u.full_name || u.username} (${u.role})` })) }] : []),
+        options: leads.map((u) => ({ value: u.id, label: u.approval_level ? `${u.name} (${APPROVAL_LABEL[u.approval_level] || u.approval_level})` : u.name })) }] : []),
       { name: "rationale", label: "Rationale (risk, regulatory, management request ...)", type: "textarea", maxLength: 20000 },
     ],
     initial: eng || { planned_quarter: "Q1", budget_hours: 0 },
@@ -563,7 +565,8 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     { name: "status", label: "Status", type: "select", required: true, options: FINDING_STATUSES, disabled: ro,
       help: f && f.remediation ? `Remediation: ${f.remediation.state}${f.remediation.refs.length ? ` (${f.remediation.refs.join(", ")})` : ""}. A finding closes when its actions are verified as effective.` : "A finding closes when its remediation actions are verified as effective." },
     { name: "assigned_owner_email", label: "Owner", type: "email", disabled: ro, help: "The owner's e-mail; they are notified once the issue is published" },
-    { name: "condition", label: "Description", type: "textarea", maxLength: 20000, disabled: ro, full: true },
+    { name: "criteria", label: "Criteria (what should be)", type: "textarea", maxLength: 20000, disabled: ro, full: true },
+    { name: "condition", label: "Condition (what was found)", type: "textarea", maxLength: 20000, disabled: ro, full: true },
     { name: "recommendation", label: "Recommendation", type: "textarea", maxLength: 20000, disabled: ro },
     { type: "heading", label: "Show more" },
     { name: "effect", label: "Effect (Risk / Impact)", type: "textarea", maxLength: 20000, disabled: ro },

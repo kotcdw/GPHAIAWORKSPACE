@@ -979,13 +979,14 @@ async function renderTasksTab(panel, recordType, id) {
   panel.append(card);
   try {
     const data = await API.get("/api/tasks");
+    const names = await staffNames();
     const items = (data.items || data).filter((t) => t.source_type === recordType && t.source_id === id);
     if (!items.length) { card.append(el("div", { class: "empty" }, "No tasks linked to this record.")); return; }
     card.append(el("table", null,
       el("thead", null, el("tr", null, el("th", null, "Title"), el("th", null, "Assignee"), el("th", null, "Status"))),
       el("tbody", null, ...items.map((t) => el("tr", { class: "no-click" },
         el("td", null, t.system_generated ? el("span", null, el("i", { class: "bi bi-robot sys-task" }), " ", t.title) : t.title),
-        el("td", null, t.assignee_id ?? "-"),
+        el("td", null, names[t.assignee_id] || (t.assignee_id ? `#${t.assignee_id}` : "-")),
         el("td", null, badge(t.status)))))));
   } catch (err) { card.append(el("div", { class: "empty" }, err.message)); }
 }
@@ -1217,7 +1218,7 @@ async function renderTasks() {
     if (active === "assigned_to_me") qs2 = "?assigned_to_me=true";
     else if (active === "by_me") qs2 = "?by_me=true";
     else qs2 = "?status=Closed";
-    API.get(`/api/tasks${qs2}`).then((data) => {
+    Promise.all([API.get(`/api/tasks${qs2}`), staffNames()]).then(([data, names]) => {
       const items = data.items || data;
       if (!items.length) { card.append(el("div", { class: "empty" }, "No to-dos.")); return; }
       card.append(el("table", null,
@@ -1231,7 +1232,7 @@ async function renderTasks() {
           } }, "Save");
           return el("tr", { class: "no-click" },
             el("td", null, t.system_generated ? el("span", null, el("i", { class: "bi bi-robot sys-task" }), " ", t.title) : t.title),
-            el("td", null, t.assignee_id ?? "-"),
+            el("td", null, names[t.assignee_id] || (t.assignee_id ? `#${t.assignee_id}` : "-")),
             el("td", null, badge(t.status)),
             el("td", { class: "muted" }, fmtDate(t.due_date)),
             el("td", null, el("div", { class: "actions" }, sel, save)));
@@ -1241,20 +1242,31 @@ async function renderTasks() {
   paint();
 }
 
-function newTaskModal() {
+// Staff names by user id (audit staff only; auditees see the reference).
+async function staffNames() {
+  if (!state.staffNames) {
+    const d = state.user.role === "Auditee" ? [] : await safeGet("/api/users/directory", []);
+    state.staffNames = Object.fromEntries(d.map((u) => [u.id, u.name]));
+  }
+  return state.staffNames;
+}
+
+async function newTaskModal() {
+  const people = state.user.role === "Auditee" ? null : await safeGet("/api/users/directory", null);
   openForm({
     title: "New to-do",
     key: "task:new",
     meta: { title: "New to-do" },
     fields: [
       { name: "title", label: "Title", required: true, maxLength: 255, singleLine: true },
-      { name: "assignee_id", label: "Assignee user id", type: "number", min: 1, help: "Leave blank to keep it unassigned" },
+      ...(people ? [{ name: "assignee_id", label: "Assignee", type: "select", emptyLabel: "- unassigned -",
+        options: people.map((u) => ({ value: u.id, label: u.name })) }] : []),
       { name: "due_date", label: "Due date", type: "date", notPast: true },
       { name: "description", label: "Description", type: "textarea", maxLength: 20000 },
     ],
     submitLabel: "Create",
     onSubmit: (v) => API.post("/api/tasks", {
-      title: v.title, description: v.description || "", assignee_id: v.assignee_id,
+      title: v.title, description: v.description || "", assignee_id: v.assignee_id ? Number(v.assignee_id) : null,
       due_date: v.due_date ? `${v.due_date}T00:00:00` : null,
     }),
     onDone: () => { toast("To-do created"); renderTasks(); refreshDraftCount(); },
@@ -1383,7 +1395,7 @@ async function openAudit(id, startTab = null) {
         try { await API.post(`/api/audits/${id}/in-approval`); toast("Submitted for approval"); openAudit(id); }
         catch (err) { toast(err.message, "error"); }
       } }, "Submit for approval") : null,
-    isAdmin() && audit.status === "Review" ? el("button", { class: "btn small", onclick: () => eSignModal({
+    hasPerm("audit.close") && audit.status === "Review" ? el("button", { class: "btn small", onclick: () => eSignModal({
       title: "Close audit (e-sign)", recordType: "audit", recordId: id,
       pathOverride: `/api/audits/${id}/close`, actionLabel: "Sign & Close",
       onDone: () => openAudit(id) }) }, el("i", { class: "bi bi-pen" }), " Close (e-sign)") : null,
@@ -1403,6 +1415,7 @@ async function openAudit(id, startTab = null) {
     { key: "findings", label: `${termOf(terms, "issue", "Issue")}s` },
     ...(canWrite ? [{ key: "progress", label: "Progress" }] : []),
     { key: "evidence", label: `${termOf(terms, "request", "Request")}s` },
+    { key: "survey", label: "Survey" },
   ];
   const utility = [
     ...(canWrite ? [{ label: "Review notes", icon: "chat-square-text", key: "notes" }, { label: "Time entries", icon: "clock", key: "time" }] : []),
@@ -1441,6 +1454,7 @@ async function openAudit(id, startTab = null) {
     if (key === "quality") renderQualityTab(pane, audit);
     if (key === "progress") renderProgressTab(pane, audit);
     if (key === "findings") renderAuditIssues(pane, audit, canWrite);
+    if (key === "survey") renderSurveyTab(pane, audit);
     if (key === "report") {
       // Results: the report, then the supporting workpapers (Diligent: Results > Supporting Workpapers).
       const rep = el("div"); const wp = el("div", { class: "supporting-wp" });
@@ -1452,7 +1466,7 @@ async function openAudit(id, startTab = null) {
     if (key === "history") renderHistoryTab(pane, "audit", id);
     if (key === "approvals") renderApprovalsTab(pane, "audit", id);
   }
-  const legacy = { rcm: "fieldwork", papers: "report", survey: "dashboard" };
+  const legacy = { rcm: "fieldwork", papers: "report" };
   // Reloading the same audit (after a save) keeps the tab the user was on.
   const remembered = state.lastAuditTab && state.lastAuditTab.id === id ? state.lastAuditTab.key : null;
   layout.select(startTab ? (legacy[startTab] || startTab) : (remembered || "dashboard"));

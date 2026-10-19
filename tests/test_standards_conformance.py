@@ -264,3 +264,13 @@ def test_high_risk_acceptance_goes_to_the_committee(client, client2, db):
     assert capa.risk_acceptance_status == "Accepted"
     kinds = [e["kind"] for e in client.get(f"/api/capa/{cid}/timeline").json()]
     assert kinds.count("risk_proposed") == 2 and kinds[-1] == "risk_accepted"
+
+
+def test_staff_directory_is_for_audit_staff(client, client2, db):
+    staff = _u(db, "sc_dir", job="auditor")
+    login(client, staff.username)
+    rows = client.get("/api/users/directory").json()
+    assert any(r["id"] == staff.id for r in rows) and set(rows[0]) == {"id", "name", "approval_level"}
+    auditee = _u(db, "sc_dir_ae", Role.Auditee)
+    login(client2, auditee.username)
+    assert client2.get("/api/users/directory").status_code == 403
