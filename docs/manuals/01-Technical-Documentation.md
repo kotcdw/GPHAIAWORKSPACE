@@ -15,7 +15,7 @@ date: "Version 1.0 · 16 October 2026"
 | Code baseline | Repository `C:\dev\GPHAIAWORKSPACE`, commit `4e0d386`, database migration `0034_drop_workspace_prefs` |
 | Audience | Developers, technical administrators, IT security reviewers, support engineers |
 | Owner | GIAW system owner (GPHA Internal Audit), to be named |
-| Related documents | Technology Stack (02), Administration Guide (03), Governance & Operations (04), User Manual (05), Training Guide (06), QA report (`docs/qa/2026-10-15-e2e-qa-report.md`), `mainBLUEPRINT.md` |
+| Related documents | Technology Stack (02), Administration Guide (03), Governance & Operations (04), User Manual (05), Training Guide (06), `mainBLUEPRINT.md` |
 
 **Change history**
 

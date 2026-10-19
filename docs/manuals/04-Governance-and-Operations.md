@@ -55,7 +55,7 @@ GIAW replaces the retired *Audit Manager* application. It gives GPHA Internal Au
 
 # 3. Decision register
 
-The decisions below come from `mainBLUEPRINT.md` §13 and the QA report of 15 October 2026. The system has working defaults, but each one needs a formal GPHA decision before production.
+The decisions below come from `mainBLUEPRINT.md` §13. The system has working defaults, but each one needs a formal GPHA decision before production.
 
 | # | Decision needed | Current default in GIAW | Decided by | Status |
 |-----------|---------------------------------------------|---------------------------------------------|----------------------|-----------|

@@ -36,7 +36,6 @@ All documents are in `docs/manuals/` in the project folder. Each one exists as M
 | Production setup | `deploy/PRODUCTION.md` | Step-by-step production installation |
 | Go-live checklist | `deploy/GO-LIVE-CHECKLIST.md` | Readiness checks |
 | UI design notes | `docs/ui/00` to `06` | Inventory, reference matrix, design system, data flow, screen contracts, universe, HighBond comparison |
-| QA report | `docs/qa/2026-10-15-e2e-qa-report.md` | End-to-end test results, findings, risk-engine assessment, go/no-go |
 
 # 4. Documents GPHA still needs to produce or approve
 
