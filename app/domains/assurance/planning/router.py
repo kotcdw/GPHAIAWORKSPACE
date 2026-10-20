@@ -126,6 +126,11 @@ def _engagement_out(eng: PlanEngagement) -> EngagementOut:
     if eng.entity_unit is not None:
         out.entity_unit_name = f"{eng.entity_unit.location.name} / {eng.entity_unit.name}"
         out.entity_risk_score = eng.entity_unit.risk_score
+    from sqlalchemy.orm import object_session as _session
+
+    from app.domains.assurance.planning.projects import setup_out
+
+    setup_out(_session(eng), eng, out)
     return out
 
 
@@ -367,10 +372,14 @@ def _check_refs(db: DBSession, entity_unit_id: int | None, lead_auditor_id: int 
 def add_engagement(
     plan_id: int, payload: EngagementIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
 ) -> EngagementOut:
+    from app.domains.assurance.planning.projects import check_setup, ensure_room
+
     plan = _plan_or_404(db, plan_id)
     _require_draft(plan)
+    ensure_room(plan)
     _check_refs(db, payload.entity_unit_id, payload.lead_auditor_id)
     check_site(db, payload.site_entity_id)
+    check_setup(db, payload.audit_type, payload.program_id, payload.source_audit_id)
     duplicate = next(
         (
             e
@@ -383,7 +392,9 @@ def add_engagement(
     )
     if duplicate is not None:
         raise _conflict(f"'{payload.title}' is already planned for this entity (engagement #{duplicate.id})")
-    eng = PlanEngagement(plan_id=plan.id, created_by=user.id, **payload.model_dump())
+    data = payload.model_dump()
+    data["audit_type"] = data.get("audit_type") or None
+    eng = PlanEngagement(plan_id=plan.id, created_by=user.id, **data)
     db.add(eng)
     db.flush()
     log_action(db, user_id=user.id, action=f"ENGAGEMENT_ADD id={eng.id} plan={plan.id}", request=request)
@@ -397,13 +408,21 @@ def add_engagement(
 def update_engagement(
     eng_id: int, payload: EngagementUpdate, request: Request, db: DBSession = Depends(get_db), user: User = Staff
 ) -> EngagementOut:
+    from app.domains.assurance.planning.projects import apply_setup, check_setup
+
     eng = _engagement_or_404(db, eng_id)
     _require_draft(eng.plan)
     _check_refs(db, payload.entity_unit_id, payload.lead_auditor_id)
     check_site(db, payload.site_entity_id)
     changes = payload.model_dump(exclude_none=True)
+    setup = {k: changes.pop(k) for k in ("audit_type", "program_id", "source_audit_id") if k in changes}
+    after = {k: (setup[k] if k in setup else getattr(eng, k)) or None for k in ("audit_type", "program_id",
+                                                                               "source_audit_id")}
+    check_setup(db, after["audit_type"], after["program_id"], after["source_audit_id"])
     for key, value in changes.items():
         setattr(eng, key, value)
+    apply_setup(eng, setup)
+    changes.update(setup)
     log_action(db, user_id=user.id, action=f"ENGAGEMENT_UPDATE id={eng.id} [{', '.join(changes)}]", request=request)
     _history(db, eng.plan_id, user, f"ENGAGEMENT UPDATED #{eng.id} [{', '.join(changes)}]", request)
     db.commit()
@@ -492,8 +511,12 @@ def start_engagement(
     if user.id != lead:
         db.add(AuditTeamMember(audit_id=audit.id, user_id=user.id, team_role="Auditor" if lead else "Lead auditor",
                                added_by=user.id))
+    from app.domains.assurance.planning.projects import prepare_started_audit
+
+    note = prepare_started_audit(db, eng, audit, user)
     log_action(db, user_id=user.id, action=f"ENGAGEMENT_START id={eng.id} audit={audit.id}", request=request)
-    _history(db, eng.plan_id, user, f"ENGAGEMENT STARTED #{eng.id} -> audit #{audit.id}", request)
+    _history(db, eng.plan_id, user, f"ENGAGEMENT STARTED #{eng.id} -> audit #{audit.id}"
+             + (f"; {note}" if note else ""), request)
     log_record_history(
         db,
         record_type="audit",

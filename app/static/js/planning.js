@@ -49,44 +49,67 @@ async function renderPlans(filter = state.planFilter || "") {
   const pick = el("select", { class: "compact", "aria-label": "Filter by status" }, el("option", { value: "" }, "All current plans"),
     ...PLAN_STATUSES.map((s) => el("option", { value: s, selected: s === filter ? "1" : null }, s)));
   pick.addEventListener("change", () => renderPlans(pick.value));
-  viewRoot.append(viewHeader("Assurance Plans", [pick, hasPerm("plan.prepare") ? btn("New plan", () => newPlanModal()) : null],
-    { sub: "Draft → In Review → Submitted → Approved → Distributed → In Execution → Closed → Archived (Returned and Revised when sent back or revised)" }), msg);
+  viewRoot.append(viewHeader("Assurance Plans", [pick, hasPerm("plan.prepare") ? btn("+ Create plan", () => newPlanModal()) : null],
+    { sub: "The annual risk-based plans (IIA GIAS 9.4): projects, coverage of the audit universe, strategic risks and resources." }), msg);
   try {
     const plans = await API.get(filter ? `/api/assurance-plans?lifecycle_status=${encodeURIComponent(filter)}` : "/api/assurance-plans");
     const card = el("div", { class: "card" });
-    if (!plans.length) card.append(el("div", { class: "empty" }, "No Assurance Plan yet. Create the plan for the fiscal year to start."));
-    else card.append(el("table", null,
-      el("thead", null, el("tr", null, el("th", null, "Ref"), el("th", null, "Fiscal year"), el("th", null, "Title"),
-        el("th", null, "Status"), el("th", { class: "num" }, "Budgeted hours"), el("th", null, "Approved"))),
-      el("tbody", null, ...plans.map((p) => el("tr", { onclick: () => openPlan(p.id) },
-        el("td", { class: "ref" }, p.plan_ref), el("td", null, `FY${p.fiscal_year}`), el("td", null, p.title),
-        el("td", null, badge(p.lifecycle_status), p.current_version ? el("span", { class: "muted small" }, ` v${p.current_version}`) : null),
-        el("td", { class: "num" }, String(p.total_budget_hours || 0)),
-        el("td", { class: "muted" }, fmtDate(p.approved_at)))))));
     viewRoot.append(card);
+    if (!plans.length) {
+      card.append(emptyState({ icon: "calendar-range", title: "No Assurance Plan yet",
+        text: "Create the plan for the year, or start planning from a completed audit risk assessment.",
+        action: hasPerm("plan.prepare") ? btn("+ Create plan", () => newPlanModal()) : null }));
+      return;
+    }
+    const rows = plans.map((p) => {
+      const cells = { projects: el("td", { class: "num", "data-label": "Projects" }, "…"), hours: el("td", { "data-label": "Hours" }, "…"),
+        progress: el("td", { "data-label": "Progress" }, "…"), coverage: el("td", { class: "num", "data-label": "Coverage" }, "…") };
+      API.get(`/api/assurance-plans/${p.id}/program`).then((g) => {
+        const m = g.metrics;
+        const over = m.hours.available && m.hours.planned > m.hours.available;
+        cells.projects.textContent = String(m.projects);
+        cells.hours.replaceChildren(el("span", { class: over ? "text-danger" : null }, `${m.hours.planned}h`), el("span", { class: "muted" }, m.hours.available ? ` / ${m.hours.available}h` : " · no budget"));
+        cells.progress.replaceChildren(progressBar(m.overall_progress));
+        cells.coverage.textContent = `${m.coverage_pct}%`;
+      }).catch(() => { Object.values(cells).forEach((c) => { c.textContent = "-"; }); });
+      const period = p.period_start ? `${fmtDay(p.period_start)} – ${p.period_end ? fmtDay(p.period_end) : "?"}` : `FY${p.fiscal_year}`;
+      return el("tr", { tabindex: "0", onclick: () => openPlan(p.id), onkeydown: (e) => { if (e.key === "Enter") openPlan(p.id); } },
+        el("td", { class: "col-wide", "data-label": "Plan" }, el("span", { class: "ref" }, p.plan_ref), ` ${p.title}`, el("div", { class: "muted small" }, period)),
+        el("td", { "data-label": "Status" }, statusBadge(p.lifecycle_status), p.current_version ? el("span", { class: "muted small" }, ` v${p.current_version}`) : null),
+        cells.projects, cells.hours, cells.progress, cells.coverage,
+        el("td", { class: "muted", "data-label": "Approved" }, p.approved_at ? fmtDay(p.approved_at.slice(0, 10)) : "-"));
+    });
+    card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
+      el("thead", null, el("tr", null, ...["Plan", "Status", "Projects", "Hours planned / available", "Progress", "Coverage", "Approved"].map((h) => el("th", { scope: "col" }, h)))),
+      el("tbody", null, ...rows))));
   } catch (err) { notify(msg, err.message, "error"); }
 }
 
 function planFields(withYear) {
   const y = currentFiscalYear();
   return [
-    ...(withYear ? [{ name: "fiscal_year", label: "Fiscal year", type: "number", required: true, min: y - 2, max: y + 10 }] : []),
-    { name: "title", label: "Title", required: true, maxLength: 255, singleLine: true },
-    { name: "total_budget_hours", label: "Total budget hours", type: "number", min: 0, max: 1000000 },
-    { name: "description", label: "Description / basis of the plan", type: "textarea", maxLength: 20000 },
+    ...(withYear ? [{ name: "fiscal_year", label: "Plan year", type: "number", required: true, min: y - 2, max: y + 10 }] : []),
+    { name: "title", label: "Plan name", required: true, maxLength: 255, singleLine: true },
+    { name: "total_budget_hours", label: "Total available resources (hours)", type: "number", min: 0, max: 1000000,
+      help: "The hours the team has for the year; project budgets are compared with it." },
+    { name: "period_start", label: "Planning period from", type: "date" },
+    { name: "period_end", label: "Planning period to", type: "date" },
+    { name: "description", label: "Description / basis of the plan", type: "textarea", maxLength: 20000, full: true },
   ];
 }
 
 function newPlanModal() {
   const y = currentFiscalYear() + 1;
   openForm({
-    title: "New Assurance Plan",
+    title: "Create plan",
     key: "plan:new",
     meta: { title: "New Assurance Plan" },
     fields: planFields(true),
-    initial: { fiscal_year: y, title: `Assurance Plan FY${y}`, total_budget_hours: 0 },
-    submitLabel: "Create",
-    onSubmit: (v) => API.post("/api/assurance-plans", { ...v, total_budget_hours: v.total_budget_hours || 0, description: v.description || "" }),
+    initial: { fiscal_year: y, title: `Assurance Plan FY${y}`, total_budget_hours: 0, period_start: `${y}-01-01`, period_end: `${y}-12-31` },
+    validate: (v) => (v.period_start && v.period_end && v.period_end < v.period_start ? { period_end: "The period ends before it starts" } : null),
+    submitLabel: "Create plan",
+    onSubmit: (v) => API.post("/api/assurance-plans", { ...v, total_budget_hours: v.total_budget_hours || 0, description: v.description || "",
+      period_start: v.period_start || null, period_end: v.period_end || null }),
     onDone: (plan) => { toast("Plan created"); openPlan(plan.id); },
   });
 }
@@ -99,7 +122,8 @@ function editPlanModal(plan) {
     fields: planFields(false),
     initial: plan,
     submitLabel: "Save changes",
-    onSubmit: (v) => API.patch(`/api/assurance-plans/${plan.id}`, { ...v, total_budget_hours: v.total_budget_hours || 0, description: v.description || "" }),
+    onSubmit: (v) => API.patch(`/api/assurance-plans/${plan.id}`, { ...v, total_budget_hours: v.total_budget_hours || 0, description: v.description || "",
+      period_start: v.period_start || null, period_end: v.period_end || null }),
     onDone: () => { toast("Plan saved"); openPlan(plan.id); },
   });
 }
@@ -131,12 +155,17 @@ async function openPlan(id) {
     }, "secondary") : null,
     iconBtn("printer", "Print", () => window.print()),
   ].filter(Boolean);
-  // HighBond assurance plan: Overview, Entities (coverage grid), Risks, then the GPHA planning cycle records.
+  // Diligent Assurance Plans layout: overview, projects, objectives and narratives (kept inside the audits), coverage,
+  // strategic risks, resources; then approval and launch (GPHA planning cycle, IIA GIAS 9.4) and the records.
   const tabs = [
     { key: "overview", label: "Overview" },
-    { key: "entities", label: "Entities" },
-    { key: "risks", label: "Risks", count: s.uncovered_high_risk.length || null },
-    { key: "cycle", label: "Versions & cycle" },
+    { key: "projects", label: "Projects", count: plan.engagements.filter((e) => e.status !== "Cancelled").length || null },
+    { key: "objectives", label: "Objectives" },
+    { key: "narratives", label: "Narratives" },
+    { key: "coverage", label: "Coverage", count: s.uncovered_high_risk.length || null },
+    { key: "risks", label: "Strategic risks" },
+    { key: "resources", label: "Resources" },
+    { key: "cycle", label: "Approval & launch" },
     { key: "crs", label: "Change requests" },
     { key: "activities", label: "Activities" },
   ];
@@ -147,16 +176,28 @@ async function openPlan(id) {
     ref: plan.plan_ref, status: plan.lifecycle_status,
     meta: [plan.current_version ? el("span", { class: "chip-mini" }, `Version ${plan.current_version}`) : null,
       plan.approved_at ? el("span", { class: "muted small" }, `Approved ${fmtDay(plan.approved_at.slice(0, 10))}`) : null].filter(Boolean),
+    band: planStepper(plan, (k) => layout.select(k)),
     actions, tabs, side: null,
     onTab: (key, pane) => { state.lastPlanTab = { id, key }; paint(key, pane); },
   });
   viewRoot.append(layout.root);
 
   function paint(key, pane) {
-    if (key === "overview") planOverview(pane, plan);
-    if (key === "entities") renderPlanCoverage(pane, plan, "entities");
-    if (key === "risks") renderPlanCoverage(pane, plan, "risks");
-    if (key === "cycle") renderPlanCycleLog(pane, plan);
+    if (key === "overview") renderPlanProgram(pane, plan, (k) => layout.select(k));
+    if (key === "projects") renderEngagements(pane, plan);
+    if (key === "objectives") renderPlanObjectives(pane, plan);
+    if (key === "narratives") renderPlanNarratives(pane, plan);
+    if (key === "coverage") renderPlanCoverage(pane, plan, "entities");
+    if (key === "risks") renderPlanStrategicRisks(pane, plan);
+    if (key === "resources") renderPlanResources(pane, plan);
+    if (key === "cycle") {
+      const cyc = el("div"); const log = el("div");
+      pane.append(cyc);
+      if (plan.committee_meeting_date) pane.append(committeeCard(plan));
+      pane.append(log);
+      renderPlanCycle(cyc, plan);
+      renderPlanCycleLog(log, plan);
+    }
     if (key === "crs") renderChangeRequests(pane, plan);
     if (key === "activities") {
       const box = el("div");
@@ -176,41 +217,8 @@ async function openPlan(id) {
     }
   }
   const remembered = state.lastPlanTab && state.lastPlanTab.id === id ? state.lastPlanTab.key : null;
-  layout.select(remembered || "overview");
-}
-
-function planOverview(pane, plan) {
-  const s = plan.summary;
-  const hoursPct = s.budget_hours ? Math.round((100 * s.planned_hours) / s.budget_hours) : null;
-  const maxQ = Math.max(1, ...QUARTERS.map((q) => s.by_quarter[q] || 0));
-  pane.append(el("div", { class: "stats" },
-    stat(s.engagements - s.cancelled, "Planned engagements", `${s.started} started · ${s.planned} not started`),
-    stat(`${s.budget_hours || 0}h`, "Budgeted hours", s.budget_hours ? "Set on the plan" : "No budget set"),
-    stat(`${s.planned_hours}h`, "Sum of audit hours", s.budget_hours ? `${hoursPct}% of the budget` : "Budget hours of the engagements",
-      hoursPct !== null && hoursPct > 100 ? "danger" : ""),
-    stat(`${(s.budget_hours || 0) - s.planned_hours}h`, "Remaining hours", (s.budget_hours || 0) - s.planned_hours < 0 ? "Over budget" : "Budget not yet allocated",
-      (s.budget_hours || 0) - s.planned_hours < 0 ? "danger" : ""),
-    stat(`${s.coverage_pct}%`, "Universe coverage", `${s.covered_units} of ${s.universe_units} entity units`),
-    el("div", { class: "stat" }, el("div", { class: "l" }, "By quarter"),
-      el("div", { class: "qbars" }, ...QUARTERS.map((q) => el("div", { class: "qbar" },
-        el("div", { class: "qbar-fill", style: `height:${Math.round(((s.by_quarter[q] || 0) / maxQ) * 100)}%` }),
-        el("div", { class: "qbar-n" }, String(s.by_quarter[q] || 0)), el("div", { class: "qbar-l" }, q))))),
-    stat(s.uncovered_high_risk.length, "High-risk units not planned", s.uncovered_high_risk.length ? "Review before approval" : "All covered",
-      s.uncovered_high_risk.length ? "warn" : "ok"),
-  ));
-  if (s.uncovered_high_risk.length) {
-    pane.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
-      el("div", null, el("strong", null, "High-risk entities not in the plan: "),
-        ...s.uncovered_high_risk.flatMap((u, i) => [i ? ", " : "", `${u.location_name} / ${u.name} `, heat(u.risk_score)]))));
-  }
-  if (plan.description) pane.append(el("div", { class: "card" }, el("div", { class: "lf-label" }, "Basis of the plan"), el("div", { class: "lf-value" }, plan.description)));
-  const cycleSlot = el("div");
-  pane.append(cycleSlot);
-  renderPlanCycle(cycleSlot, plan);
-  if (plan.committee_meeting_date) pane.append(committeeCard(plan));
-  const eng = el("div");
-  pane.append(eng);
-  renderEngagements(eng, plan);
+  const legacy = { entities: "coverage" };
+  layout.select(legacy[remembered] || (tabs.some((t) => t.key === remembered) ? remembered : "overview"));
 }
 
 async function renderEngagements(panel, plan) {
@@ -219,10 +227,11 @@ async function renderEngagements(panel, plan) {
   const reload = () => openPlan(plan.id);
   state.planView = state.planView || "table";
   const canInclude = plan.status !== "Closed" && (draft || hasPerm("plan.amend")) && typeof includeAuditsDialog === "function";
-  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "All audits"),
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Projects"),
     el("div", { class: "actions" },
       subNav([{ key: "table", label: "Table" }, { key: "timeline", label: "Timeline" }], state.planView, (k) => { state.planView = k; clear(panel); renderEngagements(panel, plan); }, "Plan views"),
-      canInclude ? btn("Include audits", () => includeAuditsDialog(plan, reload), "secondary") : null)));
+      draft && hasPerm("plan.prepare", "plan.amend") ? btn("+ Add to plan", () => addToPlan(plan)) : null,
+      !draft && canInclude ? btn("Link active projects", () => includeAuditsDialog(plan, reload), "secondary") : null)));
   panel.append(card);
   if (state.planView === "timeline" && typeof planTimeline === "function") {
     const box = el("div");
@@ -230,12 +239,15 @@ async function renderEngagements(panel, plan) {
     planTimeline(box, plan, reload);
     return;
   }
-  if (!plan.engagements.length) card.append(el("div", { class: "empty" }, "No engagements yet."));
-  else card.append(el("table", null,
-    el("thead", null, el("tr", null, el("th", null, "Quarter"), el("th", null, "Engagement"), el("th", null, "Entity"),
+  if (!plan.engagements.length) card.append(emptyState({ icon: "kanban", title: "No projects yet", text: "Add projects: create new ones, link running audits or roll forward earlier audits." }));
+  else card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
+    el("thead", null, el("tr", null, el("th", null, "Quarter"), el("th", null, "Project"), el("th", null, "Entity"),
       el("th", null, "Risk"), el("th", null, "Site"), el("th", null, "Hours"), el("th", null, "Status"), el("th", null, ""))),
-    el("tbody", null, ...plan.engagements.map((e) => el("tr", { class: "no-click" },
-      el("td", null, e.planned_quarter), el("td", null, e.title, e.rationale ? el("div", { class: "muted" }, e.rationale) : null),
+    el("tbody", null, ...plan.engagements.map((e) => el("tr", { class: `no-click ${e.status === "Cancelled" ? "row-muted" : ""}` },
+      el("td", null, e.planned_quarter), el("td", { class: "col-wide" }, el("div", { class: "cell-title" }, e.title),
+        el("div", { class: "muted small" }, [e.audit_type, e.program_name ? `Programme ${e.program_name}` : null,
+          e.source_audit_ref ? `Roll forward of ${e.source_audit_ref}` : null].filter(Boolean).join(" · ")),
+        e.rationale ? el("div", { class: "muted small" }, clip(e.rationale, 140)) : null),
       el("td", null, e.entity_unit_name || "-"),
       el("td", null, e.entity_risk_score ? heat(e.entity_risk_score) : "-"),
       el("td", null, e.site_name || el("span", { class: "muted" }, "-")),
@@ -251,9 +263,8 @@ async function renderEngagements(panel, plan) {
         draft ? btn("Remove", async () => {
           try { await API.del(`/api/plan-engagements/${e.id}`); toast("Removed"); openPlan(plan.id); }
           catch (err) { toast(err.message, "error"); }
-        }, "danger-ghost") : null)))))));
-  if (draft) card.append(el("div", { style: "margin-top:12px" }, btn("Add engagement", () => addEngagement(plan))));
-  else if (approved) {
+        }, "danger-ghost") : null))))))));
+  if (approved) {
     card.append(el("p", { class: "muted" }, "The plan is approved and is not edited directly. Changes go through a change request (reason, affected items, resource and coverage impact, review and approval) and create a new version; each change is logged under Plan changes and reported in the Committee pack."));
     if (plan.current_version && hasPerm("plan.prepare", "oversight.port", "audit.memo_approve")) {
       card.append(el("div", { style: "margin-top:12px" }, btn("Request a change", () => changeRequestEditor(plan))));
@@ -266,15 +277,20 @@ const APPROVAL_LABEL = { "Unit Head": "Unit Head", Manager: "Audit Manager", PIA
 async function addEngagement(plan, eng = null) {
   const units = await safeGet("/api/entity-units?active_only=true", []);
   const leads = await safeGet("/api/users/directory", null);
+  const programs = (await safeGet("/api/audit-programs", [])).filter((p) => p.status === "Active" && p.step_count);
+  let types = [];
+  try { types = (await loadEntityConfig()).types.audit_types || []; } catch { /* optional */ }
   let sites = [];
   try { sites = await planSites(); } catch { /* optional */ }
   openForm({
-    title: eng ? `Edit engagement #${eng.id}` : "Add engagement",
+    title: eng ? `Edit project #${eng.id}` : "Create a new project",
     key: eng ? `engagement:edit:${eng.id}` : `engagement:new:${plan.id}`,
     meta: { title: eng ? `Edit engagement ${eng.title}` : `New engagement (${plan.plan_ref})`, record_type: "assurance_plan", record_id: plan.id },
     fields: [
-      { name: "title", label: "Engagement title", required: true, maxLength: 255, singleLine: true },
-      { name: "entity_unit_id", label: "Entity unit", type: "select", emptyLabel: "- none -",
+      { name: "title", label: "Project title", required: true, maxLength: 255, singleLine: true },
+      { name: "audit_type", label: "Audit type", type: "select", options: types, emptyLabel: "- choose -",
+        help: "Decides the fieldwork workflow and whether the engagement is advisory." },
+      { name: "entity_unit_id", label: "Auditable entity", type: "select", emptyLabel: "- none -",
         options: units.sort((a, b) => b.risk_score - a.risk_score).map((u) => ({ value: u.id, label: `${u.location_name} / ${u.name} (risk ${u.risk_score})` })) },
       { name: "site_entity_id", label: "Responsible site (HQ / port)", type: "select", emptyLabel: "- choose -",
         options: sites, help: "Decides which copy of the approved plan includes it. Destinations are set up by administrators on the Organizations register." },
@@ -282,15 +298,20 @@ async function addEngagement(plan, eng = null) {
       { name: "budget_hours", label: "Budget hours", type: "number", min: 0, max: 10000 },
       ...(Array.isArray(leads) ? [{ name: "lead_auditor_id", label: "Lead auditor", type: "select", emptyLabel: "- not assigned -",
         options: leads.map((u) => ({ value: u.id, label: u.approval_level ? `${u.name} (${APPROVAL_LABEL[u.approval_level] || u.approval_level})` : u.name })) }] : []),
+      ...(eng && eng.source_audit_id ? [] : [{ name: "program_id", label: "Audit programme (Project Library)", type: "select", emptyLabel: "- none: scope from the entity -",
+        options: programs.map((p) => ({ value: p.id, label: `${p.prog_ref} ${p.name} (${p.step_count} steps)` })),
+        help: "Its objectives, risks, controls and test steps are copied into the audit when it starts. Without one, the entity's linked risks and controls are scoped in." }]),
       { name: "rationale", label: "Rationale (risk, regulatory, management request ...)", type: "textarea", maxLength: 20000 },
     ],
-    initial: eng || { planned_quarter: "Q1", budget_hours: 0 },
+    initial: eng ? { ...eng, audit_type: eng.audit_type || "", program_id: eng.program_id || "" } : { planned_quarter: "Q1", budget_hours: 0 },
     submitLabel: eng ? "Save changes" : "Add",
     onSubmit: (v) => {
-      const body = { ...v, budget_hours: v.budget_hours || 0, rationale: v.rationale || "" };
+      const body = { ...v, budget_hours: v.budget_hours || 0, rationale: v.rationale || "", audit_type: v.audit_type || "" };
+      if ("program_id" in v) body.program_id = v.program_id ? Number(v.program_id) : 0;
+      if (!eng) { body.audit_type = body.audit_type || null; if (!body.program_id) delete body.program_id; }
       return eng ? API.patch(`/api/plan-engagements/${eng.id}`, body) : API.post(`/api/assurance-plans/${plan.id}/engagements`, body);
     },
-    onDone: () => { toast(eng ? "Engagement saved" : "Engagement added"); openPlan(plan.id); },
+    onDone: () => { toast(eng ? "Project saved" : "Project added"); openPlan(plan.id); },
   });
 }
 

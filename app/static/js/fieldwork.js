@@ -758,15 +758,11 @@ async function renderPlanCoverage(pane, plan, mode = "entities") {
   try { cov = await API.get(`/api/assurance-plans/${plan.id}/coverage?${sp.toString()}`); } catch (err) { clear(pane); pane.append(errorState(err, reload)); return; }
   clear(pane);
   if (mode === "risks") { renderPlanRisks(pane, cov); return; }
-  const over = cov.hours.available && cov.hours.planned > cov.hours.available;
-  const hoursPct = cov.hours.available ? Math.min(100, (100 * cov.hours.planned) / cov.hours.available) : 0;
-  pane.append(el("div", { class: "cov-summary" },
-    el("div", { class: "cov-box" }, el("div", { class: "l" }, "Overall progress"), progressBar(cov.overall_progress)),
-    el("div", { class: "cov-box" }, el("div", { class: "l" }, "Hours planned / available"),
-      el("span", { class: `pbar ${over ? "bad" : "ok"}`, title: `${cov.hours.planned}h of ${cov.hours.available || "-"}h` },
-        el("span", { class: "pbar-fill", style: `width:${cov.hours.available ? hoursPct : 0}%` }),
-        el("span", { class: "pbar-l" }, `${cov.hours.planned}h / ${cov.hours.available ? `${cov.hours.available}h` : "no budget"}${over ? ` (+${cov.hours.over}h)` : ""}`))),
-    el("div", { class: "cov-box" }, el("div", { class: "l" }, "Actual hours charged"), el("strong", null, `${cov.hours.actual}h`))));
+  // Diligent: "Show coverage in" Entities (one column per entity) or Categories (one column per entity category).
+  values.view = values.view || "entities";
+  pane.append(subNav([{ key: "entities", label: "Entities" }, { key: "categories", label: "Categories" }], values.view,
+    (k) => { values.view = k; reload(); }, "Show coverage in"));
+  if (values.view === "categories") { renderCoverageByCategory(pane, cov); return; }
 
   const cat = el("select", { class: "fb-select", "aria-label": "Entity category" }, el("option", { value: "" }, "Entity category: All"),
     ...cov.categories.map((c) => el("option", { value: c.id, selected: String(c.id) === String(values.category) ? "1" : null }, `Entity category: ${c.name}`)));
@@ -795,9 +791,26 @@ async function renderPlanCoverage(pane, plan, mode = "entities") {
         ...ents.map((u) => el("td", { class: "ent-cell" }, u.covered ? el("span", { class: "outcome ok small" }, "Covered") : el("span", { class: "outcome bad small" }, "Not covered")))) : null)))));
 }
 
+function renderCoverageByCategory(pane, cov) {
+  const cats = [...new Set(cov.entities.map((u) => u.location))].sort();
+  const locOf = Object.fromEntries(cov.entities.map((u) => [u.id, u.location]));
+  const total = (c) => cov.entities.filter((u) => u.location === c).length;
+  const covered = (c) => cov.entities.filter((u) => u.location === c && u.covered).length;
+  if (!cats.length) { pane.append(emptyState({ icon: "grid-3x3", title: "No auditable entities yet" })); return; }
+  pane.append(el("div", { class: "card" }, el("div", { class: "table-wrap cov-wrap" }, el("table", { class: "dense cov-grid" },
+    el("thead", null, el("tr", null, el("th", { scope: "col", class: "sticky" }, "Project"), el("th", { scope: "col" }, "Status"), el("th", { scope: "col" }, "Progress"),
+      ...cats.map((c) => el("th", { scope: "col", class: "ent" }, el("span", { class: "ent-l" }, c))))),
+    el("tbody", null, ...cov.engagements.filter((e) => !e.cancelled).map((e) => el("tr", { class: "no-click" },
+      el("td", { class: "sticky" }, e.audit_id ? el("a", { href: "#", onclick: (ev) => { ev.preventDefault(); openAudit(e.audit_id); } }, e.title) : e.title),
+      el("td", null, statusBadge(e.status)), el("td", null, progressBar(e.progress)),
+      ...cats.map((c) => el("td", { class: "ent-cell" }, locOf[e.entity_unit_id] === c ? el("i", { class: "bi bi-check-lg cov-tick", "aria-label": "Covers this category" }) : null)))),
+    el("tr", { class: "no-click cov-foot" }, el("td", { class: "sticky muted small" }, "Entities covered"), el("td"), el("td"),
+      ...cats.map((c) => el("td", { class: "ent-cell small" }, `${covered(c)} of ${total(c)}`))))))));
+}
+
 function renderPlanRisks(pane, cov) {
   const ents = [...cov.entities].sort((a, b) => b.risk_score - a.risk_score);
-  pane.append(el("div", { class: "card" }, el("h3", null, "Entities by risk"),
+  pane.append(el("div", { class: "card" }, el("h3", null, "Auditable entities by risk"),
     el("p", { class: "muted small" }, "Risk score from the Audit Universe (likelihood × impact) and whether the plan covers each entity."),
     ents.length ? el("div", { class: "table-wrap" }, el("table", { class: "dense" },
       el("thead", null, el("tr", null, ...["Entity", "Category", "Risk score", "Rating", "Covered by the plan"].map((h) => el("th", { scope: "col" }, h)))),

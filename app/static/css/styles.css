@@ -1438,10 +1438,6 @@ table.dense tbody tr:hover { background: var(--accent-soft); }
 .pbar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #8fd3b0; border-radius: 999px; } /* light fill: the % label stays readable */
 .pbar.bad .pbar-fill { background: #f2aaa4; }
 .pbar-l { position: relative; display: block; text-align: center; font-size: 11px; line-height: 18px; font-weight: 600; color: var(--text); }
-.cov-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 8px; }
-.cov-box { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
-.cov-box .l { font-size: var(--fs-xs); color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
-.cov-box .pbar { width: 100%; }
 .cov-wrap { max-height: 70vh; }
 .cov-grid th.sticky, .cov-grid td.sticky { position: sticky; left: 0; background: var(--panel); z-index: 1; min-width: 220px; box-shadow: 1px 0 0 var(--border); }
 .cov-grid thead th.sticky { background: var(--panel-2); z-index: 2; }
@@ -1479,7 +1475,6 @@ table.dense td > .actions { flex-wrap: nowrap; white-space: nowrap; }
 
 /* ------------------------------------------------------------------ integrated audit universe and audit risk assessment */
 .pbar.warn .pbar-fill { background: #f6cf86; }
-.cov-box strong { font-size: 20px; color: var(--text); }
 .tree-cell { display: inline-flex; align-items: center; gap: 4px; }
 .tree-toggle { border: 0; background: transparent; color: var(--muted); cursor: pointer; width: 20px; height: 20px; padding: 0; border-radius: 4px; }
 .tree-toggle:hover { background: var(--panel-3); color: var(--text); }
@@ -1949,3 +1944,57 @@ button.u-stat:hover, button.u-stat:focus-visible { border-color: var(--accent-li
 .phase-chip.ph-monitor { background: var(--purple-soft, var(--panel-2)); color: var(--text); }
 .phase-chip.ph-completed { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok-text); }
 td.col-wide, th.col-wide { min-width: 240px; }
+
+/* ======================================================================
+   Assurance Plan pages (Diligent Assurance Plans layout)
+   ====================================================================== */
+.plan-track { max-width: 980px; }
+.phase.returned .phase-dot { background: var(--warn); border-color: var(--warn); }
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; }
+.kpi-l { color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+.kpi-v { margin-top: 4px; display: flex; align-items: baseline; gap: 2px; flex-wrap: wrap; }
+.kpi-v strong { font-size: 26px; line-height: 1.1; color: var(--text); }
+.kpi-s { color: var(--muted); font-size: var(--fs-sm); }
+.kpi.danger .kpi-v strong { color: var(--danger-text); }
+.two-col-wide { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 12px; align-items: start; margin-bottom: 12px; }
+.two-col-wide > .card { margin-bottom: 0; }
+@media (max-width: 1100px) { .two-col-wide { grid-template-columns: 1fr; } }
+.cat-cov { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cat-cov li { display: grid; grid-template-columns: 1fr auto 120px; gap: 10px; align-items: center; font-size: var(--fs-sm); }
+.cat-cov .pbar { width: 120px; }
+.impact-sq { display: inline-flex; gap: 3px; }
+.impact-sq i { width: 12px; height: 12px; border-radius: 3px; background: var(--panel-3); display: inline-block; }
+.impact-sq.hi i.on { background: var(--danger); }
+.impact-sq.md i.on { background: var(--warn); }
+.impact-sq.lo i.on { background: var(--ok); }
+.hours-bar { margin: 6px 0 14px; }
+.hb-top, .hb-foot { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); margin-bottom: 4px; }
+.hb-foot { margin: 4px 0 0; }
+.pbar.wide { width: 100%; height: 10px; }
+.pbar.wide .pbar-fill { background: var(--accent); }
+.pbar.wide.bad .pbar-fill { background: var(--danger); }
+.guide { padding: 0; margin-bottom: 12px; }
+.guide > summary { display: flex; gap: 10px; align-items: center; padding: 10px 14px; cursor: pointer; font-size: var(--fs-sm); list-style: none; }
+.guide > summary::-webkit-details-marker { display: none; }
+.guide > summary::after { content: "\F282"; font-family: bootstrap-icons; margin-left: auto; color: var(--muted); }
+.guide[open] > summary::after { transform: rotate(180deg); }
+.guide .fw-k { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+.guide-steps { list-style: none; margin: 0; padding: 4px 14px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.guide-steps li { display: flex; gap: 8px; align-items: flex-start; }
+.gs-n { flex: 0 0 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;
+  border: 1.5px solid var(--border-strong); background: var(--panel); }
+.guide-steps li.done .gs-n { background: var(--ok); border-color: var(--ok); color: #fff; }
+.guide-steps li.next .gs-n { background: var(--accent); border-color: var(--accent); color: #fff; }
+.gs-t { display: flex; flex-direction: column; font-size: var(--fs-sm); }
+.gs-t .link-btn { padding: 0; text-align: left; font-weight: 600; }
+.add-choices { display: flex; flex-direction: column; gap: 10px; }
+.add-choice { display: flex; gap: 14px; align-items: flex-start; text-align: left; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--panel); font: inherit; color: var(--text); cursor: pointer; }
+.add-choice:hover, .add-choice:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+.add-choice > i { font-size: 22px; color: var(--accent-text); }
+.add-choice > span { display: flex; flex-direction: column; gap: 2px; }
+.drop-zone { border: 1.5px dashed var(--border-strong); border-radius: var(--radius); padding: 18px; text-align: center; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.drop-zone > i { font-size: 26px; color: var(--muted); }
+.qbars.tall { height: 160px; }
+.plan-track .phase-l { font-size: 12px; text-align: center; }

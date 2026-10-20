@@ -5,9 +5,11 @@ where an engagement covers an entity. Filters: entity category (location), paren
 Overall progress is the average of the engagements' progress; planned hours are compared with the hours available
 (the plan's total budget): the bar is green up to the available hours and red above.
 
-Progress of an engagement (recorded decision, see mainBLUEPRINT.md): Not started 0 %, audit Planned 10 %, In Progress
-25 % plus up to 50 % for the share of fieldwork (procedures or key-control tests) signed off as prepared or reviewed,
-Review 85 %, Closed 100 %. Cancelled engagements are listed but left out of the averages and hours.
+Progress of an engagement is counted from its phases, the way Diligent counts project progress: each phase scores
+Not started 0, In process 1, Completed 2, and progress = total / (2 x number of phases). The phases are the planning
+memo, each fieldwork step (process narratives, risk & control matrix, walkthroughs, test plan and testing; or work
+programme and execute procedures) and the report. A closed audit is 100 %; an engagement not yet started is 0 %.
+Cancelled engagements are listed but left out of the averages and hours.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from sqlalchemy.orm import Session as DBSession
 
 from app.core.database import get_db
 from app.core.deps import require_role
-from app.core.enums import AuditStatus, EngagementStatus, Role, TestStatus, TestType
+from app.core.enums import AuditStatus, EngagementStatus, Role
 from app.domains.assurance.planning.models import AssurancePlan, EntityUnit, Location
 from app.domains.audit.audits.models import Audit
 from app.platform.users.models import User
@@ -26,31 +28,44 @@ from app.platform.users.models import User
 router = APIRouter(tags=["planning"])
 Staff = Depends(require_role(Role.Admin, Role.Auditor))
 
-_PHASE = {AuditStatus.Planned: 10, AuditStatus.Review: 85, AuditStatus.Closed: 100}
+def _score(done: int, total: int) -> int:
+    """0 not started, 1 in process, 2 completed."""
+    if not total or not done:
+        return 0
+    return 2 if done >= total else 1
 
 
-def _fieldwork_share(db: DBSession, audit: Audit) -> float:
-    from app.domains.audit.rcm.models import Control, ControlTest, Objective, Procedure
+def phase_scores(db: DBSession, audit: Audit) -> list[tuple[str, int]]:
+    """The phases of an audit with their scores (0, 1 or 2)."""
+    from app.domains.audit.fieldwork.router import WORKPLAN, _steps
+    from app.domains.audit.memos.models import PlanningMemo
+    from app.domains.audit.reports.models import AuditReport
 
-    objs = select(Objective.id).where(Objective.audit_id == audit.id)
-    if audit.workflow == "Workplan":
-        rows = db.execute(select(Procedure.status).where(Procedure.objective_id.in_(objs))).scalars().all()
-        done = sum(1 for s in rows if s in ("Prepared", "Reviewed"))
+    memo = db.execute(select(PlanningMemo.status).where(PlanningMemo.audit_id == audit.id)).scalar()
+    report = db.execute(select(AuditReport.status).where(AuditReport.audit_id == audit.id)).scalar()
+    st = _steps(db, audit.id)
+    phases = [("Planning memo", 0 if memo is None else 2 if memo == "Approved" else 1)]
+    if audit.workflow == WORKPLAN:
+        phases += [("Work programme", 2 if st["procedures"] else 1 if st["objectives"] else 0),
+                   ("Execute procedures", _score(st["procedures_done"], st["procedures"]))]
     else:
-        ctls = select(Control.id).where(Control.objective_id.in_(objs), Control.is_key.is_(True))
-        rows = db.execute(select(ControlTest.status).where(
-            ControlTest.control_id.in_(ctls), ControlTest.in_scope.is_(True),
-            ControlTest.test_type == TestType.OperatingEffectiveness)).scalars().all()
-        done = sum(1 for s in rows if s in (TestStatus.Completed, TestStatus.Reviewed))
-    return done / len(rows) if rows else 0.0
+        phases += [("Process narratives", 2 if st["narratives"] else 0),
+                   ("Risk & control matrix", 0 if not st["controls"] else 1 if st["risks_without_controls"] else 2),
+                   ("Walkthroughs", _score(st["walked"], st["controls"])),
+                   ("Test plan", _score(st["key_planned"], st["key_controls"])),
+                   ("Testing", _score(st["tests_done"], st["tests"]))]
+    status_value = getattr(report, "value", report)
+    phases.append(("Report", 0 if report is None else 2 if status_value == "Issued" else 1))
+    return phases
 
 
 def engagement_progress(db: DBSession, audit: Audit | None) -> int:
     if audit is None:
         return 0
-    if audit.status == AuditStatus.InProgress:
-        return round(25 + 50 * _fieldwork_share(db, audit))
-    return _PHASE.get(audit.status, 0)
+    if audit.status == AuditStatus.Closed:
+        return 100
+    phases = phase_scores(db, audit)
+    return round(100 * sum(v for _, v in phases) / (2 * len(phases)))
 
 
 @router.get("/api/assurance-plans/{plan_id}/coverage")

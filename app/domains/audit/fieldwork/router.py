@@ -716,15 +716,28 @@ def apply_scoping(audit_id: int, request: Request, db: DBSession = Depends(get_d
     """Bring the entities' risks and controls into the audit: objectives, risks (linked to the enterprise risk),
     and controls copied from the library (Internal Control) or procedures from their test steps (Workplan).
     Items already in the audit are skipped, so scoping can be repeated after the object library changes."""
-    from app.domains.audit.frameworks.models import Framework, LibraryControl
-    from app.domains.audit.rcm.models import RiskControl
-
     audit = _audit_or_404(db, audit_id)
     _ensure_open(audit)
     groups = _scope_plan(db, audit)
     if not groups:
         raise _conflict("The audit's entities have no linked risks or controls yet (Process library and Risk "
                         "Manager links)")
+    counts = scope_into(db, audit, user, groups)
+    log_action(db, user_id=user.id, action=f"AUDIT_SCOPING audit={audit.id} {counts}", request=request)
+    _history(db, audit.id, user, "DETAILED SCOPING from the auditable entities: " + ", ".join(
+        f"{v} {k}" for k, v in counts.items() if v), request)
+    db.commit()
+    return counts
+
+
+def scope_into(db: DBSession, audit: Audit, user: User, groups: list[dict] | None = None) -> dict:
+    """Copy the entities' linked risks and controls into the audit (no commit). Used by detailed scoping and when
+    an audit starts from a plan engagement."""
+    from app.domains.audit.frameworks.models import Framework, LibraryControl
+    from app.domains.audit.rcm.models import RiskControl
+
+    audit_id = audit.id
+    groups = _scope_plan(db, audit) if groups is None else groups
     objectives = {o.title.lower(): o for o in db.execute(select(Objective).where(Objective.audit_id == audit_id))
                   .scalars()}
     all_risks = {r.enterprise_risk_id: r for o in objectives.values() for r in o.risks if r.enterprise_risk_id}
@@ -799,8 +812,5 @@ def apply_scoping(audit_id: int, request: Request, db: DBSession = Depends(get_d
                 db.add(ProcedureRisk(procedure_id=p.id, risk_id=risk_rows[r["id"]].id))
                 have_procs.add((obj.id, title.lower()))
                 counts["procedures"] += 1
-    log_action(db, user_id=user.id, action=f"AUDIT_SCOPING audit={audit.id} {counts}", request=request)
-    _history(db, audit.id, user, "DETAILED SCOPING from the auditable entities: " + ", ".join(
-        f"{v} {k}" for k, v in counts.items() if v), request)
-    db.commit()
+    db.flush()
     return counts

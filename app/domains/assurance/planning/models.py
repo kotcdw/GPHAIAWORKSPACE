@@ -107,6 +107,9 @@ class AssurancePlan(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[PlanStatus] = mapped_column(_enum(PlanStatus), nullable=False, default=PlanStatus.Draft)
     total_budget_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Planning period (defaults to the fiscal year when not set).
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Audit Committee approval of the plan (GIAS 9.4), recorded after the CAE's e-signed approval.
@@ -160,6 +163,12 @@ class PlanEngagement(Base):
         _enum(EngagementStatus), nullable=False, default=EngagementStatus.Planned
     )
     audit_id: Mapped[int | None] = mapped_column(ForeignKey("audits.id", ondelete="SET NULL"), nullable=True)
+    # What the audit started from this engagement brings with it: its audit type, an audit programme from the
+    # Project Library, and (roll forward) the earlier audit whose risk & control structure is copied.
+    audit_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    program_id: Mapped[int | None] = mapped_column(ForeignKey("audit_programs.id", ondelete="SET NULL"),
+                                                   nullable=True)
+    source_audit_id: Mapped[int | None] = mapped_column(ForeignKey("audits.id", ondelete="SET NULL"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 

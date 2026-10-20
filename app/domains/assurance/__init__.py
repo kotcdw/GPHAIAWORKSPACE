@@ -26,6 +26,7 @@ def routers() -> list:
     from app.domains.assurance.plancycle.changes import router as plan_changes
     from app.domains.assurance.plancycle.router import router as plancycle
     from app.domains.assurance.planning.coverage import router as plan_coverage
+    from app.domains.assurance.planning.projects import router as plan_projects
     from app.domains.assurance.planning.router import router as planning
     from app.domains.assurance.planning.timeline import router as plan_timeline
     from app.domains.assurance.qaip.router import router as qaip
@@ -34,6 +35,6 @@ def routers() -> list:
     from app.domains.assurance.universe.router import router as universe
     from app.domains.assurance.universe.workspace import router as universe_workspace
 
-    return [planning, plan_coverage, plan_timeline, committee, committee_meetings, qaip, governance, plancycle,
-            plan_changes,
+    return [planning, plan_coverage, plan_timeline, plan_projects, committee, committee_meetings, qaip, governance,
+            plancycle, plan_changes,
             conformance, scheduler, universe, universe_workspace, assurance_map]

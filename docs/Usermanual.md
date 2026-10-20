@@ -233,7 +233,7 @@ This chapter shows every hand-over in GIAW. Each row is one step; the chapters t
 | 8 | Submission and Audit Committee decision; version frozen | GM Audit | Assurance Plans | 6.2 |
 | 9 | IAA submission recorded | GM Audit | Assurance Plans › Versions & cycle | 6.2 |
 | 10 | Distribution and acknowledgement | GM Audit → PIAs / Audit Managers | Assurance Plans | 6.2 |
-| 11 | **Start** each engagement → audit created | Auditors / Managers | Assurance Plans | 6.4 |
+| 11 | **Start** each engagement → audit created | Auditors / Managers | Assurance Plans | 6.5 |
 | 12 | Team, auditees, declarations | Lead auditor / Manager; every member | Audit › Overview | 9 |
 | 13 | Planning memo → approval | Lead auditor → Audit Manager / PIA / GM Audit | Audit › Planning | 9.6 |
 | 14 | **Move to In Progress** (fieldwork gate) | Lead auditor | Audit › side panel | 9.4 |
@@ -563,17 +563,33 @@ Next: the planning cycle (6.2).
 
 ![Assurance Plans](manuals/images/14-assurance-plans.jpg){width=100%}
 
-1. Click **New plan**.
-2. Fill **Fiscal year** (defaults to next year), **Title** (defaults to *Assurance Plan FY<year>*), **Total budget hours** and **Description / basis of the plan**.
-3. Click **Create**. **Result:** *"Plan created"*; status **Draft**, stage *Planning preparation*. (You may also have created the plan through **Start planning**, 5.5.)
+The list shows each plan with its status, **Projects**, **Hours planned / available** (red when over), **Progress**, **Coverage** and approval date. Click a row to open the plan.
 
-**The plan page:** header buttons **Edit** (Draft only), **Revise plan**, **Close year**, **Archive**, print; tabs **Overview | Entities | Risks | Versions & cycle | Change requests | Activities**. The **Overview** shows planned engagements, budgeted, planned and remaining hours, coverage, high-risk units not planned, the **Annual planning cycle** card and the **All audits** card.
+1. Click **+ Create plan**.
+2. Fill **Plan year**, **Plan name**, **Total available resources (hours)**, **Planning period from / to** and **Description / basis of the plan**.
+3. Click **Create plan**. **Result:** *"Plan created"*; status **Draft**. (You may also have created the plan through **Start planning**, 5.5.)
+
+**The plan page**
+
+- **Header:** **Edit** (Draft only), **Revise plan**, **Close year**, **Archive** and print. Under the title, the status bar shows **Draft › In Review › Submitted › Approved › Distributed › In Execution › Closed**. Click it to open **Approval & launch**.
+- **Tabs:** **Overview | Projects | Objectives | Narratives | Coverage | Strategic risks | Resources | Approval & launch | Change requests | Activities**.
+
+**Overview** (the annual programme at a glance):
+
+- **Getting started** lists the lifecycle and the next step: define the audit universe, assess and prioritise risk, create the plan, add projects, approve and launch, perform the audits.
+- **Key metrics:** **Projects in the plan** (of the maximum, 100 by default: Configuration › Plan configuration), **Strategic risks aligned**, **Entity coverage** and **Allocated hours** against the available hours.
+- **Projects and strategic alignment:** each project's progress, phase, the strategic risks it addresses and its assignees.
+- **Coverage by entity category**, with **View by entity**.
+- **Strategic risks:** Risk Manager risks linked to the plan's entities or audit risks, with their impact and the strategic objective they threaten.
+- **Resources and progress:** planned against available hours, hours charged and overall plan progress.
+
+**How progress is counted:** each project's phases are scored *not started* 0, *in process* 1 or *completed* 2. The phases are the planning memo, each fieldwork step (process narratives, risk & control matrix, walkthroughs, test plan, testing; or work programme and execute procedures) and the report. Progress is the total divided by twice the number of phases; a closed audit is 100%.
 
 ![An Assurance Plan](manuals/images/15-assurance-plan-page.jpg){width=100%}
 
 ## 6.2 The planning cycle, step by step
 
-The **Annual planning cycle** card on **Overview** shows the next button. Steps must be done in order; out of order GIAW says *"The plan is at '<stage>'; this step belongs to '<stage>'"*.
+The **Annual planning cycle** card on **Approval & launch** shows the next button. Steps must be done in order; out of order GIAW says *"The plan is at '<stage>'; this step belongs to '<stage>'"*.
 
 **Step 1 — Planning preparation** (Manager)
 
@@ -613,7 +629,7 @@ The **Annual planning cycle** card on **Overview** shows the next button. Steps 
 
 **Step 8 — IAA submission record** (GM Audit)
 
-1. Open **Versions & cycle**. **Controlled copy** downloads the Word copy of the version.
+1. Open **Approval & launch**. **Controlled copy** downloads the Word copy of the version.
 2. In the *Internal Audit Agency* column click **Record IAA submission**, fill **Date submitted** and **Letter / submission reference**, click **Record submission**. **Result:** *"IAA submission recorded"*.
 
 **Step 9 — Distribution** (GM Audit)
@@ -624,22 +640,47 @@ The **Annual planning cycle** card on **Overview** shows the next button. Steps 
 
 **Step 10 — Acknowledgement** (each recipient): open the plan and click **Acknowledge receipt**. The **Distribution** table shows who has acknowledged.
 
-**Step 11 — Execution:** engagements can now be started (6.4). Status becomes **In Execution** with the first start. At year end the GM Audit uses **Close year** (refused while audits are open) and then **Archive**.
+**Step 11 — Execution:** engagements can now be started (6.5). Status becomes **In Execution** with the first start. At year end the GM Audit uses **Close year** (refused while audits are open) and then **Archive**.
 
-## 6.3 Engagements in the draft plan
+## 6.3 Adding projects to the plan
 
-**Where:** plan **Overview** › **All audits**. **Who:** staff; only while the plan is Draft.
+**Where:** plan › **Projects** › **+ Add to plan**. **Who:** Managers (`plan.prepare`); only while the plan is Draft. A panel offers three ways:
 
-1. Click **Add engagement**.
-2. Fill **Engagement title**, **Entity unit**, **Responsible site (HQ / port)** (decides which site's copy includes it), **Quarter**, **Budget hours**, **Lead auditor**, **Rationale**.
-3. Click **Add** (*"Engagement added"*). On each row use **Edit** or **Remove**.
+![Add to plan: create, link or roll forward](manuals/images/67-add-to-plan.jpg){width=100%}
+
+**Create a new project**
+
+1. Fill **Project title**, **Audit type** (decides the fieldwork workflow and whether it is advisory), **Auditable entity**, **Responsible site (HQ / port)**, **Quarter**, **Budget hours**, **Lead auditor**, **Audit programme (Project Library)** (optional) and **Rationale**.
+2. Click **Add**. The panel shows *"Saved"*; click **Close**. On each row use **Edit** or **Remove**.
+
+**Link active projects:** tick audits that are already running and not on a plan, choose the **Quarter**, click **Done**.
+
+**Roll forward a project**
+
+1. Choose the **Audit to roll forward** (any earlier audit), then fill **New project title**, **Quarter**, **Budget hours** and **Lead auditor**.
+2. Click **Save and roll forward**. The project keeps the earlier audit's entity, audit type and site.
+
+**What the audit receives when the project starts:**
+
+- a **rolled-forward** project receives the earlier audit's objectives, risks, controls with their test plan, and narratives (not its results);
+- a project with an **audit programme** receives the programme's objectives, risks, controls and test steps;
+- otherwise the **auditable entity's** linked risks and controls are scoped in.
+
+Other things you can do here:
 
 - **Table / Timeline** switches the view; the timeline can group by site, quarter, lead or status.
-- **Include audits** brings existing audits into the plan (tick, choose **Quarter**, **Done**).
 - **Exclude from audit plan** removes a linked audit from the plan (the audit is kept).
-- The **Entities** and **Risks** tabs show coverage and high-risk entities not covered.
+- On an approved plan, **Link active projects** needs a reason and the GM Audit; other changes go through a change request (6.6).
 
-## 6.4 Starting an engagement
+## 6.4 Objectives, narratives, coverage, strategic risks and resources
+
+- **Objectives:** every engagement objective of the plan's audits, with the audit, lead, target, and counts of risks, controls and narratives. **+ New objective** adds one to a started audit; **Add risk / control** opens the audit's risk & control matrix. Objectives live inside each audit (IIA GIAS 13.3).
+- **Narratives:** the process narratives of the plan's Internal Control audits. **Import narrative** › choose a **.docx**, **.xlsx** or **.txt** document, the **Objective (audit)** and optionally a **Narrative title** › **Import**. The document's text becomes the narrative.
+- **Coverage:** **Show coverage in** **Entities** (one column per auditable entity) or **Categories** (one column per entity category). Use **Entity category** and **Entities not covered** to filter.
+- **Strategic risks:** Risk Manager risks addressed by the plan, with their impact, how many projects address each and their average progress. Below them, every auditable entity by risk and whether it is covered.
+- **Resources:** planned against available hours (red when over), hours by quarter, budget against hours charged per project, and hours by lead auditor.
+
+## 6.5 Starting a project
 
 **Who:** Auditors and Managers (`audit.create`). The plan must be approved and distributed.
 
@@ -648,9 +689,9 @@ The **Annual planning cycle** card on **Overview** shows the next button. Steps 
 
 Next: chapter 9.
 
-## 6.5 Changing an approved plan (plan change request)
+## 6.6 Changing an approved plan (plan change request)
 
-**Where:** plan › **Change requests** › **New change request** (or **Request a change** on All audits). **Who:** Managers, PIAs, Audit Managers.
+**Where:** plan › **Change requests** › **New change request** (or **Request a change** on **Projects**). **Who:** Managers, PIAs, Audit Managers.
 
 1. Fill **Title** and **Reason for the change**.
 2. Under **Affected plan items**, for each item choose **Change** (*Add an engagement*, *Change an engagement*, *Cancel an engagement*), the **Engagement**, and the new **Title**, **Auditable unit**, **Responsible site**, **Quarter**, **Budget hours**, **Lead**. **Add item** for more.
@@ -674,7 +715,7 @@ Next: chapter 9.
 
 1. Choose the year and **Whole year** or a quarter.
 2. To book someone: **+ Booking** › **Auditor**, **Kind** (*Engagement*, *Leave*, *Training*, *Other work*), **Engagement**, **Role on the engagement**, **Description**, **From**, **To**, **Hours**, **Notes** › **Book**. Overlaps are allowed but warned (*"Saved, but A and B overlap…"*) and shown in red.
-3. To set fieldwork dates: click an engagement bar (or a row under *Engagements without dates*) › **Start**, **End**, tick **Book the lead auditor for these dates** › **Save dates**. Dates must stay inside the planned quarter; to move quarters raise a plan change request (6.5).
+3. To set fieldwork dates: click an engagement bar (or a row under *Engagements without dates*) › **Start**, **End**, tick **Book the lead auditor for these dates** › **Save dates**. Dates must stay inside the planned quarter; to move quarters raise a plan change request (6.6).
 
 ## 7.2 Timesheets & capacity
 
@@ -701,7 +742,7 @@ The list is the engagement register. Each row shows the **Ref** (with the favour
 1. Filter with **Status** (*Planned*, *In Progress*, *Review*, *Closed*), **Audit type**, **Port**, **Scope: My port**, **Order: Show favorites first**, or type in the search box.
 2. Click a row to open the audit. Click the star to mark a favourite.
 
-**Creating an audit outside the plan** (normally audits are started from the plan, 6.4):
+**Creating an audit outside the plan** (normally audits are started from the plan, 6.5):
 
 1. Click **+ New audit**.
 2. Fill **Title**, **Audit type**, **Port** (defaults to yours), **Scope**, **Description / background**.

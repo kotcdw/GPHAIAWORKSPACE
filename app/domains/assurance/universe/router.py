@@ -1303,6 +1303,7 @@ def start_planning(ara_id: int, payload: PlanningIn, request: Request, db: DBSes
         db.flush()
     if plan.status != PlanStatus.Draft:
         raise _conflict("Engagements are added to a draft plan; use a change request for an approved plan")
+    from app.domains.assurance.planning.projects import max_projects
     prioritised = [m for m in db.execute(select(AraEntity).where(AraEntity.ara_id == a.id,
                                                                  AraEntity.priority.is_not(None))
                                          .order_by(AraEntity.priority)).scalars()]
@@ -1316,6 +1317,8 @@ def start_planning(ara_id: int, payload: PlanningIn, request: Request, db: DBSes
     for n, m in enumerate(prioritised):
         if m.entity_id not in wanted or m.entity_id in in_plan:
             continue
+        if sum(1 for x in plan.engagements if x.status != EngagementStatus.Cancelled) + len(added) >= max_projects():
+            break  # the plan is full; the remaining entities are reported as not added
         e = db.get(EntityUnit, m.entity_id)
         org = idx.rows.get(e.org_unit_id) if e.org_unit_id else None
         site = idx.port_of(org) if org else None

@@ -169,9 +169,23 @@ def apply_program(audit_id: int, program_id: int, request: Request, db: DBSessio
     program = _get(db, program_id)
     if program.status != "Active":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This programme is retired")
-    steps = [Step(**s) for s in program.step_list]
-    if not steps:
+    if not program.step_list:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The programme has no steps")
+    counts = copy_program(db, audit, program, user)
+    log_action(db, user_id=user.id, action=f"PROGRAM_APPLY {program.prog_ref} audit={audit_id} {counts}",
+               request=request)
+    steps = counts.get("procedures") or counts["tests"]
+    log_record_history(db, record_type="audit", record_id=audit_id, user_id=user.id,
+                       action=f"PROGRAMME {program.prog_ref} applied ({steps} steps)", request=request)
+    db.commit()
+    return {"program": program.prog_ref, **counts}
+
+
+def copy_program(db: DBSession, audit: Audit, program: AuditProgram, user: User) -> dict:
+    """Copy a programme's steps into the audit (no commit). Used by Apply audit programme and when an audit starts
+    from a plan engagement that names a programme."""
+    audit_id = audit.id
+    steps = [Step(**s) for s in program.step_list]
     objectives = {o.title.lower(): o for o in db.execute(select(Objective).where(Objective.audit_id == audit_id))
                   .scalars()}
     counts = {"objectives": 0, "risks": 0, "controls": 0, "tests": 0, "procedures": 0}
@@ -223,10 +237,5 @@ def apply_program(audit_id: int, program_id: int, request: Request, db: DBSessio
     program.times_used += 1
     if not audit.audit_type and program.audit_type:
         audit.audit_type = program.audit_type
-    log_action(db, user_id=user.id, action=f"PROGRAM_APPLY {program.prog_ref} audit={audit_id} {counts}",
-               request=request)
-    steps = counts.get("procedures") or counts["tests"]
-    log_record_history(db, record_type="audit", record_id=audit_id, user_id=user.id,
-                       action=f"PROGRAMME {program.prog_ref} applied ({steps} steps)", request=request)
-    db.commit()
-    return {"program": program.prog_ref, **counts}
+    db.flush()
+    return counts

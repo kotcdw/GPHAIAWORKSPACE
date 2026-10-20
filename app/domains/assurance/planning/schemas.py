@@ -43,12 +43,32 @@ class PlanIn(BaseModel):
     title: Title
     description: str = ""
     total_budget_hours: int = Field(default=0, ge=0, le=1_000_000)
+    period_start: date | None = None
+    period_end: date | None = None
+
+    @field_validator("period_end")
+    @classmethod
+    def _period(cls, value: date | None, info) -> date | None:  # noqa: ANN001
+        start = info.data.get("period_start")
+        if value and start and value < start:
+            raise ValueError("the planning period ends before it starts")
+        return value
 
 
 class PlanUpdate(BaseModel):
     title: Title | None = None
     description: str | None = None
     total_budget_hours: int | None = Field(default=None, ge=0, le=1_000_000)
+    period_start: date | None = None
+    period_end: date | None = None
+
+    @field_validator("period_end")
+    @classmethod
+    def _period(cls, value: date | None, info) -> date | None:  # noqa: ANN001
+        start = info.data.get("period_start")
+        if value and start and value < start:
+            raise ValueError("the planning period ends before it starts")
+        return value
 
 
 class EngagementIn(BaseModel):
@@ -59,6 +79,9 @@ class EngagementIn(BaseModel):
     budget_hours: int = Field(default=0, ge=0, le=10_000)
     lead_auditor_id: int | None = None
     site_entity_id: int | None = None
+    audit_type: str | None = Field(default=None, max_length=60)
+    program_id: int | None = None
+    source_audit_id: int | None = None
 
 
 class EngagementUpdate(BaseModel):
@@ -69,6 +92,10 @@ class EngagementUpdate(BaseModel):
     budget_hours: int | None = Field(default=None, ge=0, le=10_000)
     lead_auditor_id: int | None = None
     site_entity_id: int | None = None
+    # "" / 0 clear these.
+    audit_type: str | None = Field(default=None, max_length=60)
+    program_id: int | None = None
+    source_audit_id: int | None = None
 
 
 class EngagementOut(ORMModel):
@@ -88,6 +115,11 @@ class EngagementOut(ORMModel):
     site_name: str | None = None
     status: EngagementStatus
     audit_id: int | None
+    audit_type: str | None = None
+    program_id: int | None = None
+    program_name: str | None = None
+    source_audit_id: int | None = None
+    source_audit_ref: str | None = None
     created_at: datetime
 
 
@@ -99,6 +131,8 @@ class PlanOut(ORMModel):
     description: str
     status: PlanStatus
     total_budget_hours: int
+    period_start: date | None = None
+    period_end: date | None = None
     approved_by: int | None
     approved_at: datetime | None
     committee_meeting_date: datetime | None = None

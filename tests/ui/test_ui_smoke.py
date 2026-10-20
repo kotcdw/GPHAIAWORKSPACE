@@ -395,6 +395,48 @@ def test_internal_control_steps_and_rcm_matrix(browser, base_url):
     ctx.close()
 
 
+def test_assurance_plan_overview_and_add_to_plan(browser, base_url):
+    """Plan page: lifecycle stepper, overview metrics, + Add to plan (three ways), coverage by category."""
+    ctx, page, watch = _signed_in(browser, base_url)
+    plan_id = page.evaluate("""async () => {
+        const used = (await API.get('/api/assurance-plans')).map(p => p.fiscal_year);
+        const y = new Date().getFullYear();
+        for (let fy = y + 10; fy >= y - 2; fy--) if (!used.includes(fy)) {
+            const body = {fiscal_year: fy, title: `UI plan ${fy}`, total_budget_hours: 500};
+            return (await API.post('/api/assurance-plans', body)).id;
+        }
+        return null;
+    }""")
+    if plan_id is None:
+        pytest.skip("no free plan year")
+    page.evaluate(f"state.lastPlanTab = null; openPlan({plan_id})")
+    page.wait_for_selector(".kpi-row")
+    assert page.locator(".plan-track .phase.current").inner_text().startswith("1")
+    assert page.locator(".rec-pane .stats").count() == 0
+    page.click(".rec-tabs [role=tab]:has-text('Projects')")
+    page.click("button:has-text('+ Add to plan')")
+    page.wait_for_selector(".add-choice")
+    assert page.locator(".add-choice").count() == 3
+    page.click(".add-choice:has-text('Create a new project')")
+    page.wait_for_selector(".form-panel input[name=title]")
+    page.fill(".form-panel input[name=title]", "UI planned project")
+    page.fill(".form-panel input[name=budget_hours]", "120")
+    page.click(".form-panel .actions .btn:not(.secondary)")
+    page.wait_for_selector(".form-panel .form-banner.ok")
+    page.click(".form-panel .modal-close")
+    _wait_for(page, "document.querySelector('.rec-pane') && "
+                    "document.querySelector('.rec-pane').innerText.includes('UI planned project')")
+    page.click(".rec-tabs [role=tab]:has-text('Coverage')")
+    page.click(".subnav-item:has-text('Categories')")
+    page.wait_for_selector(".cov-grid, .state-empty")
+    page.click(".rec-tabs [role=tab]:has-text('Overview')")
+    page.wait_for_selector(".kpi-row")
+    assert "120h" in page.inner_text(".kpi-row")
+    _shot(page, "desktop-assurance-plan")
+    assert not watch.take()
+    ctx.close()
+
+
 def test_org_structure_define_universe_and_risk_assessment(browser, base_url):
     """Org Structure -> Audit universe (units, processes, new entity) -> Audit risk assessment settings."""
     ctx, page, watch = _signed_in(browser, base_url)

@@ -238,6 +238,8 @@ RULES: list[Rule] = [
          max=100),
     Rule("default_engagement_hours", "Default budget hours for a new engagement", "Plan configuration", "int",
          default=120, min=0, max=5000),
+    Rule("plan_max_projects", "Most projects (engagements) one assurance plan may hold", "Plan configuration", "int",
+         default=100, min=1, max=500),
     # --- organizations / entities
     Rule("organization_categories", "Entity types users can choose for an organization", "Organizations", "list",
          "One per line. Ports, offices, departments and units describe GPHA itself; the rest are external parties.",

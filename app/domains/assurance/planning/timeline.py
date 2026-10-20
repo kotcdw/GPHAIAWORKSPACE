@@ -145,8 +145,11 @@ def _may_change(plan: AssurancePlan, user: User, reason: str) -> bool:
 @router.post("/api/assurance-plans/{plan_id}/include")
 def include_audits(plan_id: int, payload: IncludeIn, request: Request, db: DBSession = Depends(get_db),
                    user: User = Staff) -> dict:
+    from app.domains.assurance.planning.projects import ensure_room
+
     plan = _plan_or_404(db, plan_id)
     logged = _may_change(plan, user, payload.reason)
+    ensure_room(plan, len(set(payload.audit_ids)))
     allowed = {a["id"] for a in includable_audits(plan_id, None, db, user)}
     bad = [i for i in payload.audit_ids if i not in allowed]
     if bad:
@@ -159,7 +162,7 @@ def include_audits(plan_id: int, payload: IncludeIn, request: Request, db: DBSes
         e = PlanEngagement(plan_id=plan.id, entity_unit_id=a.entity_unit_id, title=a.title,
                            rationale="Included existing audit", planned_quarter=payload.quarter, budget_hours=0,
                            lead_auditor_id=lead[0] if lead else None, site_entity_id=a.port_entity_id,
-                           status=EngagementStatus.Started, audit_id=a.id, created_by=user.id)
+                           status=EngagementStatus.Started, audit_id=a.id, audit_type=a.audit_type, created_by=user.id)
         db.add(e)
         db.flush()
         a.plan_id = plan.id
