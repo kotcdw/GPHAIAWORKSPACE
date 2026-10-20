@@ -14,7 +14,7 @@ from app.core.access import ensure_can_view, visible
 from app.core.approvalsvc import sign
 from app.core.audit import log_action
 from app.core.database import get_db
-from app.core.deps import require_active_user, require_module_tier, require_perm, require_role
+from app.core.deps import require_active_user, require_perm, require_role
 from app.core.enums import ApprovalStatus, AuditStatus, Role, TestStatus, utcnow
 from app.core.history import log_record_history
 from app.core.paging import Page, PageParams, matches, page_params, paginate_rows
@@ -27,7 +27,6 @@ from app.platform.users.models import User
 
 router = APIRouter(prefix="/api/audits", tags=["audits"])
 
-AdminAudit = Depends(require_module_tier("audits", Role.Admin))
 CloseAudit = Depends(require_perm("audit.close"))
 
 WriteAudit = Depends(require_role(Role.Admin, Role.Auditor))

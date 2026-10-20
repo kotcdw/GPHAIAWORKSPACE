@@ -344,6 +344,12 @@ def test_excel_import_export_and_saved_views(client, client2, db):
     assert exp.status_code == 200
     ws = load_workbook(io.BytesIO(exp.content)).worksheets[0]
     assert ws["B2"].value.startswith("'=")  # formula injection neutralised
+    # Control characters (which Excel cannot hold) are dropped instead of failing the export.
+    exp = client.post("/api/export.xlsx", headers=h,
+                      json={"title": "T\x07", "columns": ["A\x00B"], "rows": [["\x07bell"]]})
+    assert exp.status_code == 200
+    ws = load_workbook(io.BytesIO(exp.content)).worksheets[0]
+    assert (ws["A1"].value, ws["A2"].value) == ("AB", "bell")
 
     v = client.post(
         "/api/views", json={"module": "capa", "name": "My overdue", "params": {"status": "Open", "q": ""}}, headers=h

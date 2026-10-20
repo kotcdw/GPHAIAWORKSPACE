@@ -12,9 +12,7 @@ from app.core.database import Base
 from app.core.enums import utcnow
 
 CRITICALITY = ("Low", "Medium", "High", "Critical")
-ASSET_STATUSES = ("Planned", "Active", "Retired")
 DUE_DILIGENCE = ("Not started", "In progress", "Approved", "Approved with conditions", "Rejected")
-TP_RATINGS = ("Low", "Medium", "High", "Critical")
 
 
 class Asset(Base):

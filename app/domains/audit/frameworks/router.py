@@ -208,8 +208,6 @@ def update_control(control_id: int, payload: ControlIn, request: Request, db: DB
     return _ctl_out(c, fw)
 
 
-_CSV_COLUMNS = ("ref", "title", "description", "process_area", "risk_statement", "control_type", "nature",
-                "frequency", "is_key", "test_procedure")
 
 
 @router.get("/api/library/controls/template.csv")

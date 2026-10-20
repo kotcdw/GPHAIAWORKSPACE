@@ -10,8 +10,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 from app.core.enums import utcnow
 
-MEMO_STATUSES = ("Draft", "Submitted", "Approved", "Returned")
-
 
 class PlanningMemo(Base):
     __tablename__ = "planning_memos"

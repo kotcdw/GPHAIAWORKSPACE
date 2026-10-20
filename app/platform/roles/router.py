@@ -95,13 +95,6 @@ def get_roles(db: DBSession = Depends(get_db), user: User = CanView) -> Catalogu
     return _catalogue(db, user)
 
 
-@router.get("/api/roles/options")
-def role_options(user: User = CanAssign) -> list[dict]:
-    sup = perms.is_super_admin(user)
-    return [{"code": r.code, "name": r.name, "tier": r.tier.value,
-             "assignable": sup or r.code not in service.ADMIN_ROLES} for r in perms.JOB_ROLES]
-
-
 class PermissionsIn(BaseModel):
     permissions: list[str]
 

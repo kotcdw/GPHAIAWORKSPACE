@@ -33,6 +33,7 @@ from app.domains.issues.capa.status import PARTIALLY
 from app.domains.issues.capa.timeline import add_event, events
 from app.platform.notifications.service import notify_many, user_id_by_email
 from app.platform.users.models import User
+from app.services.documents.excel import safe_row
 
 router = APIRouter(tags=["follow-up"])
 Staff = Depends(require_module_tier("follow-up", Role.Admin, Role.Auditor))
@@ -434,10 +435,11 @@ def aging_csv(request: Request, db: DBSession = Depends(get_db), user: User = St
     writer.writerow(["Reference", "Action", "Owner", "Severity", "Status", "Implementation", "Original target date",
                      "Current target date", "Extensions", "Days open", "Days overdue", "Aging", "Escalation level"])
     for r in rows:
-        writer.writerow([r.capa_ref, r.title, r.owner_email or "", r.severity, r.status, r.implementation_status,
+        writer.writerow(safe_row([r.capa_ref, r.title, r.owner_email or "", r.severity, r.status,
+                         r.implementation_status,
                          f"{r.original_due_date:%Y-%m-%d}" if r.original_due_date else "",
                          f"{r.due_date:%Y-%m-%d}" if r.due_date else "", r.extension_count, r.days_open,
-                         r.days_overdue, r.bucket, r.escalation_level])
+                         r.days_overdue, r.bucket, r.escalation_level]))
     log_action(db, user_id=user.id, request=request, commit=True, action=f"FOLLOWUP_AGING_EXPORT rows={len(rows)}")
     return Response(content="﻿" + out.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="followup-aging-{utcnow():%Y%m%d}.csv"'})

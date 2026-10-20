@@ -121,3 +121,12 @@ def test_sign_rejects_bad_password(db):
             decision="Approve",
         )
     db.rollback()
+
+def test_spreadsheet_cells_are_safe():
+    from app.services.documents.excel import safe_cell
+
+    assert safe_cell("=SUM(A1)") == "'=SUM(A1)"
+    assert safe_cell("@cmd") == "'@cmd"
+    assert safe_cell("\tx") == "'\tx"
+    assert safe_cell("ok\x00\x1f") == "ok"
+    assert safe_cell(-5) == -5 and safe_cell(None) is None

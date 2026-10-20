@@ -262,11 +262,6 @@ def _crit_out(db: DBSession, c: Criterion, counts: dict[int, int] | None = None)
     )
 
 
-@router.get("/api/criteria/sources")
-def criteria_sources(user: User = Staff) -> list[str]:
-    return list(CRITERIA_SOURCES)
-
-
 @router.get("/api/criteria", response_model=CriterionList)
 def list_criteria(
     q: str | None = None,

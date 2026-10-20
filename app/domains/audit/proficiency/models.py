@@ -10,8 +10,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 from app.core.enums import utcnow
 
-DECLARATION_KINDS = ("annual", "engagement")
-REVIEW_STATUSES = ("Not required", "Pending review", "Cleared", "Reassigned")
 CPD_CATEGORIES = ("Formal training / course", "Conference / seminar", "Professional exam", "E-learning",
                   "Self-study", "Teaching / writing", "Other")
 

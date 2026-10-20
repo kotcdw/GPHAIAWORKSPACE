@@ -3,13 +3,31 @@
 from __future__ import annotations
 
 import io
+import re
 from collections.abc import Iterable, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from urllib.parse import quote
 
 from fastapi.responses import Response
 
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def safe_cell(value):  # noqa: ANN001, ANN201
+    """A value that is safe to put in a spreadsheet or CSV cell.
+
+    Control characters (which Excel files cannot hold) are removed, and text that Excel would run as a
+    formula (=, +, -, @, tab, carriage return) is prefixed with an apostrophe so it stays plain text.
+    """
+    if value is None or isinstance(value, (bool, int, float, datetime, date)):
+        return value
+    text = _CONTROL.sub("", str(value))
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+def safe_row(values: Iterable) -> list:
+    return [safe_cell(v) for v in values]
 
 
 def workbook(sheets: Iterable[tuple[str, Sequence[str], Iterable[Sequence]]], *, title: str = "") -> bytes:
@@ -22,16 +40,16 @@ def workbook(sheets: Iterable[tuple[str, Sequence[str], Iterable[Sequence]]], *,
     wb = Workbook()
     wb.remove(wb.active)
     for name, headers, rows in sheets:
-        ws = wb.create_sheet(name[:31])
+        ws = wb.create_sheet(_CONTROL.sub("", re.sub(r"[\[\]\*\?/\\:]", "", name))[:31] or "Sheet")
         start = 1
         if title:
             ws.cell(row=1, column=1, value=f"{cfg('org_name')} - {cfg('department_name')}").font = Font(bold=True)
-            ws.cell(row=2, column=1, value=title).font = Font(bold=True, size=12)
+            ws.cell(row=2, column=1, value=safe_cell(title)).font = Font(bold=True, size=12)
             ws.cell(row=3, column=1, value=f"{cfg('document_classification')}  ·  generated "
                                             f"{datetime.now():%d %b %Y %H:%M}").font = Font(italic=True, size=9)
             start = 5
         for col, h in enumerate(headers, 1):
-            cell = ws.cell(row=start, column=col, value=h)
+            cell = ws.cell(row=start, column=col, value=safe_cell(h))
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="1F3A5F")
             cell.alignment = Alignment(wrap_text=True, vertical="top")
@@ -43,6 +61,7 @@ def workbook(sheets: Iterable[tuple[str, Sequence[str], Iterable[Sequence]]], *,
                     from app.core.regional import fmt_date
 
                     value = fmt_date(value)
+                value = safe_cell(value)
                 cell = ws.cell(row=r, column=col, value=value)
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
                 widths[col - 1] = max(widths[col - 1], min(len(str(value or "")), 60))

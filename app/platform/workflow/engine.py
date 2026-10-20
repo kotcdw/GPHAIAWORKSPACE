@@ -61,10 +61,6 @@ def mark_action(session: Session, record_type: str, record_id: int, action: str,
     session.info.setdefault("wf_actions", {})[(record_type, record_id)] = (action, source)
 
 
-def request_sync(session: Session, record_type: str, record_id: int) -> None:
-    session.info.setdefault(_SYNC, set()).add((record_type, record_id))
-
-
 # ---------------------------------------------------------------- session hooks
 
 def _before_flush(session: Session, _ctx, _instances) -> None:  # noqa: ANN001, C901

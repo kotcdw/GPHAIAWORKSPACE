@@ -1,4 +1,4 @@
-﻿"""Authentication sessions (server-side HttpOnly cookie backing).
+"""Authentication sessions (server-side HttpOnly cookie backing).
 
 Owns the ``sessions`` table. References ``users`` by FK string and a lazy
 relationship target so no import cycle is created with the users module.

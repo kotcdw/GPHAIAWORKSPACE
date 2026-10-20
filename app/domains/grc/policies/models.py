@@ -11,10 +11,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 from app.core.enums import utcnow
 
-POLICY_STATUSES = ("Draft", "In review", "Approved", "Published", "Retired")
-VERSION_STATUSES = ("Draft", "In review", "Approved", "Published", "Superseded", "Returned")
-ATTESTATION_STATUSES = ("Pending", "Attested", "Declined")
-
 
 class Policy(Base):
     __tablename__ = "policies"

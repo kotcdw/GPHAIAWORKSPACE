@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import io
 import re
-from datetime import date, datetime
+from datetime import date
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import Response
@@ -150,16 +150,18 @@ def _workbook(title: str, headers: list[str], rows: list[list], notes: list[str]
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
 
+    from app.services.documents.excel import safe_cell, safe_row
+
     wb = Workbook()
     ws = wb.active
-    ws.title = re.sub(r"[\[\]\*\?/\\:]", "", title)[:31] or "Sheet1"
-    ws.append(headers)
+    ws.title = str(safe_cell(re.sub(r"[\[\]\*\?/\\:]", "", title))).lstrip("'")[:31] or "Sheet1"
+    ws.append(safe_row(headers))
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="1F3A68")
         cell.alignment = Alignment(vertical="center")
     for row in rows:
-        ws.append([_cell(v) for v in row])
+        ws.append(safe_row(row))
     for i, h in enumerate(headers, start=1):
         width = max([len(str(h))] + [len(str(r[i - 1])) for r in rows[:200] if i - 1 < len(r) and r[i - 1]])
         ws.column_dimensions[get_column_letter(i)].width = min(max(12, width + 2), 60)
@@ -167,19 +169,11 @@ def _workbook(title: str, headers: list[str], rows: list[list], notes: list[str]
     if notes:
         help_ws = wb.create_sheet("Instructions")
         for line in notes:
-            help_ws.append([line])
+            help_ws.append([safe_cell(line)])
         help_ws.column_dimensions["A"].width = 100
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
-
-
-def _cell(v):  # noqa: ANN001, ANN202
-    if isinstance(v, (int, float, datetime, date)) or v is None:
-        return v
-    text = str(v)
-    # Guard against formula injection when the file is opened in Excel.
-    return "'" + text if text[:1] in ("=", "+", "-", "@") else text
 
 
 def _xlsx_response(content: bytes, filename: str) -> Response:

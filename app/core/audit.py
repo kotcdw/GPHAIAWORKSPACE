@@ -16,8 +16,6 @@ from app.platform.history.models import AuditLog
 
 # --------------------------------------------------------------------------- classification
 
-CATEGORIES = ("authentication", "user_admin", "security", "export", "system", "data")
-OUTCOMES = ("success", "failure")
 
 _AUTH = ("LOGIN", "LOGOUT", "ACCOUNT_LOCKED", "PASSWORD_CHANGE", "MFA_", "REGISTER", "PROFILE_UPDATE",
          "SESSION_", "DIRECTORY_ACCOUNT")

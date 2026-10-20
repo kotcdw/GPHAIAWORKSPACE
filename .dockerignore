@@ -17,7 +17,6 @@ deploy/
 .pytest_cache
 .coverage
 Claude outputs/
-USERDOCS/
 *.png
 *.cmd
 *.ps1

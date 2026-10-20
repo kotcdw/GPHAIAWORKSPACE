@@ -10,8 +10,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 from app.core.enums import utcnow
 
-RISK_STATUSES = ("Draft", "Active", "Closed")
-OBJECTIVE_STATUSES = ("Active", "Achieved", "Retired")
 KRI_FREQUENCIES = ("Monthly", "Quarterly", "Half-yearly", "Annually")
 
 

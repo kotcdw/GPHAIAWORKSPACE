@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -73,6 +74,9 @@ def main() -> int:
     if target_name == live_url.database:
         print("The target must be a different, empty database.")
         return 2
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", target_name):
+        print("The target database name may only use letters, digits and underscores.")
+        return 2
     target_url = live_url.set(database=target_name)
 
     # 1. Fresh snapshot, encrypted exactly like a scheduled backup, then read back with the current key.
@@ -93,7 +97,9 @@ def main() -> int:
     server = create_engine(live_url.set(database=""), future=True)
     try:
         with server.begin() as conn:
-            conn.execute(text(f"CREATE DATABASE IF NOT EXISTS `{target_name}` CHARACTER SET utf8mb4"))
+            # The name is checked against [A-Za-z0-9_] above.
+            sql = f"CREATE DATABASE IF NOT EXISTS `{target_name}` CHARACTER SET utf8mb4"
+            conn.execute(text(sql))  # nosemgrep
     except Exception as exc:  # noqa: BLE001
         print(f"      Could not create {target_name} ({exc.__class__.__name__}); it must already exist and be empty.")
     finally:

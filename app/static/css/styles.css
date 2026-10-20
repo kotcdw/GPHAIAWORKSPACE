@@ -214,7 +214,6 @@ button.btn.icon, a.btn.icon { padding: 5px 8px; }
 .badge-high, .badge-risk-high, .badge-ineffective, .badge-rejected, .badge-denied, .badge-on-hold, .badge-admin, .badge-locked { background: var(--danger-soft); color: var(--danger-text); border-color: var(--danger-line); }
 .badge-draft, .badge-not-tested, .badge-not-started, .badge-cancelled, .badge-inactive, .badge-auditee { background: var(--neutral-soft); color: var(--text-2); border-color: var(--border); }
 .ref { font-family: "JetBrains Mono", "Consolas", ui-monospace, monospace; font-size: 12px; color: var(--accent-text); white-space: nowrap; }
-.pill { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--panel-2); font-size: 11px; color: var(--muted); }
 .sys-task { color: var(--warn-text); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--panel-2); border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 12.5px; }
@@ -303,11 +302,6 @@ button.btn.icon, a.btn.icon { padding: 5px 8px; }
 .checklist .check { font-weight: 400; display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); }
 .test-info { margin-top: 12px; display: grid; gap: 4px; font-size: 13px; }
 
-/* Risk & control matrix ---------------------------------------------------- */
-.control-box { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 10px; background: var(--panel-2); }
-.control-box .view-head { margin-bottom: 6px; }
-.control-box table { margin-top: 6px; }
-.control-box th, .control-box td { padding: 7px 8px; }
 
 /* Responsive -------------------------------------------------------------- */
 @media (max-width: 1100px) {
@@ -408,7 +402,6 @@ button.btn.icon, a.btn.icon { padding: 5px 8px; }
 
 .sign-in-div [class*="col-"] { position: relative; width: 100%; padding-right: 15px; padding-left: 15px; }
 .sign-in-div .col-lg-12, .sign-in-div .col-sm-12, .sign-in-div .col-md-12 { flex: 0 0 100%; max-width: 100%; }
-.sign-in-div .col-lg-6, .sign-in-div .col-sm-6, .sign-in-div .col-md-6 { flex: 0 0 50%; max-width: 50%; }
 
 .sign-in-div .text-center { text-align: center !important; }
 .sign-in-div .m-b-20 { margin-bottom: 20px; }
@@ -538,29 +531,10 @@ button.btn.icon, a.btn.icon { padding: 5px 8px; }
 .sign-in-div .msg.error { background: #fdecea; border: 1px solid #f44336; color: #b71c1c; }
 .sign-in-div .msg.ok { background: #e8f5e9; border: 1px solid #16a34a; color: #14532d; }
 
-/* Django-style password guidance shown on the register card. */
-.sign-in-div .pw-hints {
-  text-align: left;
-  color: #6b7280;
-  font-size: 12px;
-  margin: 6px 0 4px;
-  padding-left: 18px;
-}
-.sign-in-div .pw-hints li { margin: 2px 0; }
 
-/* Sign-in fixes: centred button text, two-column name row, readable hints. */
+/* Sign-in fixes: centred button text. */
 .sign-in-div .ant-btn-primary { display: flex; align-items: center; justify-content: center; line-height: 1; font-size: 14px !important; }
-.sign-in-div .pw-hints { margin: -4px 0 14px; }
 
-/* control test tables: consistent columns across boxes */
-table.tests-table { table-layout: fixed; width: 100%; }
-table.tests-table th:nth-child(1) { width: 90px; }
-table.tests-table th:nth-child(2) { width: 110px; }
-table.tests-table th:nth-child(3) { width: 110px; }
-table.tests-table th:nth-child(4) { width: 90px; }
-table.tests-table th:nth-child(5) { width: 120px; }
-table.tests-table th:nth-child(6) { width: 120px; }
-table.tests-table td { overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 560px) { .hide-sm { display: none !important; } }
 
@@ -959,9 +933,7 @@ table.matrix td.mx-cell { text-align: center; }
 tr.mx-total td { border-top: 1px solid var(--border-strong); }
 
 /* ---------------------------------------------------------------- roles & permissions, programmes, evidence */
-.role-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.role-card h3 { font-size: 15px; margin: 0; }
-.role-card p { margin: 6px 0 0; }
+
 .matrix-wrap { max-height: 70vh; overflow: auto; }
 table.perm-matrix th, table.perm-matrix td { padding: 6px 8px; }
 table.perm-matrix thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; font-size: 12px; white-space: normal; min-width: 90px; }
@@ -1130,7 +1102,6 @@ button.btn.tiny { padding: 2px 8px; font-size: 11.5px; }
 .role-super_admin .role-icon { background: var(--ok-soft); color: var(--ok-text); }
 .role-admin .role-icon { background: var(--purple-soft); color: var(--purple-text); }
 .role-audit_client .role-icon { background: var(--warn-soft); color: var(--warn-text); }
-.role-card p { margin: 0; flex: 1; }
 .perm-matrix thead th { vertical-align: bottom; font-size: 12px; }
 .perm-matrix thead th i { font-size: 16px; display: block; margin-bottom: 4px; }
 .perm-matrix .chip-mini { margin-left: 6px; }
@@ -1389,7 +1360,6 @@ table.dense tbody tr:hover { background: var(--accent-soft); }
 /* ------------------------------------------------------------------ fieldwork workflows, Issue Tracker, coverage */
 .fw-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); font-size: var(--fs-sm); }
 .fw-strip .fw-k { color: var(--muted); }
-.fw-strip .fw-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
 .fw-strip .grow { flex: 1; }
 .fw-strip select.compact, .actions select.compact, td select.compact { width: auto; padding: 3px 6px; font-size: var(--fs-sm); }
 .subnav { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; margin-bottom: 12px; background: var(--panel-3); border-radius: var(--radius); }
@@ -1505,7 +1475,6 @@ input.switch:disabled { opacity: .5; cursor: default; }
 .prio-main { flex: 1; min-width: 0; }
 .prio-note { font-size: var(--fs-sm); color: var(--text-2); margin-top: 3px; }
 .auto-ico { margin-left: 4px; color: var(--accent); font-size: 12px; }
-.ent-strip .chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .chip-link { border: 1px solid var(--border); background: var(--panel-2); border-radius: 999px; padding: 2px 10px; font: inherit; font-size: var(--fs-sm); color: var(--text); cursor: pointer; }
 .chip-link:hover { border-color: var(--accent-line); background: var(--accent-soft); }
 .scope-group { margin-bottom: 12px; }
@@ -1588,9 +1557,6 @@ input.switch:disabled { opacity: .5; cursor: default; }
 .role-card-head h3 { font-size: 13.5px; line-height: 1.25; }
 .role-card-head .muted.small { font-size: 11.5px; }
 .role-icon, .app-icon { width: 26px; height: 26px; border-radius: 7px; font-size: 13px; }
-.role-card p { font-size: 12px; line-height: 1.35; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.role-card .chips { gap: 4px; }
-.role-card .chip-mini { font-size: 11px; padding: 1px 6px; }
 
 .ws-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .ws-tile { padding: 10px 12px; gap: 10px; }

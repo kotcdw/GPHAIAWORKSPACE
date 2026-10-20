@@ -379,6 +379,3 @@ def get_summary(fiscal_year: int | None = None, db: DBSession = Depends(get_db),
     return capacity_summary(db, fiscal_year or current_fiscal_year())
 
 
-@router.get("/categories")
-def categories(user: User = Staff) -> list[str]:
-    return list(TIME_CATEGORIES)

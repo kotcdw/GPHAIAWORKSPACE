@@ -91,7 +91,6 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
 _ALL = set(PERMISSIONS)
 _PLATFORM = {p for p in _ALL if p.startswith("system.")}
 _METHOD = {p for p in _ALL if p.startswith("method.")}
-_GRC = {p for p in _ALL if p.startswith("grc.")}
 _FIELD = {"audit.plan", "audit.fieldwork", "audit.findings", "audit.workpapers", "audit.evidence", "report.prepare",
           "ai.use"}
 _REVIEW = {"review.workpapers", "review.notes"}

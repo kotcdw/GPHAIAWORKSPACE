@@ -12,7 +12,6 @@ from app.core.enums import utcnow
 
 PRIORITIES = ("Low", "Medium", "High", "Critical")
 STATUSES = ("New", "Open", "Under Review", "Closed", "False Positive")
-RUN_STATUSES = ("Queued", "Running", "Success", "Failed", "Skipped", "Cancelled")
 FREQUENCIES = ("daily", "weekly", "monthly")
 
 

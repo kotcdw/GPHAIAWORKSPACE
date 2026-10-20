@@ -21,6 +21,7 @@ from app.platform.approvals.models import ApprovalCycle
 from app.platform.history.models import AuditLog, RecordHistory
 from app.platform.history.schemas import ApprovalCycleOut, AuditLogOut, RecordHistoryOut
 from app.platform.users.models import User
+from app.services.documents.excel import safe_row
 
 router = APIRouter(prefix="/api/audit-logs", tags=["audit-logs"])
 records_router = APIRouter(prefix="/api/records", tags=["record-history"])
@@ -246,9 +247,9 @@ def audit_log_export(
     writer.writerow(["Id", "Timestamp (UTC)", "Local time", "User", "Username", "Event", "Category", "Outcome",
                      "Record type", "Record id", "Action (as recorded)", "IP address", "Browser"])
     for r in _rows(db, entries):
-        writer.writerow([r.id, f"{r.timestamp:%Y-%m-%d %H:%M:%S}", fmt_datetime(r.timestamp), r.user or "",
+        writer.writerow(safe_row([r.id, f"{r.timestamp:%Y-%m-%d %H:%M:%S}", fmt_datetime(r.timestamp), r.user or "",
                          r.username or "", r.event, r.category, r.outcome, r.entity_type or "", r.entity_id or "",
-                         r.action_performed, r.ip_address or "", r.user_agent or ""])
+                         r.action_performed, r.ip_address or "", r.user_agent or ""]))
     filters = ", ".join(f"{k}={v}" for k, v in {"q": q, "user": user_id, "from": date_from, "to": date_to,
                                                   "category": category, "outcome": outcome}.items() if v)
     log_action(db, user_id=user.id, request=request, commit=True,
