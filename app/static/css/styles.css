@@ -550,8 +550,6 @@ button.btn.icon, a.btn.icon { padding: 5px 8px; }
 
 /* Sign-in fixes: centred button text, two-column name row, readable hints. */
 .sign-in-div .ant-btn-primary { display: flex; align-items: center; justify-content: center; line-height: 1; font-size: 14px !important; }
-.sign-in-div .row.name-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 0 -15px; }
-.sign-in-div .row.name-row > [class*="col-"] { max-width: none; flex: none; }
 .sign-in-div .pw-hints { margin: -4px 0 14px; }
 
 /* control test tables: consistent columns across boxes */

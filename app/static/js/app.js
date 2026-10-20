@@ -19,7 +19,6 @@ const appView = qs("#appView");
 const viewRoot = qs("#viewRoot");
 const whoami = qs("#whoami");
 const authMsg = qs("#authMsg");
-const regMsg = qs("#regMsg");
 
 function notify(container, text, kind = "ok") {
   if (!container) return;
@@ -347,22 +346,6 @@ function canWriteModule(key) {
 function isReadOnly() { return !!(state.user && state.user.job_role === "read_only"); }
 
 // ------------------------------------------------------------------ auth
-function showLogin() {
-  qs("#registerForm").classList.add("hidden");
-  qs("#loginForm").classList.remove("hidden");
-  notify(authMsg, "");
-  notify(regMsg, "");
-}
-
-function showRegister() {
-  qs("#loginForm").classList.add("hidden");
-  qs("#registerForm").classList.remove("hidden");
-  notify(authMsg, "");
-  notify(regMsg, "");
-}
-
-if (qs("#btnVerifyAccount")) qs("#btnVerifyAccount").addEventListener("click", showRegister);
-if (qs("#backToLogin")) qs("#backToLogin").addEventListener("click", showLogin);
 if (qs("#btnResetPassword")) {
   qs("#btnResetPassword").addEventListener("click", () => {
     notify(authMsg, "Please contact your administrator to reset your password.", "ok");
@@ -408,40 +391,7 @@ qs("#loginForm").addEventListener("submit", async (ev) => {
   }
 });
 
-qs("#registerForm").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  notify(regMsg, "");
-  const pass = qs("#regPass").value;
-  const confirm = qs("#regConfirm").value;
-  if (pass !== confirm) {
-    notify(regMsg, "Passwords do not match.", "error");
-    return;
-  }
-  if (pass.length < 8) {
-    notify(regMsg, "Password must be at least 8 characters.", "error");
-    return;
-  }
-  const first = qs("#regFirst").value.trim();
-  const last = qs("#regLast").value.trim();
-  try {
-    const res = await API.post("/api/auth/register", {
-      username: qs("#regUser").value.trim(),
-      email: qs("#regEmail").value.trim(),
-      first_name: first,
-      last_name: last,
-      company: qs("#regCompany").value.trim(),
-      full_name: `${first} ${last}`.trim(),
-      password: pass,
-    });
-    qs("#registerForm").reset();
-    showLogin();
-    notify(authMsg, res.message, "ok");
-  } catch (err) {
-    notify(regMsg, authError(err, "create your account"), "error");
-  }
-});
-
-// Sign-in/registration never keep drafts (passwords are never stored), so say plainly what failed.
+// Sign-in never keeps drafts (passwords are never stored), so say plainly what failed.
 function authError(err, action) {
   if (err && err.code === "database_updating") { checkAuthHealth(); return err.message; }
   if (err && err.status >= 500 && err.status !== 503) {

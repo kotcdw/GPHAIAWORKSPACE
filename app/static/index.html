@@ -59,123 +59,14 @@
             <p class="text-center">or</p>
 
             <div class="row" style="margin-bottom:20px">
-              <div class="col-lg-12 col-sm-12 col-md-12" style="margin-bottom:10px">
+              <div class="col-lg-12 col-sm-12 col-md-12">
                 <button type="button" id="btnResetPassword" title="Reset Password" class="btn btn-block btn-outline-primary"><i class="bi bi-unlock-fill"></i> Reset Password</button>
               </div>
-              <div class="col-lg-12 col-sm-12 col-md-12">
-                <button type="button" id="btnVerifyAccount" title="Verify User Account" class="btn btn-block btn-outline-primary"><i class="bi bi-check"></i> Verify Your Account</button>
-              </div>
             </div>
           </div>
         </div>
       </form>
 
-      <!-- Register (extension; reached via "Verify Your Account") -->
-      <form id="registerForm" class="login-div hidden" autocomplete="off">
-        <div class="card blueBorder">
-          <div class="auth-head">
-            <img src="/static/img/loginLogo.jpg" alt="GPHA" class="auth-head-logo" />
-            <div class="auth-head-text">
-              <span class="auth-head-title">GPHA INTERNAL AUDIT WORKSPACE</span>
-            </div>
-          </div>
-          <hr />
-          <div class="card-body text-center" style="padding-top:10px">
-            <div class="sign-in-heading text-center m-b-20" style="margin-bottom:20px">CREATE YOUR ACCOUNT</div>
-            <div id="regMsg"></div>
-
-            <div class="row" style="text-align:left">
-              <div class="col-lg-12 col-sm-12 col-md-12">
-                <div class="ant-form-item">
-                  <div class="ant-form-item-control">
-                    <input id="regUser" class="ant-input ant-input-lg" type="text" required minlength="3" placeholder="Username" autocomplete="off" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="row" style="text-align:left">
-              <div class="col-lg-12 col-sm-12 col-md-12">
-                <div class="ant-form-item">
-                  <div class="ant-form-item-control">
-                    <input id="regEmail" class="ant-input ant-input-lg" type="email" required placeholder="Email" autocomplete="off" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="row name-row" style="text-align:left">
-              <div class="col-lg-6 col-sm-6 col-md-6">
-                <div class="ant-form-item">
-                  <div class="ant-form-item-control">
-                    <input id="regFirst" class="ant-input ant-input-lg" type="text" placeholder="First Name" autocomplete="off" />
-                  </div>
-                </div>
-              </div>
-              <div class="col-lg-6 col-sm-6 col-md-6">
-                <div class="ant-form-item">
-                  <div class="ant-form-item-control">
-                    <input id="regLast" class="ant-input ant-input-lg" type="text" placeholder="Last Name" autocomplete="off" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="row" style="text-align:left">
-              <div class="col-lg-12 col-sm-12 col-md-12">
-                <div class="ant-form-item">
-                  <div class="ant-form-item-control">
-                    <input id="regCompany" class="ant-input ant-input-lg" type="text" placeholder="Company" autocomplete="off" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="row" style="text-align:left">
-              <div class="col-lg-12 col-sm-12 col-md-12">
-                <div class="ant-form-item">
-                  <div class="ant-form-item-control">
-                    <span class="ant-input-affix-wrapper ant-input-affix-wrapper-lg">
-                      <input id="regPass" class="ant-input ant-input-lg" type="password" required minlength="8" placeholder="Password (min 8 characters)" autocomplete="off" />
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <ul class="pw-hints">
-              <li>At least 8 characters.</li>
-              <li>Not entirely numeric, and not a commonly used password.</li>
-              <li>Must not contain your username.</li>
-            </ul>
-
-            <div class="row" style="text-align:left">
-              <div class="col-lg-12 col-sm-12 col-md-12">
-                <div class="ant-form-item">
-                  <div class="ant-form-item-control">
-                    <span class="ant-input-affix-wrapper ant-input-affix-wrapper-lg">
-                      <input id="regConfirm" class="ant-input ant-input-lg" type="password" required minlength="8" placeholder="Confirm password" autocomplete="off" />
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="row">
-              <div class="col-md-12 col-lg-12 col-sm-12">
-                <button type="submit" class="ant-btn ant-btn-primary ant-btn-lg ant-btn-block"><span>Request Account</span></button>
-              </div>
-            </div>
-
-            <p class="text-center">or</p>
-
-            <div class="row" style="margin-bottom:20px">
-              <div class="col-lg-12 col-sm-12 col-md-12">
-                <button type="button" id="backToLogin" title="Back To Login" class="btn btn-block btn-outline-primary"><i class="bi bi-chevron-left"></i> Back To Login</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </form>
     </div>
   </section>
 

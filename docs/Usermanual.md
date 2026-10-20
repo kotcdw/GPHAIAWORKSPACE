@@ -69,7 +69,7 @@ Some permissions belong to the **GM Audit only**: approving the Assurance Plan (
 
 **Forgotten password:** click **Reset Password**. GIAW shows *"Please contact your administrator to reset your password."* An administrator resets it (chapter 17.2).
 
-**Requesting an account:** click **Verify Your Account**, fill **Username**, **Email**, **First Name**, **Last Name**, **Company**, **Password (min 8 characters)** and **Confirm password**, then click **Request Account**. An administrator must approve it.
+**Getting an account:** accounts are created by an administrator (17.2). Ask yours if you do not have one.
 
 ### First-time two-step set-up
 
