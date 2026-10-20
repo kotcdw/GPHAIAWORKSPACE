@@ -76,7 +76,78 @@ function heatGrid(grid, titles, label, onPick) {
 
 // ==================================================================== Risk Manager & Strategy
 
-async function renderRiskManager(tab = state.riskTab || "register", filters = state.riskFilters || {}) {
+// Overview: key figures, risk breakdown by category, inherent / residual heat map, my tasks, my unit, quick actions.
+async function renderRiskOverview(body, reg) {
+  state.riskOverview = state.riskOverview || { category: "", heat: "residual" };
+  const v = state.riskOverview;
+  body.append(loadingState());
+  let d;
+  try { d = await API.get(`/api/grc/risks/dashboard${v.category ? `?category=${encodeURIComponent(v.category)}` : ""}`); }
+  catch (err) { clear(body); body.append(errorState(err)); return; }
+  clear(body);
+  GRC.thr = d.thresholds;
+  const go = (filters) => renderRiskManager("register", { ...(v.category ? { category: v.category } : {}), ...filters });
+  const cat = el("select", { class: "compact", "aria-label": "Risk category" }, el("option", { value: "" }, "All risk categories"),
+    ...d.categories.map((c) => el("option", { value: c, selected: c === v.category ? "1" : null }, c)));
+  cat.addEventListener("change", () => { v.category = cat.value; renderRiskManager("overview"); });
+  const tile = (label, value, sub, onClick, tone = "") => el("button", { class: `kpi kpi-btn ${tone}`, type: "button", onclick: onClick },
+    el("div", { class: "kpi-l" }, label), el("div", { class: "kpi-v" }, el("strong", null, String(value)), sub ? el("span", { class: "kpi-s" }, sub) : null));
+
+  // Risk breakdown: residual level by category (stacked bars with a count axis).
+  const cats = Object.entries(d.by_category).sort((a, b) => (b[1].High + b[1].Medium + b[1].Low) - (a[1].High + a[1].Medium + a[1].Low));
+  const maxN = Math.max(1, ...cats.map(([, n]) => n.High + n.Medium + n.Low));
+  const breakdown = el("div", { class: "card" }, el("h3", null, "Risk breakdown"),
+    cats.length ? el("div", { class: "rb-chart", role: "img", "aria-label": `Residual risk by category: ${cats.map(([c, n]) => `${c} ${n.High} high, ${n.Medium} medium, ${n.Low} low`).join("; ")}` },
+      ...cats.map(([c, n]) => el("button", { class: "rb-row", type: "button", title: `${c}: High ${n.High} · Medium ${n.Medium} · Low ${n.Low}`, onclick: () => go({ category: c }) },
+        el("span", { class: "rb-l" }, c),
+        el("span", { class: "rb-track" }, el("span", { class: "rb-bar", style: `width:${(100 * (n.High + n.Medium + n.Low)) / maxN}%` },
+          ...["Low", "Medium", "High"].filter((k) => n[k]).map((k) => el("span", { class: `rb-seg r-${k === "Medium" ? "med" : k.toLowerCase()}`, style: `flex:${n[k]}` })))),
+        el("span", { class: "rb-n" }, String(n.High + n.Medium + n.Low)))),
+      el("div", { class: "rb-legend" }, ...[["High", "high"], ["Medium", "med"], ["Low", "low"]].map(([l, k]) => el("span", null, el("i", { class: `r-${k}` }), ` ${l}`))))
+      : el("p", { class: "muted small" }, "No active risks yet."));
+
+  const kind = el("select", { class: "compact", "aria-label": "Heat map" }, ...[["residual", "Residual"], ["inherent", "Inherent"]].map(([k, l]) => el("option", { value: k, selected: k === v.heat ? "1" : null }, l)));
+  kind.addEventListener("change", () => { v.heat = kind.value; renderRiskManager("overview"); });
+  const info = el("div", { class: "heat-info muted small", "aria-live": "polite" }, "Select a cell to list its risks.");
+  const pick = (ids, tip) => { clear(info); info.append(el("div", null, tip), ...ids.map((i) => el("div", null, el("button", { class: "linkish", onclick: () => openRisk(i) }, d.titles[i])))); };
+  const heat = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Risk heat map"), kind),
+    heatGrid(v.heat === "inherent" ? d.inherent_grid : d.residual_grid, d.titles, `${v.heat} risk heat map`, pick), info);
+
+  const num = (n, onClick, tone = "") => el("button", { class: `task-n ${tone} ${n ? "" : "zero"}`, type: "button", onclick: onClick, disabled: n ? null : "1" }, String(n));
+  const my = el("div", { class: "card task-card" }, el("h4", null, "My risks and indicators"),
+    el("div", { class: "task-grid" },
+      el("div", null, el("div", { class: "muted small" }, "Risks I own"), num(d.my.owned, () => go({ mine: "true" }))),
+      el("div", null, el("div", { class: "muted small" }, "Review due in 30 days"), num(d.my.review_due, () => go({ mine: "true" }))),
+      el("div", null, el("div", { class: "muted small" }, "Review overdue"), num(d.my.overdue, () => go({ mine: "true", overdue: "true" }), "warn")),
+      el("div", null, el("div", { class: "muted small" }, "Indicators to record"), num(d.my.kris_to_record, () => renderRiskManager("kris"), "warn")),
+      el("div", null, el("div", { class: "muted small" }, "My indicator breaches"), num(d.my.kri_breaches, () => renderRiskManager("kris"), "danger"))));
+  const group = d.group ? el("div", { class: "card task-card" }, el("h4", null, `My unit's risks${d.group.unit ? ` · ${d.group.unit}` : ""}`),
+    el("div", { class: "task-grid" },
+      el("div", null, el("div", { class: "muted small" }, "Open"), num(d.group.open, () => go({ my_unit: "true" }))),
+      el("div", null, el("div", { class: "muted small" }, "No owner"), num(d.group.unassigned, () => go({ my_unit: "true", unassigned: "true" }), "warn")),
+      el("div", null, el("div", { class: "muted small" }, "Review overdue"), num(d.group.overdue, () => go({ my_unit: "true", overdue: "true" }), "warn"))))
+    : el("div", { class: "card task-card" }, el("h4", null, "My unit's risks"), el("p", { class: "muted small" }, "Set Where I work on your profile to see your unit's risks."));
+  const quick = el("div", { class: "card" }, el("h4", null, "Quick actions"),
+    el("div", { class: "quick-actions" },
+      d.can_edit ? btn("+ New risk", () => riskForm(null, reg)) : null,
+      d.can_edit ? btn("+ Strategic objective", () => strategicObjectiveForm(null), "secondary") : null,
+      btn("Record indicator readings", () => renderRiskManager("kris"), "secondary"),
+      btn("Risk register", () => renderRiskManager("register", {}), "secondary"),
+      btn("Strategy map", () => renderRiskManager("strategy"), "secondary")));
+
+  body.append(el("div", { class: "risk-home" },
+    el("section", { class: "risk-main" },
+      el("div", { class: "risk-main-head" }, el("h3", null, "Overview"), cat),
+      el("div", { class: "kpi-row" },
+        tile("Entities at highest risk", d.entities_high, d.entities.length ? ` · ${d.entities[0].name}` : "", () => go({ level: "High" }), d.entities_high ? "danger" : ""),
+        tile("Above target", d.above_target, " residual over target", () => go({}), d.above_target ? "warn" : ""),
+        tile("KRI breaches", d.kri_breaches, d.kri_amber ? ` · ${d.kri_amber} amber` : "", () => renderRiskManager("kris"), d.kri_breaches ? "danger" : "")),
+      el("div", { class: "two-col-even" }, breakdown, heat)),
+    el("aside", { class: "risk-side", "aria-label": "Tasks" }, el("div", { class: "risk-side-head" }, el("h3", null, "Tasks"),
+      el("button", { class: "link-btn", type: "button", onclick: () => navigate("mywork") }, "View all tasks")), my, group, quick)));
+}
+
+async function renderRiskManager(tab = state.riskTab || "overview", filters = state.riskFilters || {}) {
   state.riskTab = tab; state.riskFilters = filters;
   clear(viewRoot);
   const msg = el("div");
@@ -89,16 +160,13 @@ async function renderRiskManager(tab = state.riskTab || "register", filters = st
   viewRoot.append(viewHeader("Risk Manager", reg.can_edit ? [
     el("button", { class: "btn small secondary", onclick: () => strategicObjectiveForm(null) }, el("i", { class: "bi bi-flag" }), " Objective"),
     el("button", { class: "btn small", onclick: () => riskForm(null, reg) }, el("i", { class: "bi bi-plus-lg" }), " Risk"),
-  ] : null, { sub: "Enterprise risk register, strategic objectives and key risk indicators. Risk owners keep their assessments current." }), msg);
-  viewRoot.append(el("div", { class: "stats" },
-    stat(sum.active, "Active risks"), stat(sum.by_level.High, "High residual", null, sum.by_level.High ? "danger" : ""),
-    stat(sum.above_target, "Above target", "Residual above the target score", sum.above_target ? "warn" : ""),
-    stat(sum.review_overdue, "Review overdue", null, sum.review_overdue ? "warn" : ""),
-    stat(sum.kri_rag.Red, "KRIs red", `${sum.kri_rag.Amber} amber · ${sum.kri_rag.Green} green`, sum.kri_rag.Red ? "danger" : "")));
-  viewRoot.append(tabBar([{ key: "register", label: "Register" }, { key: "heat", label: "Heat maps" }, { key: "strategy", label: "Strategy" }, { key: "kris", label: "Indicators" }],
-    tab, (k) => renderRiskManager(k, filters)));
+  ] : null, { sub: `Welcome, ${state.user.full_name || state.user.username}. Enterprise risks, strategic objectives and key risk indicators; risk owners keep their assessments current.` }), msg);
+  viewRoot.append(tabBar([{ key: "overview", label: "Overview" }, { key: "register", label: "Register" }, { key: "heat", label: "Heat maps" }, { key: "strategy", label: "Strategy" }, { key: "kris", label: "Indicators" }],
+    tab, (k) => renderRiskManager(k, k === "register" ? filters : {})));
   const body = el("div");
   viewRoot.append(body);
+
+  if (tab === "overview") { renderRiskOverview(body, reg); return; }
 
   if (tab === "register") {
     const sel = (name, label, opts) => {
@@ -108,6 +176,11 @@ async function renderRiskManager(tab = state.riskTab || "register", filters = st
     };
     const q = el("input", { type: "search", class: "compact", placeholder: "Search risks", value: filters.q || "", "aria-label": "Search risks" });
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") renderRiskManager("register", { ...filters, q: q.value.trim() }); });
+    const quick = { mine: "Owned by me", overdue: "Review overdue", unassigned: "No owner", my_unit: "My unit" };
+    const on = Object.keys(quick).filter((k) => filters[k]);
+    if (on.length) body.append(el("div", { class: "filter-chips" }, el("span", { class: "muted small" }, "Showing:"),
+      ...on.map((k) => el("span", { class: "chip" }, quick[k], el("button", { class: "chip-x", type: "button", "aria-label": `Remove ${quick[k]}`,
+        onclick: () => { const f = { ...filters }; delete f[k]; renderRiskManager("register", f); } }, "×")))));
     body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, `Risks (${reg.items.length})`),
       el("div", { class: "actions" }, sel("category", "All categories", reg.categories), sel("level", "All levels", ["High", "Medium", "Low"]),
         sel("status", "All statuses", ["Draft", "Active", "Closed"]), q)),

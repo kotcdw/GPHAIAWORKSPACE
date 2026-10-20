@@ -906,7 +906,7 @@ kbd { background: var(--panel-3); border: 1px solid var(--border-strong); border
 .heatmap { display: grid; grid-template-columns: 22px repeat(5, minmax(0, 1fr)); gap: 2px; flex: 1; max-width: 420px; }
 .hm-axis { display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: var(--muted); min-height: 22px; }
 .hm-cell { aspect-ratio: 1.5; border: 0; border-radius: 4px; font: inherit; font-weight: 700; font-size: 14px; color: var(--hm-text); cursor: pointer; min-height: 34px; }
-.hm-cell.hm-low { background: var(--accent-text); } .hm-cell.hm-med { background: var(--warn); } .hm-cell.hm-high { background: var(--danger); }
+.hm-cell.hm-low { background: var(--ok); } .hm-cell.hm-med { background: var(--warn); } .hm-cell.hm-high { background: var(--danger); }
 .hm-cell.empty { opacity: .28; }
 .hm-cell:hover, .hm-cell:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
 .heat-info { margin-top: 8px; min-height: 18px; }
@@ -1998,3 +1998,37 @@ td.col-wide, th.col-wide { min-width: 240px; }
 .drop-zone > i { font-size: 26px; color: var(--muted); }
 .qbars.tall { height: 160px; }
 .plan-track .phase-l { font-size: 12px; text-align: center; }
+
+/* Risk Manager overview */
+.risk-home { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .risk-home { grid-template-columns: 1fr; } }
+.risk-main, .risk-side { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.risk-main-head, .risk-side-head { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 10px; }
+.risk-main-head h3, .risk-side-head h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.risk-main-head { justify-content: flex-start; }
+.kpi-btn { text-align: left; font: inherit; cursor: pointer; }
+.kpi-btn:hover, .kpi-btn:focus-visible { border-color: var(--accent); outline: none; }
+.kpi.warn .kpi-v strong { color: var(--warn-text); }
+.two-col-even { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.two-col-even > .card { margin-bottom: 0; }
+@media (max-width: 900px) { .two-col-even { grid-template-columns: 1fr; } }
+.rb-chart { display: flex; flex-direction: column; gap: 6px; }
+.rb-row { display: grid; grid-template-columns: 160px 1fr 28px; gap: 8px; align-items: center; background: none; border: 0; padding: 2px 0; font: inherit; cursor: pointer; text-align: left; color: var(--text); }
+.rb-row:hover .rb-l { color: var(--accent-text); }
+.rb-l { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.rb-track { display: block; height: 16px; }
+.rb-bar { display: flex; height: 100%; border-radius: 3px; overflow: hidden; min-width: 4px; }
+.rb-seg { display: block; height: 100%; }
+.rb-n { font-size: var(--fs-sm); color: var(--muted); }
+.rb-legend { display: flex; gap: 14px; justify-content: center; margin-top: 10px; font-size: var(--fs-sm); color: var(--text-2); }
+.rb-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; }
+.task-card h4, .risk-side .card h4 { margin: 0 0 10px; font-size: var(--fs-sm); font-weight: 600; }
+.task-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.task-n { background: none; border: 0; padding: 0; font: inherit; font-size: 22px; font-weight: 600; color: var(--accent-text); cursor: pointer; }
+.task-n.warn { color: var(--warn-text); }
+.task-n.danger { color: var(--danger-text); }
+.task-n.zero, .task-n:disabled { color: var(--muted); cursor: default; font-weight: 400; }
+.quick-actions { display: flex; flex-direction: column; gap: 6px; }
+.quick-actions .btn { justify-content: flex-start; }
+.filter-chips { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.rb-seg.r-low, .rb-legend i.r-low { background: var(--ok); }

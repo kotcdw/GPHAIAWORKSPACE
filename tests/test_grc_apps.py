@@ -286,3 +286,39 @@ def test_task_manager_collects_work_for_a_business_user(client, client2, db):
     assert client2.get(f"/api/grc/risks/{risk['id']}").status_code == 200
     asset_id = names["Third-party due diligence"][0]["id"]
     assert client2.get(f"/api/grc/assets/{asset_id}").json()["can_assess"] is True
+
+
+def test_risk_overview_dashboard_tasks_and_quick_filters(client, client2, db):
+    officer = _u(db, "rdo", "admin")
+    owner = _u(db, "rdown", "auditor", Role.Auditor)
+    h = csrf_headers(login(client, officer.username))
+    unit = client.post("/api/organizations", json={"name": f"Risk unit {uuid.uuid4().hex[:5]}", "category": "Port"},
+                       headers=h).json()
+    owner.work_entity_id = unit["id"]
+    db.commit()
+    hi = client.post("/api/grc/risks", json={
+        "title": "Berth collapse", "category": "Operational", "owner_id": owner.id, "entity_id": unit["id"],
+        "inherent_likelihood": 5, "inherent_impact": 5, "residual_likelihood": 4, "residual_impact": 5,
+        "target_likelihood": 2, "target_impact": 2}, headers=h)
+    assert hi.status_code == 201, hi.text
+    client.post("/api/grc/risks", json={"title": "Unowned unit risk", "category": "Financial", "entity_id": unit["id"],
+                                        "inherent_likelihood": 2, "inherent_impact": 2, "residual_likelihood": 1,
+                                        "residual_impact": 1}, headers=h)
+    k = client.post(f"/api/grc/risks/{hi.json()['id']}/kris", json={"name": "Berth cracks", "amber_at": 2,
+                                                                     "red_at": 4, "owner_id": owner.id}, headers=h)
+    assert k.status_code == 201, k.text
+
+    oh = csrf_headers(login(client2, owner.username))
+    d = client2.get("/api/grc/risks/dashboard", headers=oh)
+    assert d.status_code == 200, d.text
+    d = d.json()
+    assert d["entities_high"] >= 1 and any(e["name"] == unit["name"] for e in d["entities"])
+    assert d["above_target"] >= 1 and d["by_category"]["Operational"]["High"] >= 1
+    assert d["my"]["owned"] == 1 and d["my"]["kris"] == 1 and d["my"]["kris_to_record"] == 1
+    assert d["group"]["open"] == 2 and d["group"]["unassigned"] == 1
+    only_fin = client2.get("/api/grc/risks/dashboard", params={"category": "Financial"}, headers=oh).json()
+    assert "Operational" not in only_fin["by_category"]
+    unassigned = client2.get("/api/grc/risks", params={"my_unit": "true", "unassigned": "true"}, headers=oh).json()
+    assert [r["title"] for r in unassigned["items"]] == ["Unowned unit risk"]
+    mine = client2.get("/api/grc/risks", params={"mine": "true"}, headers=oh).json()
+    assert [r["title"] for r in mine["items"]] == ["Berth collapse"]

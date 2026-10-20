@@ -1137,11 +1137,25 @@ KPIs against targets (plan delivery, actions closed on time, overdue actions, da
 
 ## 14.3 Risk Manager
 
+**Overview** (opens first):
+
+- **Category filter:** choose one risk category or *All risk categories*.
+- **Key figures:** **Entities at highest risk** (entities with a High residual risk), **Above target** (residual over the target score) and **KRI breaches** (indicators at red). Click a figure to open the matching list.
+- **Risk breakdown:** residual risks per category, split High / Medium / Low. Click a bar to open that category's register.
+- **Risk heat map:** choose **Residual** or **Inherent**; click a cell to list its risks.
+- **Tasks** on the right:
+  - **My risks and indicators:** risks I own, reviews due in 30 days, overdue reviews, indicators to record, my indicator breaches.
+  - **My unit's risks:** open, no owner and overdue, for the unit set under **Where I work**.
+  - **Quick actions:** new risk, strategic objective, record readings, register, strategy map.
+- Clicking a task number opens the **Register** filtered to it. A *Showing:* chip lists the filter; **×** removes it.
+
+![Risk Manager overview](manuals/images/68-risk-overview.jpg){width=100%}
+
 1. **+ Risk** › **Risk (event)**, Category, **Strategic objective**, **Risk owner**, **Division / entity**, **Causes**, **Consequences**; inherent, residual and target likelihood and impact; **Risk appetite**, **Treatment**, **Status**, **Treatment plan** › **Create**. Residual cannot exceed inherent.
 2. On a risk: **Assess** › scores, **How well are the controls working?**, **What changed and why** › **Record assessment**.
 3. **+ Indicator** › **Indicator**, **Unit**, **Frequency**, **A higher value is worse**, **Amber threshold**, **Red threshold**, **Who records it** › **Add indicator**; **Record reading** › **Period**, **Value**, **Comment** › **Record**.
 4. **Linked records** › **+ Link** connects controls, requirements, assets, the audit universe and policies.
-5. Tabs **Heat maps** (click a cell to list its risks), **Strategy** (**Objective** to add strategic objectives), **Indicators**.
+5. Tabs **Overview**, **Register**, **Heat maps** (click a cell to list its risks), **Strategy** (**Objective** to add strategic objectives), **Indicators**.
 
 ## 14.4 Compliance Maps
 
