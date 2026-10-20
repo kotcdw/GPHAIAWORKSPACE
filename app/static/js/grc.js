@@ -160,7 +160,7 @@ async function renderRiskManager(tab = state.riskTab || "overview", filters = st
   viewRoot.append(viewHeader("Risk Manager", reg.can_edit ? [
     el("button", { class: "btn small secondary", onclick: () => strategicObjectiveForm(null) }, el("i", { class: "bi bi-flag" }), " Objective"),
     el("button", { class: "btn small", onclick: () => riskForm(null, reg) }, el("i", { class: "bi bi-plus-lg" }), " Risk"),
-  ] : null, { sub: `Welcome, ${state.user.full_name || state.user.username}. Enterprise risks, strategic objectives and key risk indicators; risk owners keep their assessments current.` }), msg);
+  ] : null, { sub: `Welcome, ${state.user.full_name || state.user.username}` }), msg);
   viewRoot.append(tabBar([{ key: "overview", label: "Overview" }, { key: "register", label: "Register" }, { key: "heat", label: "Heat maps" }, { key: "strategy", label: "Strategy" }, { key: "kris", label: "Indicators" }],
     tab, (k) => renderRiskManager(k, k === "register" ? filters : {})));
   const body = el("div");
@@ -209,8 +209,7 @@ async function renderRiskManager(tab = state.riskTab || "overview", filters = st
     }))));
   } else if (tab === "strategy") {
     const objs = await safeGet("/api/grc/objectives", []);
-    if (!objs.length) body.append(el("div", { class: "card empty-state" }, el("i", { class: "bi bi-flag big-icon" }), el("h3", null, "No strategic objectives yet"),
-      el("p", { class: "muted" }, "Record GPHA's strategic objectives, then link each enterprise risk to the objective it threatens.")));
+    if (!objs.length) body.append(el("div", { class: "card empty-state" }, el("i", { class: "bi bi-flag big-icon" }), el("h3", null, "No strategic objectives yet")));
     body.append(el("div", { class: "fw-grid" }, ...objs.map((o) => el("div", { class: `fw-card ${o.status === "Active" ? "" : "retired"}` },
       el("span", { class: "ref" }, o.ref), el("strong", null, o.title),
       el("span", { class: "muted small" }, [o.period, o.owner, o.entity].filter(Boolean).join(" · ") || "-"),
@@ -406,15 +405,14 @@ async function renderComplianceMaps(tab = state.cmTab || "obligations") {
   try { data = await API.get("/api/grc/regulations?include_inactive=true"); } catch (err) { viewRoot.append(viewHeader("Compliance Maps"), msg); notify(msg, err.message, "error"); return; }
   const t = data.totals;
   viewRoot.append(viewHeader("Compliance Maps", data.can_edit ? [
-    el("button", { class: "btn small", onclick: () => regulationForm(null, data.types) }, el("i", { class: "bi bi-plus-lg" }), " Obligation")] : null,
-  { sub: "Laws, regulations, standards and contracts GPHA must meet, broken into requirements and mapped to the controls that meet them." }), msg);
+    el("button", { class: "btn small", onclick: () => regulationForm(null, data.types) }, el("i", { class: "bi bi-plus-lg" }), " Obligation")] : null), msg);
   viewRoot.append(el("div", { class: "stats" }, stat(data.items.filter((i) => i.active).length, "Obligations"), stat(t.applicable, "Applicable requirements"),
     stat(t.applicable ? `${Math.round((100 * t.covered) / t.applicable)}%` : "-", "Covered by controls", `${t.applicable - t.covered} gap(s)`, t.applicable - t.covered ? "warn" : ""),
     stat(t.applicable ? `${Math.round((100 * t.compliant) / t.applicable)}%` : "-", "Assessed compliant"),
     stat(t.review_required, "Review required", "After a change in the obligation", t.review_required ? "warn" : "")));
   viewRoot.append(tabBar([{ key: "obligations", label: "Obligations" }, { key: "map", label: "Common controls & gaps" }], tab, renderComplianceMaps));
   if (tab === "obligations") {
-    if (!data.items.length) { viewRoot.append(el("div", { class: "card empty-state" }, el("i", { class: "bi bi-journal-check big-icon" }), el("h3", null, "No obligations yet"), el("p", { class: "muted" }, "Add the Acts, L.I.s, directives, standards and contracts that apply to GPHA, e.g. PFM Act 2016 (Act 921), Internal Audit Agency Act 2003 (Act 658), Public Procurement Act."))); return; }
+    if (!data.items.length) { viewRoot.append(el("div", { class: "card empty-state" }, el("i", { class: "bi bi-journal-check big-icon" }), el("h3", null, "No obligations yet"))); return; }
     viewRoot.append(el("div", { class: "fw-grid" }, ...data.items.map((g) => {
       const s = g.stats;
       return el("button", { type: "button", class: `fw-card ${g.active ? "" : "retired"}`, onclick: () => openRegulation(g.id) },
@@ -569,8 +567,7 @@ async function renderPolicies(filters = state.polFilters || {}) {
   const msg = el("div");
   let data;
   try { data = await API.get(`/api/grc/policies?${new URLSearchParams(Object.entries(filters).filter(([, v]) => v))}`); } catch (err) { viewRoot.append(viewHeader("Policy Manager"), msg); notify(msg, err.message, "error"); return; }
-  viewRoot.append(viewHeader("Policy Manager", data.can_edit ? [el("button", { class: "btn small", onclick: () => policyForm(null, data.categories) }, el("i", { class: "bi bi-plus-lg" }), " Policy")] : null,
-    { sub: "Draft, review, approve and publish policies; ask staff to attest that they have read them; never miss a review date." }), msg);
+  viewRoot.append(viewHeader("Policy Manager", data.can_edit ? [el("button", { class: "btn small", onclick: () => policyForm(null, data.categories) }, el("i", { class: "bi bi-plus-lg" }), " Policy")] : null), msg);
   const s = data.summary;
   viewRoot.append(el("div", { class: "stats" }, stat(s.published, "Published"), stat(s.in_review, "Waiting for approval", null, s.in_review ? "warn" : ""),
     stat(s.drafts, "Drafts"), stat(s.review_overdue, "Review overdue", null, s.review_overdue ? "danger" : "")));
@@ -739,8 +736,7 @@ async function renderAssets(filters = state.assetFilters || {}) {
   const msg = el("div");
   let data;
   try { data = await API.get(`/api/grc/assets?${new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== "" && v !== undefined))}`); } catch (err) { viewRoot.append(viewHeader("Asset Inventory"), msg); notify(msg, err.message, "error"); return; }
-  viewRoot.append(viewHeader("Asset Inventory", data.can_edit ? [el("button", { class: "btn small", onclick: () => assetForm(null, data) }, el("i", { class: "bi bi-plus-lg" }), " Asset")] : null,
-    { sub: "Systems, data, facilities, equipment and third parties: who owns them, how critical they are and the risks and controls around them." }), msg);
+  viewRoot.append(viewHeader("Asset Inventory", data.can_edit ? [el("button", { class: "btn small", onclick: () => assetForm(null, data) }, el("i", { class: "bi bi-plus-lg" }), " Asset")] : null), msg);
   const s = data.summary;
   viewRoot.append(el("div", { class: "stats" }, stat(s.active, "Active assets"), stat(s.critical, "Critical"), stat(s.third_parties, "Third parties"),
     stat(s.assessments_due, "Due-diligence due", null, s.assessments_due ? "warn" : ""), stat(s.contracts_expiring, "Contracts ending ≤ 90 days", s.contracts_expired ? `${s.contracts_expired} expired` : null, s.contracts_expired ? "danger" : s.contracts_expiring ? "warn" : "")));

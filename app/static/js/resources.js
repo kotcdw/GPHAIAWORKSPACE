@@ -20,7 +20,7 @@ async function renderLibrary(filters = state.libFilters || {}) {
     el("button", { class: "btn small secondary", onclick: () => frameworkForm(null, fws.types) }, el("i", { class: "bi bi-plus-lg" }), " Framework"),
     fws.items.length ? el("button", { class: "btn small secondary", onclick: () => controlsImportDialog(fws.items) }, el("i", { class: "bi bi-upload" }), " Import CSV") : null,
     fws.items.length ? el("button", { class: "btn small", onclick: () => libraryControlForm(null, fws.items, lib) }, el("i", { class: "bi bi-plus-lg" }), " Standard control") : null,
-  ] : null, { sub: "Frameworks GPHA audits against and their standard controls with suggested tests. Auditors add them to an engagement's risk and control matrix." }), msg);
+  ] : null), msg);
 
   if (!fws.items.length) {
     viewRoot.append(el("div", { class: "card empty-state" }, el("i", { class: "bi bi-diagram-3 big-icon" }),

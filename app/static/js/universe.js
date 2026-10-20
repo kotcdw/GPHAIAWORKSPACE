@@ -31,7 +31,7 @@ async function renderOrgStructure() {
   const exportBtn = hasPerm("data.export") ? btn("Export", () => exportOrgStructure(), "secondary") : null;
   viewRoot.append(viewHeader("Org Structure", el("div", { class: "actions" }, exportBtn,
     can ? btn("Bulk add", () => importDialog({ title: "Bulk add organizational units", templateKind: "orgunits", path: "/api/import/orgunits",
-      intro: "Units are matched on name.", onDone: () => renderOrgStructure() }), "secondary") : null,
+      onDone: () => renderOrgStructure() }), "secondary") : null,
     can ? btn("New unit", () => orgUnitForm(null)) : null),
   ));
   const body = el("div");
@@ -249,9 +249,8 @@ async function renderProcessLibrary() {
   const can = UNIVERSE_EDIT();
   viewRoot.append(viewHeader("Process library", el("div", { class: "actions" },
     can ? btn("Bulk add", () => importDialog({ title: "Bulk add processes", templateKind: "processes", path: "/api/import/processes",
-      intro: "Create or update processes and the org units that perform them (names or references separated by ;).", onDone: () => renderProcessLibrary() }), "secondary") : null,
-    can ? btn("Add process", () => processForm(null)) : null),
-  { sub: "Business processes and where they are performed. Org units and their processes make up the audit universe." }));
+      onDone: () => renderProcessLibrary() }), "secondary") : null,
+    can ? btn("Add process", () => processForm(null)) : null)));
   const body = el("div");
   viewRoot.append(body);
   body.append(loadingState());
@@ -259,7 +258,7 @@ async function renderProcessLibrary() {
   try { rows = await API.get("/api/processes"); } catch (err) { clear(body); body.append(errorState(err, renderProcessLibrary)); return; }
   clear(body);
   if (!rows.length) {
-    body.append(emptyState({ icon: "diagram-2", title: "No processes yet", text: "Add the processes GPHA performs (e.g. Revenue collection, Procurement, Payroll) and link them to the org units that perform them.",
+    body.append(emptyState({ icon: "diagram-2", title: "No processes yet",
       action: can ? btn("Add process", () => processForm(null)) : null }));
     return;
   }
@@ -350,8 +349,8 @@ function uCrumbs(last) {
   return [...base, { label: last }];
 }
 
-function uHead(title, sub, actions = null) {
-  return viewHeader(title, actions, { sub });
+function uHead(title, actions = null) {
+  return viewHeader(title, actions);
 }
 
 // A client-side table: sort, page, optional row selection. columns: [{ key, label, render?, sort?: fn|key, num? }]
@@ -361,7 +360,7 @@ function uTable({ columns, rows, selectable = false, selected = new Set(), onSel
   const valueOf = (c, r) => (typeof c.sort === "function" ? c.sort(r) : r[c.sort || c.key]);
   function paint() {
     clear(root);
-    if (!rows.length) { root.append(empty || emptyState({ icon: "funnel", title: "Nothing matches", text: "Change or clear the filters." })); return; }
+    if (!rows.length) { root.append(empty || emptyState({ icon: "funnel", title: "Nothing matches" })); return; }
     let list = rows.slice();
     const sc = columns.find((c) => c.key === st.sort);
     if (sc) {
@@ -446,7 +445,7 @@ function uExport(name, cols, rows) {
 
 async function renderUniverse() {
   clear(viewRoot);
-  viewRoot.append(uHead("Audit universe", "Org units and processes, defined as auditable entities, then assessed for risk.",
+  viewRoot.append(uHead("Audit universe",
     el("div", { class: "actions" },
       viewAllowed("orgstructure") ? btn("View org structure", () => navigate("orgstructure"), "secondary") : null,
       viewAllowed("processes") ? btn("Visit Process library", () => navigate("processes"), "secondary") : null)));
@@ -456,7 +455,7 @@ async function renderUniverse() {
   try { d = await API.get("/api/audit-universe/overview"); } catch (err) { clear(body); body.append(errorState(err, renderUniverse)); return; }
   clear(body);
   if (!d.units.total) {
-    body.append(emptyState({ icon: "diagram-3", title: "No org units yet", text: "The audit universe starts from the Org Structure.",
+    body.append(emptyState({ icon: "diagram-3", title: "No org units yet",
       action: viewAllowed("orgstructure") ? btn("Open Org Structure", () => navigate("orgstructure")) : null }));
     return;
   }
@@ -504,9 +503,9 @@ async function renderUniverseUnits() {
   const rows = d.items;
   const cols = [{ key: "code", label: "Code" }, { key: "name", label: "Unit" }, { key: "type", label: "Type" }, { key: "parent", label: "Parent unit", csv: (r) => (r.parent ? r.parent.name : "") },
     { key: "location", label: "Location" }, { key: "owner", label: "Business owner" }, { key: "processes", label: "Processes" }, { key: "status", label: "Status" }, { key: "reason", label: "Reason" }];
-  head.append(uHead("Organizational units", "Include the units that belong in the audit universe.", el("div", { class: "actions" }, uExport("audit-universe-units", cols, rows))));
+  head.append(uHead("Organizational units", el("div", { class: "actions" }, uExport("audit-universe-units", cols, rows))));
   if (!rows.length) {
-    body.append(emptyState({ icon: "diagram-3", title: "No org units yet", text: "Add ports, offices, departments and units in the Org Structure.",
+    body.append(emptyState({ icon: "diagram-3", title: "No org units yet",
       action: viewAllowed("orgstructure") ? btn("Open Org Structure", () => navigate("orgstructure")) : null }));
     return;
   }
@@ -623,10 +622,10 @@ async function renderUniverseProcesses() {
   const cols = [{ key: "ref", label: "Code" }, { key: "name", label: "Process" }, { key: "group", label: "Process group" },
     { key: "units", label: "Performed by units", csv: (r) => r.units.map((u) => u.name).join("; ") }, { key: "owner", label: "Owner" },
     { key: "risks", label: "Linked risks" }, { key: "controls", label: "Linked controls" }, { key: "mapping", label: "Mapping" }];
-  head.append(uHead("Process library review", "Map each process to the units that perform it.", el("div", { class: "actions" },
+  head.append(uHead("Process library review", el("div", { class: "actions" },
     uExport("audit-universe-processes", cols, rows), viewAllowed("processes") ? btn("Visit Process library", () => navigate("processes"), "secondary") : null)));
   if (!rows.length) {
-    body.append(emptyState({ icon: "diagram-2", title: "No processes yet", text: "Add the processes GPHA performs in the Process library.",
+    body.append(emptyState({ icon: "diagram-2", title: "No processes yet",
       action: viewAllowed("processes") ? btn("Visit Process library", () => navigate("processes")) : null }));
     return;
   }
@@ -685,7 +684,7 @@ function mapUnitsDialog(processIds, units, mode, proc = null) {
   const err = el("div", { class: "field-error", role: "alert" });
   const save = el("button", { class: "btn", type: "button" }, "Save");
   const m = modal({ drawer: true, title: proc ? `Units performing ${proc.name}` : `Map ${processIds.length} process${processIds.length === 1 ? "" : "es"} to units`, width: 560,
-    body: el("div", null, mode === "add" ? el("p", { class: "muted small" }, "The units are added to each selected process.") : null, picker.root, err),
+    body: el("div", null, mode === "add" ? null : null, picker.root, err),
     footer: el("div", { class: "actions end" }, el("button", { class: "btn secondary", type: "button", onclick: () => m.close() }, "Cancel"), save) });
   save.addEventListener("click", async () => {
     const ids = picker.values();
@@ -712,10 +711,10 @@ async function renderUniverseEntities() {
     { key: "org_units", label: "Org units", csv: (r) => r.org_units.map((o) => o.name).join("; ") }, { key: "processes", label: "Processes", csv: (r) => r.processes.map((p) => p.name).join("; ") },
     { key: "owner", label: "Business owner" }, { key: "risks", label: "Linked risks" }, { key: "last_audited_at", label: "Last audit", csv: (r) => (r.last_audited_at ? r.last_audited_at.slice(0, 10) : "") },
     { key: "definition_status", label: "Status" }];
-  head.append(uHead("Auditable entities", "Meaningful audit scopes, ready for the audit risk assessment.", el("div", { class: "actions" },
+  head.append(uHead("Auditable entities", el("div", { class: "actions" },
     uExport("auditable-entities", cols, rows), can ? btn("New entity", () => openEntityForm(null)) : null)));
   if (!rows.length) {
-    body.append(emptyState({ icon: "bullseye", title: "No auditable entities yet", text: "Define entities from the units and processes you reviewed.",
+    body.append(emptyState({ icon: "bullseye", title: "No auditable entities yet",
       action: can ? btn("New entity", () => openEntityForm(null)) : null }));
     return;
   }
@@ -775,7 +774,7 @@ async function renderAssuranceMap() {
   const flat = d.rows.map((r) => ({ ...r, ...Object.fromEntries(d.lines.map((l) => [l, (r.cells[l] || []).map((c) => `${c.provider} (${c.result}, reliance ${c.reliance})`).join("; ")])),
     ia: r.internal_audit ? r.internal_audit.slice(0, 10) : "" }));
   const cols = [{ key: "code", label: "Code" }, { key: "name", label: "Entity" }, { key: "ia", label: "Internal audit (last audit)" }, ...d.lines.map((l) => ({ key: l, label: l }))];
-  head.append(uHead("Assurance map", "Who gives assurance on each entity, and the reliance placed on it.", el("div", { class: "actions" },
+  head.append(uHead("Assurance map", el("div", { class: "actions" },
     uExport("assurance-map", cols, flat), can ? btn("New provider", () => providerForm(null, prov.lines)) : null)));
   const s = d.summary;
   const fb = filterBar({ placeholder: "Search entities", values: {}, onChange: () => paint(),
@@ -786,7 +785,7 @@ async function renderAssuranceMap() {
   const cell = (items) => (items && items.length ? el("div", { class: "u-cell-list" }, ...items.map((c) => el("div", null,
     el("span", null, c.provider), " ", uChip(c.result, c.result === "Effective" ? "ok" : (c.result === "Ineffective" ? "danger" : "")),
     c.reliance !== "None" ? uChip(`${c.reliance} reliance`, RELIANCE_TONE[c.reliance]) : null))) : el("span", { class: "muted" }, "-"));
-  const table = uTable({ rows: d.rows, onRow: (r) => openEntity(r.id, "assurance"), empty: emptyState({ icon: "bullseye", title: "No entities", text: "Define auditable entities first." }),
+  const table = uTable({ rows: d.rows, onRow: (r) => openEntity(r.id, "assurance"), empty: emptyState({ icon: "bullseye", title: "No entities" }),
     columns: [
       { key: "name", label: "Entity", render: (r) => el("div", null, el("div", { class: "cell-title" }, r.name), el("div", { class: "muted small" }, r.code)) },
       { key: "rating", label: "Risk", render: (r) => (r.rating ? ratingBadge(r.rating) : el("span", { class: "muted" }, "-")) },
@@ -1076,7 +1075,7 @@ async function paintEntityTab(key, pane, e, can) {
     const card = el("section", { class: "card u-handoff" });
     if (e.open_assessment) card.append(el("div", null, el("strong", null, `${e.open_assessment.ref} ${e.open_assessment.name}`), el("div", { class: "muted small" }, e.open_assessment.status)),
       btn("Open risk assessment", () => openAssessment(e.open_assessment.id)));
-    else if (e.definition_status === "Ready") card.append(...[el("div", null, el("strong", null, "Ready for assessment"), el("div", { class: "muted small" }, "Scored in the audit risk assessment.")),
+    else if (e.definition_status === "Ready") card.append(...[el("div", null, el("strong", null, "Ready for assessment")),
       PLANNING_EDIT() ? btn("Start audit risk assessment", () => addAssessmentWizard({ entityIds: [e.id] })) : null].filter(Boolean));
     else card.append(el("div", null, el("strong", null, "Not ready for assessment"), el("div", { class: "muted small" }, e.definition_status === "Retired" ? "Retired entities are not assessed." : "Set the status to Ready (business owner and scope required).")));
     pane.append(card);
@@ -1137,8 +1136,7 @@ async function paintEntityTab(key, pane, e, can) {
 async function renderRiskAssessments(tab = state.araTab || "list") {
   state.araTab = tab;
   clear(viewRoot);
-  viewRoot.append(viewHeader("Audit risk assessment", PLANNING_EDIT() && tab === "list" ? btn("Add audit risk assessment", () => addAssessmentWizard()) : null,
-    { sub: "Score auditable entities on assessment factors, prioritise them for audit and plan from the result" }));
+  viewRoot.append(viewHeader("Audit risk assessment", PLANNING_EDIT() && tab === "list" ? btn("Add audit risk assessment", () => addAssessmentWizard()) : null));
   viewRoot.append(tabBar([{ key: "list", label: "Assessments" }, { key: "settings", label: "Settings" }], tab, (k) => renderRiskAssessments(k)));
   const body = el("div");
   viewRoot.append(body);
@@ -1148,7 +1146,7 @@ async function renderRiskAssessments(tab = state.araTab || "list") {
   try { rows = await API.get("/api/audit-risk-assessments"); } catch (err) { clear(body); body.append(errorState(err)); return; }
   clear(body);
   if (!rows.length) {
-    body.append(emptyState({ icon: "clipboard-data", title: "No audit risk assessments yet", text: "Add one to score the auditable entities of the audit universe.",
+    body.append(emptyState({ icon: "clipboard-data", title: "No audit risk assessments yet",
       action: PLANNING_EDIT() ? btn("Add audit risk assessment", () => addAssessmentWizard()) : null }));
     return;
   }
@@ -1176,8 +1174,7 @@ async function renderAssessmentSettings(body) {
   const fb = filterBar({ placeholder: "Search by ID or name", onChange: () => paint() });
   const box = el("div");
   body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Assessment factors"),
-    can ? btn("Add assessment factor", () => factorForm(null, reload)) : null),
-  el("p", { class: "muted small" }, "At least one assessment factor is needed to create an audit risk assessment. Changes apply everywhere the factor is used."), fb.root, box));
+    can ? btn("Add assessment factor", () => factorForm(null, reload)) : null), fb.root, box));
   function paint() {
     const v = fb.values();
     const list = d.items.filter((f) => !v.q || `${f.ref} ${f.name}`.toLowerCase().includes(v.q.toLowerCase()));
@@ -1205,9 +1202,8 @@ async function renderAssessmentSettings(body) {
     });
     return el("label", { class: "check", for: `scale-${s.name}` }, r, el("strong", null, ` ${s.name}`), el("span", { class: "muted small" }, ` ${s.levels.join(" · ")}`));
   }));
-  body.append(el("div", { class: "card" }, el("h3", null, "Scales"),
-    el("p", { class: "muted small" }, "The default scale for new audit risk assessments. Each assessment keeps the scale it was created with. Higher scores mean higher risk."), scaleBox,
-    isAdmin() ? null : el("p", { class: "muted small" }, "Only administrators change the default scale (Configuration > Audit methodology).")));
+  body.append(el("div", { class: "card" }, el("h3", null, "Scales"), scaleBox,
+    isAdmin() ? null : null));
 }
 
 async function factorForm(f, reload) {
@@ -1333,7 +1329,7 @@ function paintScoring(pane, a, open) {
       catch (err) { toast(err.message, "error"); }
     }, "secondary") : null,
     open ? btn("Conclude", () => openAssessment(a.id, "conclude")) : null));
-  if (!a.rows.length) { pane.append(emptyState({ icon: "grid-3x3", title: "No entities included", text: "Configure the assessment to include auditable entities." })); return; }
+  if (!a.rows.length) { pane.append(emptyState({ icon: "grid-3x3", title: "No entities included" })); return; }
   const cellSel = (r, f) => {
     const sel = el("select", { class: "compact score-sel", "aria-label": `${r.name}: ${f.name}`, disabled: open ? null : "1" },
       el("option", { value: "" }, "-"), ...levels.map((l, i) => el("option", { value: i + 1, selected: r.scores[String(f.id)] === i + 1 ? "1" : null }, `${i + 1} ${l}`)));
@@ -1359,8 +1355,7 @@ function paintScoring(pane, a, open) {
       el("td", { class: "col-wide", "data-label": "Auditable entity" }, el("div", { class: "cell-title" }, r.name), el("div", { class: "muted small" }, r.org_unit || r.code)),
       ...a.factor_list.map((f) => el("td", { "data-label": f.name }, cellSel(r, f))),
       el("td", { class: "num ov", "data-label": "Overall score" }, r.overall != null ? String(r.overall) : "-"),
-      el("td", { class: "rt", "data-label": "Risk rating" }, ratingBadge(r.rating)))))))),
-  el("p", { class: "muted small" }, "Scores save automatically. Each entity's overall score is the average of its assessment factor scores; higher scores mean higher risk."));
+      el("td", { class: "rt", "data-label": "Risk rating" }, ratingBadge(r.rating)))))))));
 }
 
 function paintConclude(pane, a, open) {
@@ -1408,7 +1403,7 @@ function paintConclude(pane, a, open) {
   });
   pane.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, `Prioritized auditable entities for audit (${prioritized.length})`),
     open && prioritized.length ? btn("Remove all", async () => { const ok = await confirmDialog({ title: "Remove all", text: "All prioritised entities and their notes are removed. Scores stay.", confirmLabel: "Remove all", danger: true }); if (ok.ok) save([]); }, "danger-ghost") : null),
-  prioritized.length ? list : el("p", { class: "muted small" }, "Use Select in the table above to prioritise entities for audit; drag to re-rank.")));
+  prioritized.length ? list : null));
   const box = el("textarea", { rows: "6", maxlength: "50000", "aria-label": "Conclusion", disabled: open ? null : "1" }, a.conclusion || "");
   const ss = saveState();
   let t = null;
@@ -1416,8 +1411,7 @@ function paintConclude(pane, a, open) {
     ss.set("saving");
     try { await API.put(`/api/audit-risk-assessments/${a.id}/conclusion`, { conclusion: box.value }); ss.set("saved"); } catch (err) { ss.set("error"); toast(err.message, "error"); }
   }, 700); });
-  pane.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Conclusion ", ss.node)),
-    el("p", { class: "muted small" }, "Justify the audit plan's scope, time and resources. Printed on the PDF export."), box,
+  pane.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Conclusion ", ss.node)), box,
     el("div", { class: "actions end", style: "margin-top:10px" },
       open ? btn("Mark as completed", async () => {
         const ok = await confirmDialog({ title: "Mark as completed", confirmLabel: "Continue", text: "The assessment becomes a permanent record and rates its auditable entities. You can revert it until it feeds an audit plan." });
@@ -1442,7 +1436,6 @@ async function configureAssessment(a) {
   const [uni, fac] = await Promise.all([safeGet("/api/audit-universe", { entities: [] }), safeGet("/api/assessment-factors", { items: [] })]);
   openForm({
     title: "Configure audit risk assessment", draftable: false, width: 760,
-    intro: "Changing entities or factors keeps earlier scores. Renaming keeps the assessment and its Created on date.",
     fields: [
       { name: "name", label: "Name", required: true, maxLength: 255, singleLine: true, full: true },
       { name: "entity_ids", label: "Auditable entities", type: "checklist", full: true, options: uni.entities.filter((e) => e.definition_status === "Ready" || a.rows.some((r) => r.entity_id === e.id)).map((e) => ({ value: e.id, label: e.name })) },
@@ -1461,7 +1454,6 @@ async function startPlanningDialog(a) {
   const year = new Date().getFullYear() + 1;
   openForm({
     title: "Start planning", draftable: false, width: 600,
-    intro: "Each prioritised auditable entity not yet in the plan becomes a planned engagement, named after the entity, with the default budget hours and its port as the responsible site.",
     fields: [
       { name: "mode", label: "Audit plan", type: "select", required: true, options: [{ value: "new", label: "Add audit plan" }, ...(plans.length ? [{ value: "link", label: "Link to existing audit plan" }] : [])] },
       { name: "fiscal_year", label: "Plan year (new plan)", type: "number", min: 2000, max: 2100 },
@@ -1483,7 +1475,6 @@ async function objectLinksForm(kind, rec, onDone) {
     kind === "process" ? safeGet(`/api/processes/${rec.id}/links`, { risks: [], controls: [] }) : Promise.resolve(rec.links.own)]);
   openForm({
     title: `Risks and controls: ${rec.name}`, draftable: false, width: 760,
-    intro: "Risks come from the Risk Manager register and controls from Frameworks & controls. Controls linked to a chosen risk there are brought in with it when an audit is scoped.",
     fields: [
       { name: "risk_ids", label: "Enterprise risks", type: "checklist", full: true, emptyLabel: "No risks in the Risk Manager register yet.",
         options: opts.risks.map((r) => ({ value: r.id, label: r.label })) },

@@ -453,8 +453,7 @@ async function boot() {
 
 function renderMfaGate() {
   clear(viewRoot);
-  viewRoot.append(viewHeader("Set up two-step verification", null,
-    { sub: "Your role must use two-step verification. The workspace opens as soon as it is set up." }));
+  viewRoot.append(viewHeader("Set up two-step verification", null));
   const steps = el("div", { class: "card" },
     el("h3", null, "What you need"),
     el("ol", { class: "steps-list" },
@@ -1235,8 +1234,7 @@ async function newTaskModal() {
 async function renderAudits() {
   clear(viewRoot);
   viewRoot.append(viewHeader("Audits",
-    canWriteModule("audits") && hasPerm("audit.create") ? el("button", { class: "btn", onclick: newAuditModal }, el("i", { class: "bi bi-plus-lg" }), " New audit") : null,
-    { sub: "The engagement register: every audit you can see, with its phase in the IIA cycle (plan, perform, communicate, monitor)." }));
+    canWriteModule("audits") && hasPerm("audit.create") ? el("button", { class: "btn", onclick: newAuditModal }, el("i", { class: "bi bi-plus-lg" }), " New audit") : null));
   let types = []; let ports = [];
   try { const c = await loadEntityConfig(); types = c.types.audit_types || []; ports = c.entities.filter((e) => e.is_port); } catch { /* filters are optional */ }
   const card = el("div", { class: "card" });
@@ -1315,7 +1313,6 @@ async function newAuditModal() {
     title: "New audit",
     key: "audit:new",
     meta: { title: "New audit" },
-    intro: "Tip: audits for the year are normally started from the Assurance Plan so they stay linked to it.",
     fields,
     submitLabel: "Create",
     onSubmit: (v) => { const body = auditPayload(v); if (!body.port_entity_id) delete body.port_entity_id; return API.post("/api/audits", body); },
@@ -1736,7 +1733,6 @@ async function renderPapers(panel, id, canWrite) {
     const file = el("input", { type: "file" });
     const msg = el("div");
     card.append(el("hr"),
-      el("p", { class: "muted small" }, "Each working paper follows the GPHA Working Paper Template. Attaching a file is optional. Using an existing title creates a new version, which carries the form forward."),
       el("div", { class: "row" }, field("Title", t), el("div", null, el("label", null, "File (optional)"), file)), msg,
       el("div", { style: "margin-top:12px" }, el("button", { class: "btn", onclick: async () => {
         if (!t.value.trim()) { notify(msg, "Enter a title", "error"); return; }
@@ -1815,8 +1811,7 @@ async function renderProfile() {
       el("thead", null, el("tr", null, el("th", null, "When"), el("th", null, "Event"), el("th", null, "From"))),
       el("tbody", null, ...d.items.slice(0, 10).map((r) => el("tr", { class: `no-click ${r.outcome === "failure" ? "row-failure" : ""}` },
         el("td", null, fmtDate(r.at)), el("td", null, r.event, r.by_someone_else ? el("span", { class: "muted small" }, " · by an administrator") : null),
-        el("td", { title: r.browser || "" }, r.ip || "-")))))),
-    el("p", { class: "muted small" }, "Don't recognise something? Change your password and tell an administrator."));
+        el("td", { title: r.browser || "" }, r.ip || "-")))))));
   }).catch(() => act.remove());
 }
 
@@ -2105,15 +2100,13 @@ function openBackupCheck(c) {
 function openRestoreGuide() {
   const step = (title, code) => el("li", null, el("div", null, title), code ? el("code", { class: "cmd" }, code) : null);
   modal({ title: "Restore guide", width: 620, body: el("div", { class: "restore-guide" },
-    el("p", { class: "muted" }, "Restores are done on the server by the system administrator, never from the browser."),
     el("ol", null,
       step("Stop the application and create a new, empty database."),
       step("Restore the database snapshot (point GPHA_DATABASE_URL at the new database):", "uv run python -m scripts.restore_backup backups/backup_<date>.json.enc --yes"),
       step("For a MySQL dump, decrypt it and load it with the mysql client:", "uv run python -m scripts.restore_backup backups/backup_<date>.sql.enc --decrypt-only"),
       step("Restore the attachments of the same backup:", "uv run python -m scripts.restore_backup backups/backup_<date>.files.tar.gz --yes"),
       step("Start the application and sign in to check."),
-      step("Every quarter, run a full restore test; the result appears here:", "uv run python -m scripts.verify_backup")),
-    el("p", { class: "muted small" }, "The same encryption key must be in .env. Keep backups and the key off e-mail and chat.")) });
+      step("Every quarter, run a full restore test; the result appears here:", "uv run python -m scripts.verify_backup"))) });
 }
 
 function registerAppOpeners() {

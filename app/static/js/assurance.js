@@ -57,7 +57,7 @@ async function renderPlanProgram(pane, plan, goTo) {
 
   const projects = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Projects and strategic alignment"),
     el("button", { class: "link-btn", type: "button", onclick: () => goTo("projects") }, "All projects")));
-  if (!p.projects.length) projects.append(emptyState({ icon: "kanban", title: "No projects yet", text: "Add projects to the plan: new, linked or rolled forward.",
+  if (!p.projects.length) projects.append(emptyState({ icon: "kanban", title: "No projects yet",
     action: plan.status === "Draft" ? btn("+ Add to plan", () => addToPlan(plan)) : null }));
   else projects.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
     el("thead", null, el("tr", null, ...["Project", "Progress", "Phase", "Strategic risks", "Assignees"].map((h) => el("th", { scope: "col" }, h)))),
@@ -82,8 +82,7 @@ async function renderPlanProgram(pane, plan, goTo) {
   pane.append(el("div", { class: "two-col-wide" }, projects, coverage));
 
   const risks = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Strategic risks"),
-    el("button", { class: "link-btn", type: "button", onclick: () => goTo("risks") }, "All risks")),
-  el("p", { class: "muted small" }, "Risk Manager risks linked to the plan's entities or to risks in its audits, with the strategic objective they threaten."));
+    el("button", { class: "link-btn", type: "button", onclick: () => goTo("risks") }, "All risks")));
   if (!p.strategic_risks.length) risks.append(el("p", { class: "muted small" }, "No strategic risk is linked yet. Link Risk Manager risks to the auditable entities (Process library) or to audit risks."));
   else risks.append(strategicRiskTable(p.strategic_risks.slice(0, 6)));
   const res = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Resources and progress"),
@@ -160,7 +159,6 @@ async function rollForwardForm(plan) {
   openForm({
     title: "Roll forward a project", key: `rollforward:${plan.id}`, width: 680,
     meta: { title: `Roll forward (${plan.plan_ref})`, record_type: "assurance_plan", record_id: plan.id },
-    intro: "The new project keeps the earlier audit's entity, audit type and site. When it starts it receives that audit's objectives, risks, controls with their test plan, and narratives - not its results.",
     fields: [
       { name: "audit_id", label: "Audit to roll forward", type: "select", required: true, full: true, emptyLabel: "- choose -",
         options: cands.map((a) => ({ value: a.id, label: `${a.ref} ${a.title}${a.plan ? ` (${a.plan})` : ""} · ${a.status}` })) },
@@ -193,8 +191,7 @@ async function renderPlanObjectives(pane, plan) {
     if (!started.length) { toast("Start a project first; objectives are kept inside each audit", "error"); return; }
     chooseAudit(started, "New objective in", (aid) => objectiveForm(aid, null, () => openPlan(plan.id)));
   }) : null;
-  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Objectives"), add),
-    el("p", { class: "muted small" }, "Every engagement objective of the plan's audits (IIA GIAS 13.3). Objectives live inside each audit; open one to add its risks and controls."));
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Objectives"), add));
   pane.append(card);
   if (!rows.length) { card.append(emptyState({ icon: "bullseye", title: "No objectives yet", text: audits.length ? "" : "Objectives are set inside each audit once its project has started." })); return; }
   card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
@@ -234,8 +231,7 @@ async function renderPlanNarratives(pane, plan) {
   clear(pane);
   const targets = objs.filter((o) => o.open && o.workflow !== "Workplan");
   const imp = canWriteModule("audits") && targets.length ? btn("Import narrative", () => importNarrativeForm(plan, targets)) : null;
-  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Process narratives"), imp),
-    el("p", { class: "muted small" }, "Narratives describe how each process works (IIA GIAS 13.2). They belong to an objective inside an audit that uses the Internal Control workflow. Import a Word, Excel or text document to create one."));
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Process narratives"), imp));
   pane.append(card);
   if (!rows.length) { card.append(emptyState({ icon: "journal-text", title: "No narratives yet", text: targets.length ? "Import a document or add narratives in the audit's Fieldwork." : "Start an Internal Control project and add its objectives first." })); return; }
   card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
@@ -284,10 +280,9 @@ async function renderPlanStrategicRisks(pane, plan) {
   const p = await safeGet(`/api/assurance-plans/${plan.id}/program`, null);
   clear(pane);
   if (!p) { pane.append(errorState({ message: "Could not load the plan" })); return; }
-  const card = el("div", { class: "card" }, el("h3", null, "Strategic risks"),
-    el("p", { class: "muted small" }, "Risk Manager risks that the plan addresses: linked to its auditable entities, or to a risk inside one of its audits. Impact is the residual impact; progress is the average progress of the projects addressing the risk."));
+  const card = el("div", { class: "card" }, el("h3", null, "Strategic risks"));
   card.append(p.strategic_risks.length ? strategicRiskTable(p.strategic_risks)
-    : emptyState({ icon: "shield-exclamation", title: "No strategic risk is linked yet", text: "Link Risk Manager risks to the auditable entities or their processes, or to audit risks." }));
+    : emptyState({ icon: "shield-exclamation", title: "No strategic risk is linked yet" }));
   pane.append(card);
   const ent = el("div");
   pane.append(ent);
@@ -306,8 +301,7 @@ async function renderPlanResources(pane, plan) {
   pane.append(el("div", { class: "two-col-wide" },
     el("div", { class: "card" }, el("h3", null, "Hours"), hoursBar(p.metrics.hours),
       el("div", { class: "hours-bar" }, el("div", { class: "hb-top" }, el("span", null, "Overall plan progress"), el("strong", null, `${p.metrics.overall_progress}%`)),
-        el("span", { class: "pbar wide" }, el("span", { class: "pbar-fill", style: `width:${p.metrics.overall_progress}%` }))),
-      el("p", { class: "muted small" }, "Progress of a project counts its phases - planning memo, each fieldwork step and the report - as not started (0), in process (1) or completed (2). A closed audit is 100%.")),
+        el("span", { class: "pbar wide" }, el("span", { class: "pbar-fill", style: `width:${p.metrics.overall_progress}%` })))),
     el("div", { class: "card" }, el("h3", null, "Hours by quarter"),
       el("div", { class: "qbars tall" }, ...byQ.map((x) => el("div", { class: "qbar" },
         el("div", { class: "qbar-fill", style: `height:${Math.round((x.hours / maxQ) * 100)}%` }),

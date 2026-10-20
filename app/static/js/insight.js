@@ -24,8 +24,7 @@ function legend(items) {
 async function renderAnalytics(fy = currentFiscalYear()) {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Analytics", fySelect(fy, (y) => renderAnalytics(y)),
-    { sub: "Assessed risk, finding trends, repeat findings and KPI targets" }), msg);
+  viewRoot.append(viewHeader("Analytics", fySelect(fy, (y) => renderAnalytics(y))), msg);
   let a;
   try { a = await API.get(`/api/analytics?fiscal_year=${fy}`); } catch (err) { notify(msg, err.message, "error"); return; }
 
@@ -83,8 +82,7 @@ async function renderAnalytics(fy = currentFiscalYear()) {
           title: `${x.rating} · ${x.status} · ${x.date}`, onclick: () => openAudit(x.audit_id, "findings") },
         badge(x.rating), ` ${x.audit_title || `AUD-${x.audit_id}`}`)))))))))
     : el("div", { class: "empty" }, "No repeat findings detected.");
-  viewRoot.append(panel("Repeat findings", el("div", null,
-    el("p", { class: "muted small" }, "Issues found again in a later audit (similar wording, weighted towards the same unit or organisation). Repeat findings point to remediation that did not hold."), rep)));
+  viewRoot.append(panel("Repeat findings", el("div", null, rep)));
 
   if (a.themes.length) {
     viewRoot.append(panel("Common themes in this year's findings", el("div", { class: "chips" },
@@ -98,8 +96,7 @@ async function renderQaipPage(fy = currentFiscalYear()) {
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(viewHeader("Quality (QAIP)", el("div", { class: "actions" }, fySelect(fy, (y) => renderQaipPage(y)),
-    el("a", { class: "btn small", href: `/api/qaip/report.docx?fiscal_year=${fy}` }, el("i", { class: "bi bi-file-earmark-word" }), " Internal assessment report")),
-    { sub: "Engagement quality reviews and auditee satisfaction (IIA GIAS Principle 8)" }), msg);
+    el("a", { class: "btn small", href: `/api/qaip/report.docx?fiscal_year=${fy}` }, el("i", { class: "bi bi-file-earmark-word" }), " Internal assessment report"))), msg);
   let q;
   try { q = await API.get(`/api/qaip/summary?fiscal_year=${fy}`); } catch (err) { notify(msg, err.message, "error"); return; }
   viewRoot.append(el("div", { class: "stats" },
@@ -135,8 +132,7 @@ async function renderCapacity(tab = "team", fy = currentFiscalYear()) {
   clear(viewRoot);
   const msg = el("div");
   viewRoot.append(viewHeader("Timesheets & capacity", el("div", { class: "actions" }, fySelect(fy, (y) => renderCapacity(tab, y)),
-    el("button", { class: "btn", onclick: () => timeEntryForm({}, () => renderCapacity("mine", fy)) }, el("i", { class: "bi bi-plus-lg" }), " Log time")),
-  { sub: "Auditor skills, available hours, planned load, time charged and budget versus actual" }), msg);
+    el("button", { class: "btn", onclick: () => timeEntryForm({}, () => renderCapacity("mine", fy)) }, el("i", { class: "bi bi-plus-lg" }), " Log time"))), msg);
   viewRoot.append(tabBar([{ key: "team", label: "Team capacity" }, { key: "skills", label: "Skills matrix" }, { key: "budgets", label: "Budget vs actual" }, { key: "mine", label: "My time sheet" }],
     tab, (k) => renderCapacity(k, fy)));
   const body = el("div");
@@ -168,8 +164,7 @@ async function renderCapacity(tab = "team", fy = currentFiscalYear()) {
         ], { onRow: (a) => profileForm(a, () => renderCapacity("team", fy)), exportName: `capacity-FY${fy}.csv` }));
       };
       filter.addEventListener("input", paint);
-      body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Team"), filter),
-        el("p", { class: "muted small" }, "Load = hours planned for the auditor as engagement lead ÷ available hours. Select a row to edit skills."), holder));
+      body.append(el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Team"), filter), holder));
       paint();
     } else if (tab === "skills") {
       body.append(skillsMatrix(s.auditors));
@@ -484,8 +479,7 @@ function openHelp() {
 
 // Skills matrix (GIAS 10.2): auditors down, skills and certifications across.
 function skillsMatrix(auditors) {
-  const card = el("div", { class: "card" }, el("h3", null, "Skills matrix"),
-    el("p", { class: "muted small" }, "Who holds which skill or certification. Gaps show where training, co-sourcing or guest auditors are needed. Select a name to update a profile."));
+  const card = el("div", { class: "card" }, el("h3", null, "Skills matrix"));
   const skills = [...new Set(auditors.flatMap((a) => a.skills))].sort((x, y) => x.localeCompare(y));
   const certs = [...new Set(auditors.flatMap((a) => a.certifications || []))].sort((x, y) => x.localeCompare(y));
   const cols = [...skills.map((k) => ({ k, cert: false })), ...certs.map((k) => ({ k, cert: true }))];

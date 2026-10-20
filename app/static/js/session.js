@@ -148,8 +148,7 @@ const Idle = {
     const stay = el("button", { class: "btn", type: "button" }, "Stay signed in");
     const leave = el("button", { class: "btn secondary", type: "button" }, "Sign out now");
     const body = el("div", { class: "idle-warning", role: "alert", "aria-live": "assertive" },
-      el("p", null, "You have not used the workspace for a while. For security you will be signed out in ", count, " seconds."),
-      el("p", { class: "muted small" }, "Choose Stay signed in to continue where you are."));
+      el("p", null, "You have not used the workspace for a while. For security you will be signed out in ", count, " seconds."));
     // Keep any dialog the person had open (a half-filled form) underneath: the warning stacks on top of it.
     const root = qs("#modalRoot");
     const underneath = root ? [...root.children] : [];

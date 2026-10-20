@@ -70,7 +70,6 @@ function memoForm(audit, m, onDone) {
   openForm({
     key: `memo:${audit.id}`, title: `Planning memo · ${audit.title}`, width: 820,
     meta: { title: `Planning memo of ${audit.title}`, record_type: "audit", record_id: audit.id },
-    intro: "Save at any time. Submit for approval once every section is complete.",
     fields: [
       { name: "background", label: "Background", type: "textarea", rows: 3, maxLength: 20000 },
       { name: "objectives", label: "Objectives", type: "textarea", rows: 3, maxLength: 20000, help: "What the engagement will conclude on" },
@@ -235,7 +234,6 @@ async function renderSurveyTab(panelEl, audit) {
     return;
   }
   if (!s.can_respond) { card.append(el("div", { class: "empty" }, "This survey is for the audit's auditees.")); return; }
-  card.append(el("p", { class: "muted" }, "Rate each statement from 1 (strongly disagree) to 5 (strongly agree). It takes about two minutes."));
   const picks = {};
   const form = el("div", { class: "survey" }, ...s.questions.map((q) => {
     const group = el("div", { class: "rating", role: "radiogroup", "aria-label": q.text },

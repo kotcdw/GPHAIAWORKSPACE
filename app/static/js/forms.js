@@ -614,8 +614,7 @@ function registerFormOpener(prefix, fn) { FormOpeners[prefix] = fn; }
 async function renderDrafts() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("My drafts"), msg,
-    el("p", { class: "muted" }, "Everything you type into a form is saved here automatically until you submit it. Open a draft to continue, or discard it."));
+  viewRoot.append(viewHeader("My drafts"), msg);
   let server = [];
   try { server = await API.get("/api/drafts"); } catch (err) { notify(msg, `Server drafts unavailable: ${err.message}. Showing drafts on this device.`, "error"); }
   const byKey = new Map(server.map((d) => [d.form_key, { ...d, where: "server" }]));

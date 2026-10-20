@@ -49,15 +49,13 @@ async function renderPlans(filter = state.planFilter || "") {
   const pick = el("select", { class: "compact", "aria-label": "Filter by status" }, el("option", { value: "" }, "All current plans"),
     ...PLAN_STATUSES.map((s) => el("option", { value: s, selected: s === filter ? "1" : null }, s)));
   pick.addEventListener("change", () => renderPlans(pick.value));
-  viewRoot.append(viewHeader("Assurance Plans", [pick, hasPerm("plan.prepare") ? btn("+ Create plan", () => newPlanModal()) : null],
-    { sub: "The annual risk-based plans (IIA GIAS 9.4): projects, coverage of the audit universe, strategic risks and resources." }), msg);
+  viewRoot.append(viewHeader("Assurance Plans", [pick, hasPerm("plan.prepare") ? btn("+ Create plan", () => newPlanModal()) : null]), msg);
   try {
     const plans = await API.get(filter ? `/api/assurance-plans?lifecycle_status=${encodeURIComponent(filter)}` : "/api/assurance-plans");
     const card = el("div", { class: "card" });
     viewRoot.append(card);
     if (!plans.length) {
       card.append(emptyState({ icon: "calendar-range", title: "No Assurance Plan yet",
-        text: "Create the plan for the year, or start planning from a completed audit risk assessment.",
         action: hasPerm("plan.prepare") ? btn("+ Create plan", () => newPlanModal()) : null }));
       return;
     }
@@ -239,7 +237,7 @@ async function renderEngagements(panel, plan) {
     planTimeline(box, plan, reload);
     return;
   }
-  if (!plan.engagements.length) card.append(emptyState({ icon: "kanban", title: "No projects yet", text: "Add projects: create new ones, link running audits or roll forward earlier audits." }));
+  if (!plan.engagements.length) card.append(emptyState({ icon: "kanban", title: "No projects yet" }));
   else card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
     el("thead", null, el("tr", null, el("th", null, "Quarter"), el("th", null, "Project"), el("th", null, "Entity"),
       el("th", null, "Risk"), el("th", null, "Site"), el("th", null, "Hours"), el("th", null, "Status"), el("th", null, ""))),
@@ -265,7 +263,7 @@ async function renderEngagements(panel, plan) {
           catch (err) { toast(err.message, "error"); }
         }, "danger-ghost") : null))))))));
   if (approved) {
-    card.append(el("p", { class: "muted" }, "The plan is approved and is not edited directly. Changes go through a change request (reason, affected items, resource and coverage impact, review and approval) and create a new version; each change is logged under Plan changes and reported in the Committee pack."));
+    card.append(el("p", { class: "muted" }, "Approved. Changes go through a change request."));
     if (plan.current_version && hasPerm("plan.prepare", "oversight.port", "audit.memo_approve")) {
       card.append(el("div", { style: "margin-top:12px" }, btn("Request a change", () => changeRequestEditor(plan))));
     }
@@ -334,7 +332,6 @@ async function renderRcm(panel, auditId) {
   if (rcm.locked) panel.append(el("p", { class: "muted" }, "The audit is closed - the matrix is read-only."));
   if (!rcm.objectives.length) {
     panel.append(emptyState({ icon: "bullseye", title: "No objectives yet",
-      text: "Start with the engagement objectives (IIA GIAS 13.3), then the risks to each objective and the controls that mitigate them.",
       action: open ? btn("Add objective", () => objectiveForm(auditId, null, reload)) : null }));
     return;
   }
@@ -393,7 +390,7 @@ function objectiveCard(o, open, reload) {
       ]))));
   if (o.description) card.append(el("p", { class: "muted small" }, o.description));
   if (!o.risks.length && !o.controls.length) {
-    card.append(el("p", { class: "muted small" }, "No risks or controls yet. Add the risks that could stop this objective being met, then the controls that mitigate them."));
+    card.append(el("p", { class: "muted small" }, "No risks or controls yet."));
     return card;
   }
   const byId = Object.fromEntries(o.controls.map((c) => [c.id, c]));
@@ -744,8 +741,7 @@ function committeeForm(plan) {
 }
 
 async function renderPlanChanges(panelEl, plan) {
-  const card = el("div", { class: "card" }, el("h3", null, "Changes to the plan"),
-    el("p", { class: "muted small" }, "Every amendment after approval, with its reason. Reported to the Audit Committee in the Committee pack."));
+  const card = el("div", { class: "card" }, el("h3", null, "Changes to the plan"));
   panelEl.append(card);
   try {
     const rows = await API.get(`/api/assurance-plans/${plan.id}/changes`);

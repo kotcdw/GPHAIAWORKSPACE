@@ -237,7 +237,6 @@ function renderCapaFollowup(panel, c, refresh) {
     if (c.validation_procedures) card.append(longBlock("Follow-up testing performed", c.validation_procedures, ""));
   }
   if (c.status === "Review" && c.validation_result === "Effective") {
-    card.append(el("p", { class: "muted small" }, "Validated as effective - the Audit Manager or CAE can now close it with an e-signature, or the Audit Committee closes it (see Audit Committee > Meetings)."));
   }
   capaFollowupExtras(card, c, refresh);
   capaManageActions(card, c, refresh);
@@ -361,8 +360,7 @@ const CAPA_EVENT_ICONS = { created: "flag", progress: "graph-up", implementation
 
 function capaTimelineCard(c) {
   const body = el("div", null, loadingState());
-  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Follow-up timeline"),
-    el("span", { class: "muted small" }, "Every step, in order. Entries cannot be edited or deleted.")), body);
+  const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Follow-up timeline")), body);
   API.get(`/api/capa/${c.id}/timeline`).then((rows) => {
     clear(body);
     body.append(activityTimeline(rows.slice().reverse().map((e) => {
@@ -569,13 +567,12 @@ function paintMfa(card) {
       el("div", null, "Your role requires two-step verification. Set it up to continue using the workspace.")));
   }
   if (!on) {
-    card.append(el("p", { class: "muted" }, "Sign in with your password plus a code from an authenticator app."),
+    card.append(
       el("button", { class: "btn", onclick: async () => {
         try { const s = await API.post("/api/auth/mfa/setup"); mfaEnrol(card, s); } catch (err) { toast(err.message, "error"); }
       } }, el("i", { class: "bi bi-shield-lock" }), " Set up two-step verification"));
     return;
   }
-  card.append(el("p", { class: "muted" }, "You will be asked for a code from your authenticator app each time you sign in."));
   const holder = el("div");
   card.append(holder);
   inlineForm(holder, {
@@ -747,7 +744,6 @@ async function openConfigHistory(key = null, label = "") {
   try { rows = await API.get(`/api/config/history?limit=200${key ? `&key=${encodeURIComponent(key)}` : ""}`); }
   catch (err) { clear(body); body.append(errorState(err)); return; }
   clear(body);
-  body.append(el("p", { class: "muted small" }, "Every change is kept: who made it, when, the value before and after, and the reason given. The record cannot be edited or deleted."));
   if (!rows.length) { body.append(el("p", { class: "muted" }, "No changes recorded yet.")); return; }
   body.append(el("ul", { class: "cfg-history" }, ...rows.map((h) => el("li", null,
     el("div", { class: "cfg-history-head" }, el("strong", null, key ? (h.action === "reset" ? "Reset to default" : "Changed") : h.label),
@@ -1108,7 +1104,7 @@ async function renderClosureCard(container, audit, canClose) {
     el("i", { class: `bi ${c.ok ? "bi-check-circle-fill" : (c.required ? "bi-x-circle-fill" : "bi-dash-circle")}`, "aria-hidden": "true" }),
     el("div", null, el("span", null, c.label), !c.required && !c.ok ? el("span", { class: "muted small" }, " (not required by configuration)") : null,
       c.detail ? el("div", { class: "muted small" }, c.detail) : null)))));
-  if (!res.ready && canClose) card.append(el("p", { class: "muted small" }, "The audit can be closed with an e-signature once every required item is ticked."));
+  if (!res.ready && canClose) card.append(null);
 }
 
 // ==================================================================== Audit Committee pack
@@ -1119,7 +1115,7 @@ async function renderCommittee(year = null, tab = state.committeeTab || "pack") 
     (k) => renderCommittee(year, k));
   if (tab === "meetings") {
     clear(viewRoot);
-    viewRoot.append(viewHeader("Audit Committee", null, { sub: "Meetings register, minutes and decisions on recommendations" }), committeeTabs());
+    viewRoot.append(viewHeader("Audit Committee", null), committeeTabs());
     const b = el("div");
     viewRoot.append(b);
     renderCommitteeMeetings(b);
@@ -1135,7 +1131,7 @@ async function renderCommittee(year = null, tab = state.committeeTab || "pack") 
   yearSel.addEventListener("change", () => renderCommittee(Number(yearSel.value)));
   viewRoot.append(viewHeader("Audit Committee pack", [yearSel,
     el("a", { class: "btn small", href: `/api/committee/pack.docx?fiscal_year=${s.plan.fiscal_year}` }, el("i", { class: "bi bi-file-earmark-word" }), " Download Word pack")],
-  { sub: `Status of the Internal Audit Plan, reports and agreed actions · prepared ${fmtDate(s.generated_at)}` }), committeeTabs(), msg);
+  { sub: `Prepared ${fmtDate(s.generated_at)}` }), committeeTabs(), msg);
 
   const p = s.plan;
   const a = s.actions;
@@ -1200,7 +1196,7 @@ function exitMeetingCard(r, canWrite, refresh) {
   const held = !!r.exit_meeting_date;
   const card = el("div", { class: "card" }, el("div", { class: "card-head" }, el("h3", null, "Exit meeting"),
     canWrite && r.status !== "Issued" ? el("button", { class: "btn small secondary", onclick: () => exitMeetingForm(r, refresh) }, el("i", { class: "bi bi-people" }), held ? " Edit" : " Record exit meeting") : null));
-  if (!held) card.append(el("p", { class: "muted" }, "Hold the exit meeting with management to discuss the findings before the report is final."));
+  if (!held) card.append(null);
   else {
     card.append(el("dl", { class: "kv" }, el("dt", null, "Held on"), el("dd", null, fmtDate(r.exit_meeting_date).split(",")[0]),
       el("dt", null, "Attendees"), el("dd", null, r.exit_meeting_attendees || "-")));
@@ -1234,8 +1230,7 @@ async function renderReviewNotesTab(panelEl, audit) {
   const refresh = () => { clear(panelEl); renderReviewNotesTab(panelEl, audit); };
   const canRaise = audit.status !== "Closed" && hasPerm("review.notes") && (audit.created_by !== state.user.id || isAdmin() || ["Manager", "CAE"].includes(state.user.review_level));
   card.append(el("div", { class: "card-head" }, el("h3", null, "Review notes"),
-    canRaise ? el("button", { class: "btn small", onclick: () => raiseNoteForm(audit, refresh) }, el("i", { class: "bi bi-chat-square-text" }), " Raise review note") : null),
-  el("p", { class: "muted small" }, "The reviewer raises a note on the audit, a working paper, a test or a finding; the preparer answers; the reviewer clears it. All notes must be cleared before the audit can close."));
+    canRaise ? el("button", { class: "btn small", onclick: () => raiseNoteForm(audit, refresh) }, el("i", { class: "bi bi-chat-square-text" }), " Raise review note") : null));
   let notes;
   try { notes = await API.get(`/api/audits/${audit.id}/review-notes`); } catch (err) { card.append(el("div", { class: "muted" }, err.message)); return; }
   if (!notes.length) { card.append(el("div", { class: "empty" }, "No review notes.")); return; }

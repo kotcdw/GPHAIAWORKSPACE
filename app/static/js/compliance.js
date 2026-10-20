@@ -93,7 +93,6 @@ function capaProgressForm(c, refresh) {
 function capaWithdrawForm(c, refresh) {
   return openForm({
     title: `Propose withdrawal - ${c.capa_ref}`, key: `capa:${c.id}:withdraw`, width: 640,
-    intro: "Recommendations that are no longer relevant or feasible are withdrawn by the Audit Committee (MoF follow-up instructions s.6.1(8)).",
     fields: [{ name: "reason", label: "Why it is no longer relevant or feasible", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
     submitLabel: "Send to the Audit Committee",
     onSubmit: (v) => API.post(`/api/capa/${c.id}/propose-withdrawal`, v), onDone: () => { toast("Sent to the Audit Committee for decision"); refresh(); },
@@ -115,7 +114,6 @@ async function renderFollowupReports(body) {
   body.append(el("div", { class: "card" },
     el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-file-earmark-bar-graph" }), " Statutory follow-up returns"),
       el("div", { class: "actions" }, kindSel, yearSel, qSel)),
-    el("p", { class: "muted small" }, "Quarterly report on the implementation of recommendations to the Audit Committee and the Internal Audit Agency (Act 921 s.83(5)(e)), and the annual statement on implementation status (Act 921 s.88(1)(b)). Recipients and due dates are set under Configuration > Follow-up & reporting."),
     out));
   const reg = el("div");
   body.append(reg);
@@ -147,7 +145,6 @@ async function renderFollowupReports(body) {
   function submitDialog(d) {
     openForm({
       title: `Record submission - ${d.period_label}`, key: `fu-sub:${d.kind}:${d.year}:${d.quarter || 0}`, width: 620, draftable: false,
-      intro: "A frozen copy of the report as it stands now is kept with the submission.",
       fields: [
         { name: "recipients", label: "Submitted to", type: "checklist", options: d.recipients, required: true },
         { name: "submitted_at", label: "Date submitted", type: "date", required: true },
@@ -199,8 +196,7 @@ async function reportComplianceCards(panel, r) {
       isStaff() ? el("button", { class: "btn small", onclick: () => distributionForm(r, d, paint) }, el("i", { class: "bi bi-plus-lg" }), " Record copy sent") : null));
     if (d.missing.length) {
       card.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
-        el("div", null, el("strong", null, d.version > 1 ? `Still to receive version ${d.version}: ` : "Still to receive a copy: "), d.missing.join(", "),
-          el("div", { class: "muted small" }, "Internal Audit Agency Act, 2003 (Act 658) s.16. The list is set under Configuration > Follow-up & reporting."))));
+        el("div", null, el("strong", null, d.version > 1 ? `Still to receive version ${d.version}: ` : "Still to receive a copy: "), d.missing.join(", "))));
     }
     card.append(dataTable(d.sent, [
       { key: "recipient", label: "Recipient" }, { key: "channel", label: "How" },
@@ -238,7 +234,6 @@ async function renderCommitteeMeetings(body) {
   body.append(el("div", { class: "card" },
     el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-people" }), " Meetings, minutes and decisions"),
       canRecord ? el("button", { class: "btn small", onclick: () => newMeetingForm(data.types, () => renderCommitteeMeetings(body)) }, el("i", { class: "bi bi-plus-lg" }), " New meeting") : null),
-    el("p", { class: "muted small" }, "PFM Act 2016 (Act 921) ss.86-88: the Audit Committee considers the quarterly follow-up report at each meeting and decides on the closure, withdrawal or extension of recommendations."),
     dataTable(data.items, [
       { key: "meeting_ref", label: "Ref" }, { key: "meeting_date", label: "Date", render: (m) => dayOnly(m.meeting_date) },
       { key: "meeting_type", label: "Type" }, { key: "status", label: "Status", render: (m) => badge(m.status) },
@@ -394,7 +389,7 @@ async function declarationForm(kind, audit, done) {
 async function renderPractice(tab = state.practiceTab || "mine") {
   state.practiceTab = tab;
   clear(viewRoot);
-  viewRoot.append(viewHeader("Professional practice", null, { sub: "Independence and ethics declarations, continuing professional development, the internal audit charter and quality assessments (IIA GIAS Domains II-IV)" }));
+  viewRoot.append(viewHeader("Professional practice", null));
   const tabs = [{ key: "mine", label: "My declarations & CPD" }];
   if (hasPerm("proficiency.manage")) tabs.push({ key: "team", label: "Team" });
   if (hasPerm("governance.charter", "governance.view", "committee.record", "oversight.qaip")) tabs.push({ key: "charter", label: "Charter & external assessment" });
@@ -635,7 +630,7 @@ async function renderAutomations() {
       try { const r = await API.post("/api/automations/run"); toast(`${r.fired} reminder(s) sent`); renderAutomations(); } catch (err) { toast(err.message, "error"); }
     } }, el("i", { class: "bi bi-play" }), " Run scheduled rules now"),
     el("button", { class: "btn small", onclick: () => ruleEditor(null) }, el("i", { class: "bi bi-plus-lg" }), " New rule"),
-  ], { sub: "When something happens (or a date approaches), notify people or create tasks. Rules run every hour and fire once per record." }), msg);
+  ]), msg);
   let rules; let cat;
   try { [rules, cat] = await Promise.all([API.get("/api/automations"), API.get("/api/automations/catalog")]); } catch (err) { notify(msg, err.message, "error"); return; }
   window.__autoCat = cat;

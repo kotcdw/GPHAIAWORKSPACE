@@ -146,7 +146,6 @@ async function cycleUniverse(plan, reload) {
       el("thead", null, el("tr", null, el("th", null, "Unit"), el("th", null, "Risk"), el("th", null, "Last audited"))),
       el("tbody", null, ...u.due.map((d) => el("tr", { class: "no-click" }, el("td", null, d.name), el("td", null, `${d.risk} (${d.score})`),
         el("td", null, d.last_audited || "Never")))))) : null,
-    el("p", { class: "muted small" }, "Update ratings in the Audit Universe first if needed; this snapshot is stored with the plan."),
     field("Review notes", notes)),
   footer: el("div", { class: "actions" }, btn("Open Audit Universe", () => { m.close(); navigate("universe"); }, "secondary"),
     btn("Record review", async () => {
@@ -254,7 +253,6 @@ async function cycleDistribute(plan, c, reload) {
 function iaaSubmission(plan, v) {
   openForm({
     title: `Submit version ${v.version} to the Internal Audit Agency`, draftable: false, width: 560,
-    intro: "Record the submission of the Audit Committee-approved plan (or amended version) to the Internal Audit Agency.",
     fields: [
       { name: "submitted_on", label: "Date submitted", type: "date", required: true, notFuture: true },
       { name: "reference", label: "Letter / submission reference", required: true, maxLength: 100, singleLine: true },

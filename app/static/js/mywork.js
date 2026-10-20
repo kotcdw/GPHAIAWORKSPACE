@@ -51,8 +51,7 @@ async function renderMyWork() {
   const msg = el("div");
   const refresh = el("button", { class: "btn small secondary", type: "button", onclick: () => renderMyWork() },
     el("i", { class: "bi bi-arrow-clockwise" }), " Refresh");
-  viewRoot.append(viewHeader("My work", refresh,
-    { sub: "Everything waiting for you across all audits, oldest due date first. Items close by themselves when the work moves on." }), msg);
+  viewRoot.append(viewHeader("My work", refresh), msg);
   viewRoot.append(loadingState("Loading your work…"));
   let data;
   try { data = await API.get("/api/my-work"); }

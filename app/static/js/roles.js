@@ -170,8 +170,7 @@ async function renderProgramsPage() {
   const msg = el("div");
   const canEdit = hasPerm("method.programs");
   viewRoot.append(viewHeader("Project Library", canEdit ? el("button", { class: "btn", onclick: () => programEditor(null) },
-    el("i", { class: "bi bi-plus-lg" }), " New programme") : null,
-  { sub: "Reusable work programmes: objectives, risks, controls and test steps that can be applied to an audit's risk & control matrix" }), msg);
+    el("i", { class: "bi bi-plus-lg" }), " New programme") : null), msg);
   let rows;
   try { rows = await API.get(`/api/audit-programs?include_retired=${canEdit}`); } catch (err) { notify(msg, err.message, "error"); return; }
   viewRoot.append(el("div", { class: "card" }, dataTable(rows, [
@@ -375,8 +374,7 @@ function evidenceDetail(r, onDone) {
 async function renderGovernance() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Governance portal", null,
-    { sub: "Approved plans, issued reports and headline indicators for the Audit Committee and executive reviewers (read-only)" }), msg);
+  viewRoot.append(viewHeader("Governance portal", null), msg);
   let g;
   try { g = await API.get("/api/governance/overview"); } catch (err) { notify(msg, err.message, "error"); return; }
   const k = g.kpis;
@@ -412,8 +410,7 @@ async function renderGovernance() {
 async function renderPortfolio() {
   clear(viewRoot);
   const msg = el("div");
-  viewRoot.append(viewHeader("Port portfolio", null,
-    { sub: "Audits, open findings and remediation by port. A PIA sees their own port; the GM Audit and the Committee see all ports." }), msg);
+  viewRoot.append(viewHeader("Port portfolio", null), msg);
   let rows;
   try { rows = await API.get("/api/portfolio/ports"); } catch (err) { notify(msg, err.message, "error"); return; }
   const detail = el("div");

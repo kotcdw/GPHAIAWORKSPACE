@@ -155,8 +155,7 @@ async function renderFieldworkTab(pane, audit, canWrite) {
   pane.append(el("section", { class: "fw-step-page", "aria-label": current.label },
     el("header", { class: "fw-step-head" },
       el("div", { class: "fw-eyebrow" }, `Step ${current.n} of ${steps.length}`, current.gias ? ` · IIA GIAS ${current.gias}` : ""),
-      el("h3", null, current.label),
-      el("p", { class: "muted" }, current.help)),
+      el("h3", null, current.label)),
     body));
   const ctx = { audit, open, reload };
   if (sub === "plan") renderProjectPlan(body, ctx);
@@ -175,31 +174,24 @@ function fieldworkSteps(fw, terms) {
   if (fw.workflow === "Workplan") {
     return [
       { key: "plan", label: termOf(terms, "work_program", "Work programme"), gias: "13.3–13.6",
-        help: "Set the engagement objectives, the risks to each objective and the procedures that address them.",
         meta: st.procedures ? `${st.objectives} objective${st.objectives === 1 ? "" : "s"} · ${st.procedures} procedure${st.procedures === 1 ? "" : "s"}` : "Not started",
         done: st.procedures > 0 },
       { key: "exec", label: termOf(terms, "execute", "Execute procedures"), gias: "14.1–14.2",
-        help: "Perform each procedure, record the results and whether issues were identified, then sign off.",
         meta: of(st.procedures_done, st.procedures, "done"), done: st.procedures > 0 && st.procedures_done === st.procedures },
     ].map((s, i) => ({ ...s, n: i + 1 }));
   }
   return [
     { key: "narr", label: terms.narrative ? `${terms.narrative}s` : "Process narratives", gias: "13.2",
-      help: "Describe how the process works: inputs, activities, outputs, systems and the people involved.",
       meta: st.narratives ? `${st.narratives} narrative${st.narratives === 1 ? "" : "s"}` : "Not started", done: st.narratives > 0 },
     { key: "rcm", label: termOf(terms, "rcm", "Risk & control matrix"), gias: "13.2–13.4",
-      help: "For each objective, rate the risks and map the controls that mitigate them.",
       meta: st.risks ? `${st.risks} risk${st.risks === 1 ? "" : "s"} · ${st.controls} control${st.controls === 1 ? "" : "s"}` : "Not started",
       warn: st.risks_without_controls ? `${st.risks_without_controls} risk${st.risks_without_controls === 1 ? "" : "s"} without a control` : "",
       done: st.controls > 0 && !st.risks_without_controls },
     { key: "walk", label: `${termOf(terms, "walkthrough", "Walkthrough")}s`, gias: "14.1",
-      help: "Follow one transaction end to end to confirm each control exists and is designed to address its risk (test of design).",
       meta: of(st.walked, st.controls, "walked through"), done: st.controls > 0 && st.walked === st.controls },
     { key: "tplan", label: termOf(terms, "test_plan", "Test plan"), gias: "13.6",
-      help: "Set how each key control will be tested: method, sample size and the attributes to check.",
       meta: of(st.key_planned, st.key_controls, "key controls planned"), done: st.key_controls > 0 && st.key_planned === st.key_controls },
     { key: "test", label: termOf(terms, "testing", "Testing"), gias: "14.2–14.3",
-      help: "Test operating effectiveness on the planned sample and conclude on each control. Exceptions become findings.",
       meta: of(st.tests_done, st.tests, "tested"), done: st.tests > 0 && st.tests_done === st.tests },
   ].map((s, i) => ({ ...s, n: i + 1 }));
 }
@@ -286,7 +278,7 @@ async function renderProjectPlan(body, { audit, open, reload }) {
   const byRisk = {};
   wp.items.forEach((p) => p.risk_ids.forEach((rid) => { (byRisk[rid] = byRisk[rid] || []).push(p); }));
   if (!wp.objectives.length) {
-    body.append(emptyState({ icon: "bullseye", title: "No objectives yet", text: "Start the Workplan with the audit objectives, then the risks and the procedures that address them.",
+    body.append(emptyState({ icon: "bullseye", title: "No objectives yet",
       action: open ? btn("Add objective", () => objectiveForm(audit.id, null, reload)) : null }));
     return;
   }
@@ -370,10 +362,10 @@ async function renderExecuteProcedures(body, ctx) {
     fb.setCount(`${rows.length} of ${wp.items.length}`);
     clear(tableBox);
     if (!wp.items.length) {
-      tableBox.append(emptyState({ icon: "list-task", title: "No procedures yet", text: "Add procedures from the Project plan, or apply an audit programme." }));
+      tableBox.append(emptyState({ icon: "list-task", title: "No procedures yet" }));
       return;
     }
-    if (!rows.length) { tableBox.append(emptyState({ icon: "funnel", title: "No procedures match", text: "Change or clear the filters." })); return; }
+    if (!rows.length) { tableBox.append(emptyState({ icon: "funnel", title: "No procedures match" })); return; }
     tableBox.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
       el("thead", null, el("tr", null, ...["Ref", "Procedure", "Risks", "Assigned", "Due", "Status", "Issues identified", "Sign-offs", "Evidence"].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...rows.map((p) => el("tr", { tabindex: "0", onclick: () => procedurePanel(p, ctx), onkeydown: (e) => { if (e.key === "Enter") procedurePanel(p, ctx); } },
@@ -418,7 +410,7 @@ async function procedurePanel(p, { audit, open, reload }) {
     formSection("Procedure results", results),
     formSection("Were issues identified?", el("div", { class: "radio-row" }, ...radios.map((x) => x.node))),
     p.review_comment ? el("div", { class: "callout warn" }, el("i", { class: "bi bi-chat-left-text" }), el("div", null, el("strong", null, "Reviewer: "), p.review_comment)) : null,
-    formSection("Sign-offs", el("div", null, editable ? el("p", { class: "muted small" }, "Save the results and answer 'Were issues identified?' before the preparer signs off.") : null, soBox)),
+    formSection("Sign-offs", el("div", null, editable ? null : null, soBox)),
     formSection("Issues", p.issue_ids.length ? el("ul", { class: "plain-list" }, ...p.issue_ids.map((i) => el("li", null,
       el("a", { href: "#", onclick: async (e) => { e.preventDefault(); panel.close(); const f = await API.get(`/api/findings/${i}`); issueForm(f, audit.id, open, reload); } }, `Issue #${i}`))))
       : el("p", { class: "muted small" }, "No issue raised from this procedure.")),
@@ -458,7 +450,7 @@ async function renderWalkthroughs(body, { audit, open, reload }) {
   try { w = await API.get(`/api/audits/${audit.id}/walkthroughs`); } catch (err) { clear(body); body.append(errorState(err, reload)); return; }
   clear(body);
   const s = w.summary;
-  if (!w.rows.length) { body.append(emptyState({ icon: "diagram-3", title: "No controls yet", text: "Map the controls in step 2, Risk & control matrix, first." })); return; }
+  if (!w.rows.length) { body.append(emptyState({ icon: "diagram-3", title: "No controls yet" })); return; }
   const line = statusLine([[s.designed_appropriately, "designed appropriately", "ok"], [s.design_failure, `design failure${s.design_failure === 1 ? "" : "s"}`, "danger"],
     [s.not_walked_through, "not walked through yet", "warn"]]);
   if (line) body.append(line);
@@ -489,7 +481,7 @@ async function renderTestPlan(body, { audit, open, reload }) {
   try { rcm = await API.get(`/api/audits/${audit.id}/rcm`); } catch (err) { clear(body); body.append(errorState(err, reload)); return; }
   clear(body);
   const controls = rcm.objectives.flatMap((o) => o.controls);
-  if (!controls.length) { body.append(emptyState({ icon: "clipboard-check", title: "No controls yet", text: "The test plan lists each control mapped in step 2, Risk & control matrix." })); return; }
+  if (!controls.length) { body.append(emptyState({ icon: "clipboard-check", title: "No controls yet" })); return; }
   body.append(el("div", { class: "card" },
     el("div", { class: "table-wrap" }, el("table", { class: "dense" },
       el("thead", null, el("tr", null, ...["Control", "Key", "Frequency", "Nature", "Method", "Sample size", "Attributes to test", "Sign-offs", ""].map((h) => el("th", { scope: "col" }, h)))),
@@ -556,7 +548,7 @@ async function renderTestingRound(body, { audit, open, reload }, roundNo) {
         catch (err) { toast(err.message, "error"); }
       })));
   }
-  if (!rd.rows.length) { body.append(emptyState({ icon: "clipboard-data", title: "No controls yet", text: "Map the controls in step 2, Risk & control matrix, first." })); return; }
+  if (!rd.rows.length) { body.append(emptyState({ icon: "clipboard-data", title: "No controls yet" })); return; }
   const assignSel = (t) => {
     const sel = el("select", { class: "compact", "aria-label": "Assigned to", disabled: open && t.status !== "Reviewed" ? null : "1" },
       el("option", { value: "" }, "- not assigned -"), ...team.map((o) => el("option", { value: o.value, selected: o.value === t.assigned_to ? "1" : null }, o.label)));
@@ -627,7 +619,7 @@ async function renderAuditIssues(panel, audit, canWrite) {
       open ? btn("Add finding", () => issueForm(null, id, true, reload)) : null));
   const card = el("div", { class: "card" }, head);
   panel.append(card);
-  if (!findings.length) { card.append(emptyState({ icon: "flag", title: "No findings recorded", text: "Findings are raised from procedures and control tests that found exceptions, or added here (IIA GIAS 14.3)." })); return; }
+  if (!findings.length) { card.append(emptyState({ icon: "flag", title: "No findings recorded" })); return; }
   card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
     el("thead", null, el("tr", null, ...["Finding", "Rating", "Status", "Owner", "Action due", "Responses", "Published", "Sign-offs", "Remediation"].map((h) => el("th", { scope: "col" }, h)))),
     el("tbody", null, ...findings.map((f) => el("tr", { tabindex: "0", title: "Open issue", onclick: () => issueForm(f, id, canWrite, reload), onkeydown: (e) => { if (e.key === "Enter") issueForm(f, id, canWrite, reload); } },
@@ -665,7 +657,7 @@ function issueExtraActions(f, auditId, canWrite, onSaved) {
 async function renderIssueTracker(tab = state.issueTab || "list") {
   state.issueTab = tab;
   clear(viewRoot);
-  viewRoot.append(viewHeader("Issue Tracker", null, { sub: "Every issue across the audits you can see - status, severity, owner, remediation deadline and sign-offs" }));
+  viewRoot.append(viewHeader("Issue Tracker", null));
   viewRoot.append(tabBar([{ key: "list", label: "List" }, { key: "kpis", label: "KPIs" }], tab, (k) => renderIssueTracker(k)));
   const body = el("div");
   viewRoot.append(body);
@@ -773,7 +765,7 @@ async function renderPlanCoverage(pane, plan, mode = "entities") {
     cov.not_covered_high ? el("span", { class: "text-danger small" }, `${cov.not_covered_high} high-risk not covered`) : null,
     el("button", { class: "link-btn", type: "button", onclick: () => { values.category = ""; values.not_covered = false; reload(); } }, "Clear")));
 
-  if (!cov.engagements.length && !cov.entities.length) { pane.append(emptyState({ icon: "grid-3x3", title: "Nothing to show", text: "Add entities to the Audit Universe and engagements to the plan." })); return; }
+  if (!cov.engagements.length && !cov.entities.length) { pane.append(emptyState({ icon: "grid-3x3", title: "Nothing to show" })); return; }
   const ents = cov.entities;
   pane.append(el("div", { class: "card" }, el("div", { class: "table-wrap cov-wrap" }, el("table", { class: "dense cov-grid" },
     el("thead", null, el("tr", null, el("th", { scope: "col", class: "sticky" }, "Project"), el("th", { scope: "col" }, "Status"), el("th", { scope: "col", class: "num" }, "Hours"),
@@ -811,7 +803,6 @@ function renderCoverageByCategory(pane, cov) {
 function renderPlanRisks(pane, cov) {
   const ents = [...cov.entities].sort((a, b) => b.risk_score - a.risk_score);
   pane.append(el("div", { class: "card" }, el("h3", null, "Auditable entities by risk"),
-    el("p", { class: "muted small" }, "Risk score from the Audit Universe (likelihood × impact) and whether the plan covers each entity."),
     ents.length ? el("div", { class: "table-wrap" }, el("table", { class: "dense" },
       el("thead", null, el("tr", null, ...["Entity", "Category", "Risk score", "Rating", "Covered by the plan"].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...ents.map((u) => el("tr", { class: "no-click" },
@@ -829,7 +820,6 @@ async function chooseAuditEntities(audit, current, reload) {
   const uni = await safeGet("/api/audit-universe", { entities: [] });
   openForm({
     title: "Auditable entities covered by this audit", draftable: false, width: 680,
-    intro: "The audit's issues inherit these entities. The first one is the primary entity (from the plan).",
     fields: [{ name: "entity_ids", label: "Auditable entities", type: "checklist", full: true, emptyLabel: "Define the audit universe first.",
       options: uni.entities.filter((e) => e.status === "Active" || current.some((c) => c.id === e.id)).map((e) => ({ value: e.id, label: `${e.code} ${e.name}` })) }],
     initial: { entity_ids: current.map((e) => e.id) }, submitLabel: "Save",
@@ -855,7 +845,7 @@ async function scopingDialog(audit, reload) {
             el("td", null, r.in_audit ? el("span", { class: "outcome ok" }, "Already in") : el("span", { class: "outcome" }, "Will be added")))),
           ...g.controls.map((c) => el("tr", { class: "no-click" }, el("td", null, el("span", { class: "ref" }, c.ref), ` ${c.title}`), el("td", null, wp ? "Procedure" : "Control"),
             el("td", null, c.in_audit ? el("span", { class: "outcome ok" }, "Already in") : el("span", { class: "outcome" }, "Will be added"))))))))))
-      : emptyState({ icon: "link-45deg", title: "Nothing linked yet", text: "Link enterprise risks and standard controls to the entity or its processes (Process library > Risks & controls)." }));
+      : emptyState({ icon: "link-45deg", title: "Nothing linked yet" }));
   const m = modal({ drawer: true, title: "Detailed scoping from the auditable entities", width: 820, body,
     footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", type: "button", onclick: () => m.close() }, "Cancel"),
       el("button", { class: "btn", type: "button", disabled: fresh ? null : "1", onclick: async () => {

@@ -228,7 +228,7 @@ async function renderProgressTab(pane, audit) {
   const views = [{ key: "status", label: "Fieldwork status" }, { key: "board", label: "Progress board" }];
   const holder = el("div");
   pane.append(subNav(views, state.progressView, (k) => { state.progressView = k; reload(); }, "Progress views"), holder);
-  if (!so.rows.length) { holder.append(emptyState({ icon: "kanban", title: "No fieldwork yet", text: "Pages appear here as procedures, narratives, tests and issues are added." })); return; }
+  if (!so.rows.length) { holder.append(emptyState({ icon: "kanban", title: "No fieldwork yet" })); return; }
   if (state.progressView === "status") {
     const groups = {};
     so.rows.forEach((r) => { const k = `${r.objective} › ${r.phase}`; (groups[k] = groups[k] || []).push(r); });
@@ -267,7 +267,7 @@ async function renderProgressTab(pane, audit) {
 
 async function renderStatusTracker() {
   clear(viewRoot);
-  viewRoot.append(viewHeader("Status Tracker", null, { sub: "Active audits: time expired against work completed, budget and time spent" }));
+  viewRoot.append(viewHeader("Status Tracker", null));
   const card = el("div", { class: "card" });
   viewRoot.append(card);
   card.append(loadingState());
@@ -281,7 +281,7 @@ async function renderStatusTracker() {
     Prefs.set("tracker.fav", favFirst.checked);
     const list = [...rows].sort((a, b) => (favFirst.checked ? (b.favorite - a.favorite) : 0) || a.name.localeCompare(b.name));
     clear(tableBox);
-    if (!list.length) { tableBox.append(emptyState({ icon: "speedometer2", title: "No active audits", text: "Audits appear here until they are closed." })); return; }
+    if (!list.length) { tableBox.append(emptyState({ icon: "speedometer2", title: "No active audits" })); return; }
     tableBox.append(el("div", { class: "table-wrap" }, el("table", null,
       el("thead", null, el("tr", null, ...["", "Audit", "Time Expired", "Work Completed", "Budget", "Time Spent", "Status"].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...list.map((r) => el("tr", { onclick: () => openAudit(r.id) },
@@ -334,8 +334,7 @@ async function renderAuditTypes(tab = state.auditTypesTab || "terms") {
   if (!type) { card.append(el("p", { class: "muted" }, "Add audit types under Configuration > Audit methodology first.")); return; }
   if (tab === "terms") {
     const inputs = {};
-    card.append(el("p", { class: "muted small" }, "Leave a term empty to keep the default. Terms change tab, column and button labels in audits of this type."),
-      el("div", { class: "terms-grid" }, ...Object.entries(s.defaults).map(([k, def]) => {
+    card.append(el("div", { class: "terms-grid" }, ...Object.entries(s.defaults).map(([k, def]) => {
         inputs[k] = el("input", { value: type.terms[k] || "", placeholder: def, maxlength: "60", disabled: canEdit ? null : "1", "aria-label": `Term for ${def}` });
         return el("div", null, el("label", null, def), inputs[k]);
       })),
@@ -433,7 +432,7 @@ async function includeAuditsDialog(plan, reload) {
     clear(list);
     const q = search.value.trim().toLowerCase();
     const shown = rows.filter((a) => !q || `${a.ref} ${a.title} ${a.audit_type || ""}`.toLowerCase().includes(q));
-    if (!shown.length) { list.append(emptyState({ icon: "clipboard", title: "No audits to include", text: "Audits already on a plan or closed are not listed." })); return; }
+    if (!shown.length) { list.append(emptyState({ icon: "clipboard", title: "No audits to include" })); return; }
     list.append(el("table", { class: "dense" },
       el("thead", null, el("tr", null, ...["Select", "Ref", "Audit", "Type", "Lead", "Status"].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...shown.map((a) => {
@@ -478,8 +477,7 @@ async function renderResults(tableId = state.resultsTable || null) {
   clear(viewRoot);
   navCrumbs("results");
   const canBuild = hasPerm("oversight.reporting", "system.automation");
-  viewRoot.append(viewHeader("Results", canBuild ? [btn("+ Add collection", () => collectionForm(tableId))] : null,
-  { sub: "Collections of analytic tables. Robots publish records here; triage them by priority, status and assignee." }));
+  viewRoot.append(viewHeader("Results", canBuild ? [btn("+ Add collection", () => collectionForm(tableId))] : null));
   let cols;
   try { cols = await API.get("/api/results/collections"); } catch (err) { viewRoot.append(errorState(err, () => renderResults(tableId))); return; }
   const nav = el("nav", { class: "res-nav card", "aria-label": "Collections" });
@@ -487,7 +485,7 @@ async function renderResults(tableId = state.resultsTable || null) {
   viewRoot.append(el("div", { class: "res-layout" }, nav, main));
   if (!cols.length) {
     nav.append(el("p", { class: "muted small" }, "No collections yet."));
-    main.append(emptyState({ icon: "table", title: "No results yet", text: "Create a robot task: it publishes its records into a Robots collection here." }));
+    main.append(emptyState({ icon: "table", title: "No results yet" }));
     return;
   }
   cols.forEach((c) => nav.append(el("div", { class: "res-col" },
@@ -496,7 +494,7 @@ async function renderResults(tableId = state.resultsTable || null) {
     ...c.tables.map((t) => el("button", { type: "button", class: `res-table ${t.id === tableId ? "active" : ""}`, onclick: () => renderResults(t.id) },
       el("i", { class: "bi bi-table", "aria-hidden": "true" }), ` ${t.name}`, t.open_records ? el("span", { class: "count-pill" }, String(t.open_records)) : null)),
     c.tables.length ? null : el("p", { class: "muted small" }, "No tables"))));
-  if (!tableId) { main.append(emptyState({ icon: "table", title: "Choose a table", text: "Pick a table on the left to see its records." })); return; }
+  if (!tableId) { main.append(emptyState({ icon: "table", title: "Choose a table" })); return; }
   main.append(loadingState());
   let t;
   try { t = await API.get(`/api/results/tables/${tableId}`); } catch (err) { clear(main); main.append(errorState(err, () => renderResults(null))); return; }
@@ -543,7 +541,7 @@ async function renderResults(tableId = state.resultsTable || null) {
   const fieldOptions = [{ value: "priority", label: "Priority" }, { value: "status", label: "Status" }, ...t.columns.map((c) => ({ value: c, label: c }))];
   if (state.resultsTab === "interpretations") {
     if (canBuild) pane.append(el("div", { class: "actions" }, btn("New interpretation", () => interpretationForm(tableId, fieldOptions))));
-    if (!t.interpretations.length) { pane.append(emptyState({ icon: "bar-chart", title: "No interpretations", text: "Save a chart of this table to use it in a storyboard." })); return; }
+    if (!t.interpretations.length) { pane.append(emptyState({ icon: "bar-chart", title: "No interpretations" })); return; }
     const grid = el("div", { class: "prog-grid" });
     pane.append(grid);
     for (const i of t.interpretations) {
@@ -557,7 +555,7 @@ async function renderResults(tableId = state.resultsTable || null) {
   }
   // triggers
   if (canBuild) pane.append(el("div", { class: "actions" }, btn("New", () => resultsTriggerForm(tableId, t, people))));
-  if (!t.triggers.length) { pane.append(emptyState({ icon: "lightning", title: "No triggers", text: "A trigger assigns, notifies or updates records that meet its conditions." })); return; }
+  if (!t.triggers.length) { pane.append(emptyState({ icon: "lightning", title: "No triggers" })); return; }
   pane.append(el("table", { class: "dense" },
     el("thead", null, el("tr", null, ...["Trigger", "Conditions", "Actions", "Frequency", "Last run", ""].map((h) => el("th", { scope: "col" }, h)))),
     el("tbody", null, ...t.triggers.map((g) => el("tr", { class: "no-click" },
@@ -640,12 +638,11 @@ async function renderStoryboards(id = null, edit = false) {
   navCrumbs("storyboards");
   const canBuild = hasPerm("oversight.reporting", "system.automation");
   if (!id) {
-    viewRoot.append(viewHeader("Storyboards", canBuild ? [btn("Add Storyboard", () => newStoryboardForm())] : null,
-    { sub: "Charts, metrics and text from Results, shared read-only" }));
+    viewRoot.append(viewHeader("Storyboards", canBuild ? [btn("Add Storyboard", () => newStoryboardForm())] : null));
     const list = await safeGet("/api/storyboards", []);
     const card = el("div", { class: "card" });
     viewRoot.append(card);
-    if (!list.length) { card.append(emptyState({ icon: "easel", title: "No storyboards", text: "Build one from saved Results interpretations." })); return; }
+    if (!list.length) { card.append(emptyState({ icon: "easel", title: "No storyboards" })); return; }
     card.append(el("table", null, el("thead", null, el("tr", null, ...["Storyboard", "Owner", "Shared with", "Updated"].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...list.map((s) => el("tr", { onclick: () => renderStoryboards(s.id) },
         el("td", null, s.name), el("td", null, s.owner || "-"),
@@ -714,14 +711,13 @@ async function renderRobots(tab = state.robotsTab || "robots") {
   state.robotsTab = tab;
   clear(viewRoot);
   const canRun = hasPerm("system.automation");
-  viewRoot.append(viewHeader("Robots", canRun ? [btn("+ Create", () => newRobotForm())] : null,
-  { sub: "Tasks run catalogue analytics on GIAW data, now or on a schedule, and publish the records into Results. No scripts run on the server." }));
+  viewRoot.append(viewHeader("Robots", canRun ? [btn("+ Create", () => newRobotForm())] : null));
   viewRoot.append(tabBar([{ key: "robots", label: "Robots and tasks" }, { key: "runs", label: "Task runs" }], tab, (k) => renderRobots(k)));
   const card = el("div", { class: "card" });
   viewRoot.append(card);
   if (tab === "runs") {
     const runs = await safeGet("/api/robot-runs?limit=200", []);
-    if (!runs.length) { card.append(emptyState({ icon: "clock-history", title: "No task runs yet", text: "Run a task now or wait for its schedule." })); return; }
+    if (!runs.length) { card.append(emptyState({ icon: "clock-history", title: "No task runs yet" })); return; }
     card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
       el("thead", null, el("tr", null, ...["Task", "Started", "Duration", "Run method", "User", "Status", "Records", "Message"].map((h) => el("th", { scope: "col" }, h)))),
       el("tbody", null, ...runs.map((r) => el("tr", { class: "no-click" },
@@ -731,7 +727,7 @@ async function renderRobots(tab = state.robotsTab || "robots") {
     return;
   }
   const [robots, catalog] = await Promise.all([safeGet("/api/robots", []), safeGet("/api/robots/analytics", [])]);
-  if (!robots.length) { card.append(emptyState({ icon: "robot", title: "No robots yet", text: "Create a robot, then add tasks that run analytics like overdue actions or open High issues.", action: null })); return; }
+  if (!robots.length) { card.append(emptyState({ icon: "robot", title: "No robots yet", action: null })); return; }
   robots.forEach((rb) => card.append(el("section", { class: "robot" },
     el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-robot" }), ` ${rb.name}`),
       canRun ? el("div", { class: "actions" }, btn("Create task", () => robotTaskForm(rb, catalog), "secondary"),

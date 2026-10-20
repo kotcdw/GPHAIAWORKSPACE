@@ -159,7 +159,6 @@ function crReview(cr, decision, reload) {
 function revisePlanDialog(plan) {
   openForm({
     title: "Full revision of the approved plan", draftable: false, width: 600,
-    intro: "The plan returns to draft and goes back through internal review and the Audit Committee; re-approval creates the next version. For targeted changes use a change request instead.",
     fields: [{ name: "reason", label: "Reason for the revision", type: "textarea", required: true, minLength: 10, maxLength: 2000, full: true }],
     submitLabel: "Reopen for revision",
     onSubmit: (v) => API.post(`/api/assurance-plans/${plan.id}/reopen`, v),
@@ -170,7 +169,6 @@ function revisePlanDialog(plan) {
 function crCommittee(cr, reload) {
   openForm({
     title: `Audit Committee decision on ${cr.cr_ref}`, draftable: false, width: 600,
-    intro: "IIA GIAS 9.4: significant changes to the internal audit plan are approved by the board (Audit Committee). Approval applies the change and freezes a new version.",
     fields: [
       { name: "decision", label: "Decision", type: "select", required: true, options: ["Approved", "Rejected", "Deferred"] },
       { name: "meeting_date", label: "Meeting date", type: "date", required: true, notFuture: true },

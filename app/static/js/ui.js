@@ -270,7 +270,7 @@ function serverTable(opts) {
       });
       return el("label", { class: "check" }, cb, c.label);
     }));
-    detailPanel({ title: "Columns", width: 320, body: el("div", null, el("p", { class: "muted small" }, "Choose the columns to show. Your choice is remembered on this device."), list) });
+    detailPanel({ title: "Columns", width: 320, body: list });
   }
 
   // Export runs the same server query page by page, so it carries the same permissions and filters as the screen.
@@ -424,7 +424,6 @@ async function initScopeChip() {
           el("dt", null, "Role"), el("dd", null, state.user.job_role_name || state.user.role),
           state.user.review_level ? el("dt", null, "Approval level") : null,
           state.user.review_level ? el("dd", null, state.user.review_level === "Manager" ? "Audit Manager" : state.user.review_level === "CAE" ? "GM Audit (CAE)" : state.user.review_level) : null),
-        el("p", { class: "muted small" }, "Audit staff see their own port's audits and every audit whose engagement team they are on. HQ staff and the GM Audit see all ports. Administrators can change this under Configuration > Security."),
         el("button", { class: "btn small secondary", type: "button", onclick: () => { close(); navigate("profile"); } }, "Change workplace"));
       pop.classList.remove("hidden"); chip.setAttribute("aria-expanded", "true");
     });
