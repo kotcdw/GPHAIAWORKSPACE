@@ -7,7 +7,10 @@ A finding is closed by its remediation, not by editing it:
 * when the last action of a finding closes (e-signed close, Audit Committee close or withdrawal), the finding
   closes automatically, and a reopened action moves it back to Remediating;
 * a finding with no action can be closed by hand only when it is rated Low and the configuration allows it
-  (Configuration > Audit workflow), with a recorded reason.
+  (Configuration > Audit workflow), with a recorded reason;
+* when its rating is listed in "Issue ratings that need a retest before the issue can be closed"
+  (Configuration > Action plans) and management remediated it, the finding also needs an auditor's retest
+  concluded Effective (Retest Information). Until then it waits as "Remediated - Awaiting Verification".
 """
 
 from __future__ import annotations
@@ -34,6 +37,20 @@ def _verified(capa) -> bool:  # noqa: ANN001
             or bool((capa.external_closure_ref or "").strip()) or bool(capa.risk_accepted_at))
 
 
+def needs_retest(db: DBSession, finding) -> bool:  # noqa: ANN001
+    """The finding's rating requires a retest and management remediated it (an action validated Effective).
+    Actions closed by risk acceptance, withdrawal or an external body leave nothing to retest."""
+    from app.core.appconfig import cfg
+
+    if finding.risk_rating.value not in (cfg("retest_required_severities") or []):
+        return False
+    return any(a.validation_result == ValidationResult.Effective for a in actions_of(db, finding.id))
+
+
+def retest_passed(finding) -> bool:  # noqa: ANN001
+    return (finding.retest_result or "") == "Effective" and finding.retest_date is not None
+
+
 def remediation_summary(db: DBSession, finding) -> dict:  # noqa: ANN001
     """One status for the finding and its actions, for registers and the finding form."""
     acts = actions_of(db, finding.id)
@@ -43,6 +60,8 @@ def remediation_summary(db: DBSession, finding) -> dict:  # noqa: ANN001
         state = "Closed - verified" if acts and all(_verified(a) for a in acts) else "Closed"
     elif not acts:
         state = "No action raised"
+    elif not open_ and needs_retest(db, finding) and not retest_passed(finding):
+        state = "Awaiting retest"
     elif awaiting and len(awaiting) == len(open_):
         state = "Awaiting verification"
     elif open_:
@@ -65,6 +84,8 @@ def closure_blockers(db: DBSession, finding) -> list[str]:  # noqa: ANN001
                 problems.append(f"{a.capa_ref} is still {a.status.value}")
             elif not _verified(a):
                 problems.append(f"{a.capa_ref} was closed without Internal Audit validating it as Effective")
+        if not problems and needs_retest(db, finding) and not retest_passed(finding):
+            problems.append("a retest concluded Effective must be recorded (Retest Information)")
         return problems
     if finding.risk_rating != RiskRating.Low:
         return [f"a {finding.risk_rating.value}-rated finding is closed through a verified remediation action; "
@@ -89,8 +110,13 @@ def sync_finding(db: DBSession, finding_id: int | None, user_id: int | None, req
         return None
     new = None
     if all(a.status == CapaStatus.Closed for a in acts):
-        if finding.status != FindingStatus.Closed:
+        if needs_retest(db, finding) and not retest_passed(finding):
+            finding.remediation_status = "Remediated - Awaiting Verification"
+            if finding.status != FindingStatus.Remediating:
+                new = FindingStatus.Remediating
+        elif finding.status != FindingStatus.Closed:
             new = FindingStatus.Closed
+            finding.remediation_status = "Verified"
     elif finding.status == FindingStatus.Closed or finding.status == FindingStatus.Open:
         new = FindingStatus.Remediating
     if new is None:

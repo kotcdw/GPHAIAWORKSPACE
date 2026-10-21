@@ -42,47 +42,6 @@ function heat(score) {
 
 const PLAN_STATUSES = ["Draft", "In Review", "Submitted", "Returned", "Approved", "Distributed", "In Execution", "Revised", "Closed", "Archived"];
 
-async function renderPlans(filter = state.planFilter || "") {
-  state.planFilter = filter;
-  clear(viewRoot);
-  const msg = el("div");
-  const pick = el("select", { class: "compact", "aria-label": "Filter by status" }, el("option", { value: "" }, "All current plans"),
-    ...PLAN_STATUSES.map((s) => el("option", { value: s, selected: s === filter ? "1" : null }, s)));
-  pick.addEventListener("change", () => renderPlans(pick.value));
-  viewRoot.append(viewHeader("Assurance Plans", [pick, hasPerm("plan.prepare") ? btn("+ Create plan", () => newPlanModal()) : null]), msg);
-  try {
-    const plans = await API.get(filter ? `/api/assurance-plans?lifecycle_status=${encodeURIComponent(filter)}` : "/api/assurance-plans");
-    const card = el("div", { class: "card" });
-    viewRoot.append(card);
-    if (!plans.length) {
-      card.append(emptyState({ icon: "calendar-range", title: "No Assurance Plan yet",
-        action: hasPerm("plan.prepare") ? btn("+ Create plan", () => newPlanModal()) : null }));
-      return;
-    }
-    const rows = plans.map((p) => {
-      const cells = { projects: el("td", { class: "num", "data-label": "Projects" }, "…"), hours: el("td", { "data-label": "Hours" }, "…"),
-        progress: el("td", { "data-label": "Progress" }, "…"), coverage: el("td", { class: "num", "data-label": "Coverage" }, "…") };
-      API.get(`/api/assurance-plans/${p.id}/program`).then((g) => {
-        const m = g.metrics;
-        const over = m.hours.available && m.hours.planned > m.hours.available;
-        cells.projects.textContent = String(m.projects);
-        cells.hours.replaceChildren(el("span", { class: over ? "text-danger" : null }, `${m.hours.planned}h`), el("span", { class: "muted" }, m.hours.available ? ` / ${m.hours.available}h` : " · no budget"));
-        cells.progress.replaceChildren(progressBar(m.overall_progress));
-        cells.coverage.textContent = `${m.coverage_pct}%`;
-      }).catch(() => { Object.values(cells).forEach((c) => { c.textContent = "-"; }); });
-      const period = p.period_start ? `${fmtDay(p.period_start)} – ${p.period_end ? fmtDay(p.period_end) : "?"}` : `FY${p.fiscal_year}`;
-      return el("tr", { tabindex: "0", onclick: () => openPlan(p.id), onkeydown: (e) => { if (e.key === "Enter") openPlan(p.id); } },
-        el("td", { class: "col-wide", "data-label": "Plan" }, el("span", { class: "ref" }, p.plan_ref), ` ${p.title}`, el("div", { class: "muted small" }, period)),
-        el("td", { "data-label": "Status" }, statusBadge(p.lifecycle_status), p.current_version ? el("span", { class: "muted small" }, ` v${p.current_version}`) : null),
-        cells.projects, cells.hours, cells.progress, cells.coverage,
-        el("td", { class: "muted", "data-label": "Approved" }, p.approved_at ? fmtDay(p.approved_at.slice(0, 10)) : "-"));
-    });
-    card.append(el("div", { class: "table-wrap" }, el("table", { class: "dense" },
-      el("thead", null, el("tr", null, ...["Plan", "Status", "Projects", "Hours planned / available", "Progress", "Coverage", "Approved"].map((h) => el("th", { scope: "col" }, h)))),
-      el("tbody", null, ...rows))));
-  } catch (err) { notify(msg, err.message, "error"); }
-}
-
 function planFields(withYear) {
   const y = currentFiscalYear();
   return [
@@ -94,22 +53,6 @@ function planFields(withYear) {
     { name: "period_end", label: "Planning period to", type: "date" },
     { name: "description", label: "Description / basis of the plan", type: "textarea", maxLength: 20000, full: true },
   ];
-}
-
-function newPlanModal() {
-  const y = currentFiscalYear() + 1;
-  openForm({
-    title: "Create plan",
-    key: "plan:new",
-    meta: { title: "New Assurance Plan" },
-    fields: planFields(true),
-    initial: { fiscal_year: y, title: `Assurance Plan FY${y}`, total_budget_hours: 0, period_start: `${y}-01-01`, period_end: `${y}-12-31` },
-    validate: (v) => (v.period_start && v.period_end && v.period_end < v.period_start ? { period_end: "The period ends before it starts" } : null),
-    submitLabel: "Create plan",
-    onSubmit: (v) => API.post("/api/assurance-plans", { ...v, total_budget_hours: v.total_budget_hours || 0, description: v.description || "",
-      period_start: v.period_start || null, period_end: v.period_end || null }),
-    onDone: (plan) => { toast("Plan created"); openPlan(plan.id); },
-  });
 }
 
 function editPlanModal(plan) {
@@ -153,16 +96,14 @@ async function openPlan(id) {
     }, "secondary") : null,
     iconBtn("printer", "Print", () => window.print()),
   ].filter(Boolean);
-  // Diligent Assurance Plans layout: overview, projects, objectives and narratives (kept inside the audits), coverage,
-  // strategic risks, resources; then approval and launch (GPHA planning cycle, IIA GIAS 9.4) and the records.
+  // Assurance Plans walkthrough: plan overview, projects, coverage, risks, progress & resources; then approval and
+  // launch (GPHA planning cycle, IIA GIAS 9.4), change requests and activities.
   const tabs = [
-    { key: "overview", label: "Overview" },
+    { key: "overview", label: "Plan overview" },
     { key: "projects", label: "Projects", count: plan.engagements.filter((e) => e.status !== "Cancelled").length || null },
-    { key: "objectives", label: "Objectives" },
-    { key: "narratives", label: "Narratives" },
     { key: "coverage", label: "Coverage", count: s.uncovered_high_risk.length || null },
-    { key: "risks", label: "Strategic risks" },
-    { key: "resources", label: "Resources" },
+    { key: "risks", label: "Risks" },
+    { key: "resources", label: "Progress & resources" },
     { key: "cycle", label: "Approval & launch" },
     { key: "crs", label: "Change requests" },
     { key: "activities", label: "Activities" },
@@ -183,9 +124,7 @@ async function openPlan(id) {
   function paint(key, pane) {
     if (key === "overview") renderPlanProgram(pane, plan, (k) => layout.select(k));
     if (key === "projects") renderEngagements(pane, plan);
-    if (key === "objectives") renderPlanObjectives(pane, plan);
-    if (key === "narratives") renderPlanNarratives(pane, plan);
-    if (key === "coverage") renderPlanCoverage(pane, plan, "entities");
+    if (key === "coverage") renderPlanCoverage(pane, plan);
     if (key === "risks") renderPlanStrategicRisks(pane, plan);
     if (key === "resources") renderPlanResources(pane, plan);
     if (key === "cycle") {
@@ -215,7 +154,7 @@ async function openPlan(id) {
     }
   }
   const remembered = state.lastPlanTab && state.lastPlanTab.id === id ? state.lastPlanTab.key : null;
-  const legacy = { entities: "coverage" };
+  const legacy = { entities: "coverage", objectives: "overview", narratives: "overview" };
   layout.select(legacy[remembered] || (tabs.some((t) => t.key === remembered) ? remembered : "overview"));
 }
 
@@ -332,11 +271,11 @@ async function renderRcm(panel, auditId) {
   if (rcm.locked) panel.append(el("p", { class: "muted" }, "The audit is closed - the matrix is read-only."));
   if (!rcm.objectives.length) {
     panel.append(emptyState({ icon: "bullseye", title: "No objectives yet",
-      action: open ? btn("Add objective", () => objectiveForm(auditId, null, reload)) : null }));
+      action: open ? el("div", { class: "actions" }, btn("Add objective", () => objectiveForm(auditId, null, reload)), objectiveImportButton(auditId, reload)) : null }));
     return;
   }
   rcm.objectives.forEach((o) => panel.append(objectiveCard(o, open, reload)));
-  if (open) panel.append(el("div", null, btn("Add objective", () => objectiveForm(auditId, null, reload), "secondary")));
+  if (open) panel.append(el("div", { class: "actions" }, btn("Add objective", () => objectiveForm(auditId, null, reload), "secondary"), objectiveImportButton(auditId, reload)));
 }
 
 function objectiveForm(auditId, o, reload) {
@@ -381,6 +320,7 @@ function objectiveCard(o, open, reload) {
       moreMenu([
         open ? ["Add controls from the library", () => fromLibraryDialog(o, reload)] : null,
         open ? ["Edit objective", () => objectiveForm(o.audit_id, o, reload)] : null,
+        ["Clone Objective", () => goFieldwork(o.audit_id, `objview:${o.id}`)],
         attrs ? ["Objective attributes", () => editAttributes("objectives", o.id, o.ref, reload, !open)] : null,
         open ? ["Delete objective", async () => {
           const ok = await confirmDialog({ title: "Delete objective", text: `${o.ref} and its risks and controls will be deleted.`, confirmLabel: "Delete", danger: true });
@@ -615,7 +555,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
     fields,
     initial: f ? { ...f, ...Object.fromEntries(Object.entries(f.custom_fields || {}).map(([k, x]) => [`cf_${k}`, x])) } : { risk_rating: "Medium", status: "Open" },
     width: 900,
-    actions: [aiAction, raiseAction, ...(typeof issueExtraActions === "function" ? issueExtraActions(f, auditId, canWrite && !isNew, onSaved) : [])].filter(Boolean),
+    actions: [aiAction, raiseAction, ...(isNew ? [] : issueRemediationActions({ ...f, audit_id: f.audit_id || auditId }, onSaved)), ...(typeof issueExtraActions === "function" ? issueExtraActions(f, auditId, canWrite && !isNew, onSaved) : [])].filter(Boolean),
     intro: f && canWrite ? el("div", { class: "issue-meta" },
       f.published ? el("span", { class: "outcome ok" }, el("i", { class: "bi bi-eye" }), ` Published${f.published_at ? ` ${fmtDay(f.published_at.slice(0, 10))}` : ""}`)
         : el("span", { class: "outcome" }, el("i", { class: "bi bi-eye-slash" }), " Not published - the auditee cannot see this issue yet"),
@@ -661,7 +601,7 @@ async function issueForm(f, auditId, canWrite, onSaved) {
 // ------------------------------------------------------------------ draft resume handlers
 
 function registerPlanningOpeners() {
-  registerFormOpener("plan:new", () => { navigate("plans"); newPlanModal(); });
+  registerFormOpener("plan:new", () => planCreatePage());
   registerFormOpener("plan:edit:", async (key) => {
     const id = key.split(":")[2];
     await openPlan(id);

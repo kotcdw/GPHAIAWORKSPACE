@@ -31,7 +31,7 @@ def _docx_text(content: bytes) -> str:
 
 
 def test_committee_approval_and_documented_plan_changes(client, client2, db):
-    auditor = _u(db, "gpaud", Role.Auditor)
+    auditor = _u(db, "gpaud", Role.Auditor, ReviewLevel.Manager)  # plan preparer (plan.prepare)
     admin = _u(db, "gpadm", Role.Admin)
     h = csrf_headers(login(client, auditor.username))
     ah = csrf_headers(login(client2, admin.username))

@@ -12,11 +12,15 @@ PASSWORD = "Passw0rd!"
 
 @pytest.fixture
 def people(client, client2, db):
-    """client = Auditor (preparer), client2 = Admin (sign-off). Unique names per test."""
+    """client = Audit Manager (plan preparer and project creator), client2 = Admin (sign-off). Unique names."""
     import uuid
 
+    from app.core.enums import ReviewLevel
+
     tag = uuid.uuid4().hex[:6]
-    make_user(db, f"pa_{tag}", Role.Auditor)
+    preparer = make_user(db, f"pa_{tag}", Role.Auditor)
+    preparer.review_level = ReviewLevel.Manager  # plans are prepared by audit managers (plan.prepare)
+    db.commit()
     make_user(db, f"pb_{tag}", Role.Admin)
     return {
         "aud": csrf_headers(login(client, f"pa_{tag}")),

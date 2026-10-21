@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, time
+from datetime import date, datetime, time
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DBSession
 
@@ -24,6 +26,8 @@ from app.domains.audit.audits.schemas import (
     FindingOut,
     FindingUpdate,
     ManagementResponse,
+    RemediationIn,
+    RetestIn,
 )
 from app.platform.users.models import User
 
@@ -105,6 +109,16 @@ def _get_finding_or_404(db: DBSession, finding_id: int) -> Finding:
     if finding is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
     return finding
+
+
+@router.get("/api/findings/remediation-options")
+def remediation_options(_: User = Depends(require_active_user)) -> dict:
+    """Choices for the Remediation and Retest sections of the issue form (Configuration > Action plans)."""
+    from app.core.appconfig import cfg
+
+    return {"statuses": [s for s in (cfg("remediation_statuses") or []) if s != "Verified"],
+            "retest_required_severities": cfg("retest_required_severities") or [],
+            "retest_results": ["Effective", "Not effective"]}
 
 
 @router.get("/api/audits/{audit_id}/findings", response_model=list[FindingOut])
@@ -381,3 +395,199 @@ def client_response(
     db.commit()
     db.refresh(finding)
     return finding
+
+
+def _day(d):  # noqa: ANN001, ANN202
+    return datetime.combine(d, time()) if d else None
+
+
+@router.post("/api/findings/{finding_id}/remediation", response_model=FindingOut)
+def record_remediation(
+    finding_id: int,
+    payload: RemediationIn,
+    request: Request,
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_active_user),
+) -> Finding:
+    """Remediation Information (PROJECTBLUEPRINT 5.6). Management (the auditee owning a published issue) or the
+    audit team record the remediation status, plan and dates. It stays open after the audit closes: remediation
+    happens later. Status alone never closes an issue; closure needs validated actions and, where required, a
+    retest."""
+    from app.core.appconfig import cfg
+    from app.core.enums import utcnow
+    from app.core.permissions import has_perm
+
+    finding = db.get(Finding, finding_id)
+    ensure_can_view(db, user, "finding", finding)
+    staff = user.role in (Role.Admin, Role.Auditor)
+    if staff and not has_perm(user, "audit.findings", "followup.manage"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    if not staff and not finding.published:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
+    if finding.status == FindingStatus.Closed:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The issue is closed")
+    allowed = [s for s in (cfg("remediation_statuses") or []) if s != "Verified"]
+    chosen = next((s for s in allowed if s.lower() == payload.remediation_status.strip().lower()), None)
+    if chosen is None:
+        raise field_error("remediation_status", f"choose one of: {', '.join(allowed)}")
+    if payload.actual_remediation_date and payload.actual_remediation_date > utcnow().date():
+        raise field_error("actual_remediation_date", "the remediation date cannot be in the future")
+    before = finding.remediation_status
+    finding.remediation_status = chosen
+    finding.remediation_plan = (payload.remediation_plan or "").strip() or None
+    finding.remediation_deadline = _day(payload.remediation_deadline)
+    finding.actual_remediation_date = _day(payload.actual_remediation_date)
+    log_action(db, user_id=user.id, request=request,
+               action=f"FINDING_REMEDIATION id={finding.id} {before} -> {chosen}")
+    log_record_history(db, record_type="audit", record_id=finding.audit_id, user_id=user.id, request=request,
+                       action=f"REMEDIATION on finding #{finding.id}: {before} -> {chosen} by {user.username}")
+    db.commit()
+    db.refresh(finding)
+    return finding
+
+
+@router.post("/api/findings/{finding_id}/retest", response_model=FindingOut)
+def record_retest(
+    finding_id: int,
+    payload: RetestIn,
+    request: Request,
+    db: DBSession = Depends(get_db),
+    user: User = Depends(require_role(Role.Admin, Role.Auditor)),
+) -> Finding:
+    """Retest Information: the auditor's follow-up test once management has remediated. Effective closes the
+    issue when its actions are validated; Not effective sends it back to management."""
+    from app.core.enums import utcnow
+    from app.core.permissions import has_perm
+    from app.domains.audit.audits.models import WorkingPaper
+    from app.domains.issues.capa.closure import sync_finding
+
+    if not has_perm(user, "followup.validate", "audit.findings"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    finding = db.get(Finding, finding_id)
+    ensure_can_view(db, user, "finding", finding)
+    if finding.status == FindingStatus.Closed:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The issue is closed")
+    if payload.retest_result:
+        if payload.retest_date is None:
+            raise field_error("retest_date", "give the date the retest was performed")
+        if len((payload.retest_notes or "").strip()) < 10:
+            raise field_error("retest_notes", "describe what was retested and what was found")
+    if payload.retest_date and payload.retest_date > utcnow().date():
+        raise field_error("retest_date", "the retest date cannot be in the future")
+    if payload.retest_working_paper_id is not None:
+        wp = db.get(WorkingPaper, payload.retest_working_paper_id)
+        if wp is None or wp.audit_id != finding.audit_id:
+            raise field_error("retest_working_paper_id", "choose a working paper of this audit")
+    finding.retest_deadline = _day(payload.retest_deadline)
+    finding.retest_date = _day(payload.retest_date)
+    finding.retest_result = payload.retest_result
+    finding.retest_notes = (payload.retest_notes or "").strip() or None
+    finding.retest_working_paper_id = payload.retest_working_paper_id
+    outcome = ""
+    if payload.retest_result:
+        finding.retested_by = user.id
+        if payload.retest_result == "Effective":
+            changed = sync_finding(db, finding.id, user.id, request)
+            outcome = f"; issue {changed}" if changed else ""
+        else:
+            finding.remediation_status = "Management Remediating"
+            if finding.status != FindingStatus.Remediating:
+                finding.status = FindingStatus.Remediating
+                outcome = "; returned to management"
+    log_action(db, user_id=user.id, request=request,
+               action=f"FINDING_RETEST id={finding.id} result={payload.retest_result or 'pending'}{outcome}")
+    log_record_history(db, record_type="audit", record_id=finding.audit_id, user_id=user.id, request=request,
+                       action=f"RETEST on finding #{finding.id}: {payload.retest_result or 'scheduled'} "
+                              f"by {user.username}{outcome}")
+    db.commit()
+    db.refresh(finding)
+    from app.domains.issues.capa.closure import remediation_summary
+
+    finding.remediation = remediation_summary(db, finding)
+    return finding
+
+
+class ActionIn(BaseModel):
+    """Follow-up & Remediation › Actions › Add."""
+
+    title: str = Field(min_length=3, max_length=255)
+    owner_email: str | None = Field(default=None, max_length=255)
+    description: str = Field(default="", max_length=10000)
+    due_date: date | None = None
+    priority: Literal["Low", "Medium", "High"] = "Medium"
+    notify_now: bool = True
+    reminders: bool = True
+
+
+@router.get("/api/findings/{finding_id}/actions")
+def finding_actions(finding_id: int, db: DBSession = Depends(get_db),
+                    user: User = Depends(require_active_user)) -> list[dict]:
+    from app.domains.issues.capa.closure import actions_of
+
+    finding = db.get(Finding, finding_id)
+    ensure_can_view(db, user, "finding", finding)
+    if user.role not in (Role.Admin, Role.Auditor) and not finding.published:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finding not found")
+    return [{"id": c.id, "ref": c.capa_ref, "title": c.title, "owner_email": c.owner_email,
+             "priority": c.severity.value, "status": c.status.value, "due_date": c.due_date,
+             "implemented_at": c.implemented_at, "validation_result": c.validation_result.value
+             if c.validation_result else None, "closed_at": c.closed_at} for c in actions_of(db, finding.id)]
+
+
+@router.post("/api/findings/{finding_id}/actions", status_code=201)
+def add_finding_action(finding_id: int, payload: ActionIn, request: Request, db: DBSession = Depends(get_db),
+                       user: User = Depends(require_role(Role.Admin, Role.Auditor))) -> dict:
+    """Add a remediation action to an issue (an issue can have several). The owner is notified now when asked;
+    reminders follow the follow-up schedule unless switched off for this action."""
+    from app.core.appconfig import cfg
+    from app.core.enums import Severity, utcnow
+    from app.core.permissions import has_perm
+    from app.core.refs import next_reference
+    from app.core.tasksvc import auto_task_for_record
+    from app.core.validators import _EMAIL as EMAIL_RE
+    from app.domains.issues.capa.models import Capa
+    from app.platform.notifications.service import notify
+
+    if not has_perm(user, "audit.findings", "followup.manage"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    finding = db.get(Finding, finding_id)
+    ensure_can_view(db, user, "finding", finding)
+    if finding.status == FindingStatus.Closed:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The issue is closed")
+    owner = (payload.owner_email or "").strip().lower() or None
+    if owner and not EMAIL_RE.match(owner):
+        raise field_error("owner_email", "enter the owner's e-mail address")
+    if payload.due_date and payload.due_date < utcnow().date():
+        raise field_error("due_date", "the due date cannot be in the past")
+    from app.domains.audit.audits.lifecycle import default_due_date
+
+    severity = Severity(payload.priority)
+    capa = Capa(capa_ref=next_reference(db, "REM"), title=payload.title.strip(), description=payload.description,
+                root_cause=finding.cause or "", corrective_action=payload.description or finding.recommendation or "",
+                preventive_action="", effectiveness_check="Re-test the control after remediation.", severity=severity,
+                status=CapaStatus.Open, owner_email=owner,
+                due_date=_day(payload.due_date) or default_due_date(severity), source_type="finding",
+                source_id=finding.id, source_body=(cfg("recommendation_sources") or ["Internal Audit"])[0],
+                source_year=utcnow().year, custom_fields=json.dumps({"reminders": payload.reminders}),
+                created_by=user.id)
+    capa.original_due_date = capa.due_date
+    db.add(capa)
+    db.flush()
+    if finding.status == FindingStatus.Open:
+        finding.status = FindingStatus.Remediating
+    if finding.remediation_status == "Open":
+        finding.remediation_status = "Management Remediating"
+    auto_task_for_record(db, record_type="capa", record=capa, action="Action remediation", assignor_id=user.id)
+    notified = False
+    if payload.notify_now and owner:
+        target = db.execute(select(User).where(User.email == owner)).scalars().first()
+        if target is not None:
+            notified = notify(db, target.id, f"Action assigned: {capa.capa_ref} {capa.title}"[:255],
+                              f"Issue #{finding.id} {finding.title}\nDue {capa.due_date:%d %b %Y}",
+                              link_type="capa", link_id=capa.id) is not None
+    log_action(db, user_id=user.id, request=request,
+               action=f"ACTION_ADD capa={capa.id} finding={finding.id} notified={notified}")
+    log_record_history(db, record_type="audit", record_id=finding.audit_id, user_id=user.id, request=request,
+                       action=f"ACTION {capa.capa_ref} ADDED to issue #{finding.id} by {user.username}")
+    db.commit()
+    return {"id": capa.id, "ref": capa.capa_ref, "notified": notified}

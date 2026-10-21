@@ -299,6 +299,10 @@ def create_objective(
     audit_id: int, payload: ObjectiveIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff
 ) -> ObjectiveOut:
     _ensure_open(_audit_or_404(db, audit_id))
+    limit = int(cfg("audit_max_objectives"))
+    have = db.execute(select(func.count()).select_from(Objective).where(Objective.audit_id == audit_id)).scalar_one()
+    if have >= limit:
+        raise _conflict(f"An audit holds at most {limit} objectives")
     obj = Objective(audit_id=audit_id, ref=next_reference(db, "OBJ"), created_by=user.id, **payload.model_dump())
     db.add(obj)
     db.flush()

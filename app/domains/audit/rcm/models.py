@@ -37,6 +37,9 @@ class Objective(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    # The framework (Project Library programme) the objective came from, when it was imported or applied.
+    source_program_id: Mapped[int | None] = mapped_column(ForeignKey("audit_programs.id", ondelete="SET NULL"),
+                                                          nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     risks: Mapped[list[Risk]] = relationship(back_populates="objective", order_by="Risk.id")

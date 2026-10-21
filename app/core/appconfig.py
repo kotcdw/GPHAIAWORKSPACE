@@ -240,6 +240,20 @@ RULES: list[Rule] = [
          default=120, min=0, max=5000),
     Rule("plan_max_projects", "Most projects (engagements) one assurance plan may hold", "Plan configuration", "int",
          default=100, min=1, max=500),
+    Rule("audit_max_objectives", "Most objectives one audit may hold", "Audit methodology", "int",
+         "Applies to adding, importing and cloning objectives.", default=500, min=1, max=2000),
+    Rule("report_folders", "Report folders", "Reports", "list",
+         "Folders for saved reports, dashboards and presentations (Publish › Folder). My Reports is always there.",
+         default=["Audit Reports", "Committee Pack", "Project Reviews"]),
+    Rule("remediation_statuses", "Remediation statuses management and auditors can set on an issue", "Action plans",
+         "list", "Verified is set by the system when a retest (or validation) concludes Effective.",
+         default=["Open", "Management Remediating", "Remediated - Awaiting Verification"]),
+    Rule("retest_required_severities", "Issue ratings that need a retest before the issue can be closed",
+         "Action plans", "list",
+         "After management remediates, an auditor records a retest concluded Effective (Retest Information). "
+         "Issues with other ratings close on validated actions alone. Empty: validation of the actions is the "
+         "retest.", default=[],
+         options=["Low", "Medium", "High"], allow_empty=True),
     # --- organizations / entities
     Rule("organization_categories", "Entity types users can choose for an organization", "Organizations", "list",
          "One per line. Ports, offices, departments and units describe GPHA itself; the rest are external parties.",

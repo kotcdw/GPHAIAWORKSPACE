@@ -31,6 +31,7 @@ MODULES = {
     "portal": "Task Tracker priorities: one page of everything waiting for a person",
     "admin": "Administration landing page with verified summaries",
     "workflow": "Workflow engine, the My work inbox and SLA time limits",
+    "groups": "User groups: named sets of people used as a sharing audience and for access reviews",
     "apps": "Apps & customization: the Super Administrator switches apps on and off, renames them and sets branding",
 }
 
@@ -48,6 +49,7 @@ def routers() -> list:
     from app.platform.dataio.bulk import router as dataio_bulk
     from app.platform.dataio.router import router as dataio
     from app.platform.drafts.router import router as drafts
+    from app.platform.groups.router import router as groups
     from app.platform.history.router import records_router
     from app.platform.history.router import router as history
     from app.platform.notifications.router import router as notifications
@@ -62,4 +64,4 @@ def routers() -> list:
 
     return [auth, users, history, records_router, organizations, stakeholders, tasks, approvals, backups,
             drafts, notifications, configuration, dataio, dataio_bulk, views, customfields, roles, architecture,
-            automations, portal, apps, workflow, admin]
+            automations, portal, apps, workflow, admin, groups]

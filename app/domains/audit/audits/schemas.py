@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, computed_field, field_validator
 
@@ -113,6 +113,25 @@ class ManagementResponse(BaseModel):
     target_date: date | None = None
 
 
+class RemediationIn(BaseModel):
+    """Remediation Information on an issue (PROJECTBLUEPRINT 5.6), kept by management or the audit team."""
+
+    remediation_status: str = Field(min_length=1, max_length=40)
+    remediation_plan: str | None = Field(default=None, max_length=10000)
+    remediation_deadline: date | None = None
+    actual_remediation_date: date | None = None
+
+
+class RetestIn(BaseModel):
+    """Retest Information: the auditor's follow-up test after management remediates."""
+
+    retest_deadline: date | None = None
+    retest_date: date | None = None
+    retest_result: Literal["Effective", "Not effective"] | None = None
+    retest_notes: str | None = Field(default=None, max_length=10000)
+    retest_working_paper_id: int | None = None
+
+
 class ClientResponse(BaseModel):
     """The Audit Client (Head of Department) response, optionally confirmed at the exit meeting."""
 
@@ -153,6 +172,16 @@ class FindingOut(ORMModel):
     signoffs: list[dict] | None = None
     criterion_id: int | None = None
     custom_fields: dict[str, Any] = Field(default_factory=dict)
+    remediation_status: str | None = "Open"
+    remediation_plan: str | None = None
+    remediation_deadline: datetime | None = None
+    actual_remediation_date: datetime | None = None
+    retest_deadline: datetime | None = None
+    retest_date: datetime | None = None
+    retest_result: str | None = None
+    retest_notes: str | None = None
+    retest_working_paper_id: int | None = None
+    retested_by: int | None = None
     created_by: int | None
     created_at: datetime
     updated_at: datetime

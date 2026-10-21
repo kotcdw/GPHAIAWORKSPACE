@@ -145,12 +145,13 @@ async function renderFieldworkTab(pane, audit, canWrite) {
   const terms = await auditTerms(audit.id);
   const steps = fieldworkSteps(fw, terms);
   state.fwSub = state.fwSub || {};
-  let sub = state.fwSub[audit.id];
-  if (!steps.some((s) => s.key === sub)) sub = (steps.find((s) => !s.done) || steps[0]).key;
-  const current = steps.find((s) => s.key === sub);
+  let sub = state.fwSub[audit.id] || "objs";
+  const extra = sub === "objimport" || String(sub).startsWith("objview:");
+  if (!extra && !steps.some((s) => s.key === sub)) sub = "objs";
+  const current = extra ? steps[0] : steps.find((s) => s.key === sub);
 
   pane.append(await approachCard(fw, audit, open, reload));
-  pane.append(stepNav(steps, sub, (k) => { state.fwSub[audit.id] = k; reload(); }));
+  pane.append(stepNav(steps, extra ? "objs" : sub, (k) => { state.fwSub[audit.id] = k; reload(); }));
   const body = el("div", { class: "fw-body" });
   pane.append(el("section", { class: "fw-step-page", "aria-label": current.label },
     el("header", { class: "fw-step-head" },
@@ -158,6 +159,9 @@ async function renderFieldworkTab(pane, audit, canWrite) {
       el("h3", null, current.label)),
     body));
   const ctx = { audit, open, reload };
+  if (sub === "objs") renderObjectiveList(body, ctx, fw);
+  if (sub === "objimport") renderObjectiveImport(body, ctx);
+  if (String(sub).startsWith("objview:")) renderObjectiveOverview(body, ctx, Number(String(sub).slice(8)));
   if (sub === "plan") renderProjectPlan(body, ctx);
   if (sub === "exec") renderExecuteProcedures(body, ctx);
   if (sub === "narr") renderNarratives(body, ctx);
@@ -171,8 +175,10 @@ async function renderFieldworkTab(pane, audit, canWrite) {
 function fieldworkSteps(fw, terms) {
   const st = fw.steps || {};
   const of = (a, b, unit) => (b ? `${a} of ${b} ${unit}` : "Not started");
+  const list = { key: "objs", label: "Objective list", gias: "13.3",
+    meta: st.objectives ? `${st.objectives} objective${st.objectives === 1 ? "" : "s"}` : "Not started", done: st.objectives > 0 };
   if (fw.workflow === "Workplan") {
-    return [
+    return [list,
       { key: "plan", label: termOf(terms, "work_program", "Work programme"), gias: "13.3–13.6",
         meta: st.procedures ? `${st.objectives} objective${st.objectives === 1 ? "" : "s"} · ${st.procedures} procedure${st.procedures === 1 ? "" : "s"}` : "Not started",
         done: st.procedures > 0 },
@@ -180,7 +186,7 @@ function fieldworkSteps(fw, terms) {
         meta: of(st.procedures_done, st.procedures, "done"), done: st.procedures > 0 && st.procedures_done === st.procedures },
     ].map((s, i) => ({ ...s, n: i + 1 }));
   }
-  return [
+  return [list,
     { key: "narr", label: terms.narrative ? `${terms.narrative}s` : "Process narratives", gias: "13.2",
       meta: st.narratives ? `${st.narratives} narrative${st.narratives === 1 ? "" : "s"}` : "Not started", done: st.narratives > 0 },
     { key: "rcm", label: termOf(terms, "rcm", "Risk & control matrix"), gias: "13.2–13.4",
@@ -279,7 +285,7 @@ async function renderProjectPlan(body, { audit, open, reload }) {
   wp.items.forEach((p) => p.risk_ids.forEach((rid) => { (byRisk[rid] = byRisk[rid] || []).push(p); }));
   if (!wp.objectives.length) {
     body.append(emptyState({ icon: "bullseye", title: "No objectives yet",
-      action: open ? btn("Add objective", () => objectiveForm(audit.id, null, reload)) : null }));
+      action: open ? el("div", { class: "actions" }, btn("Add objective", () => objectiveForm(audit.id, null, reload)), objectiveImportButton(audit.id, reload)) : null }));
     return;
   }
   wp.objectives.forEach((o) => {
@@ -292,7 +298,8 @@ async function renderProjectPlan(body, { audit, open, reload }) {
         open ? el("div", { class: "actions" },
           btn("+ Risk", () => riskModal(obj, null, reload), "secondary"),
           btn("+ Procedure", () => procedureForm(audit.id, wp, o, null, reload), "secondary"),
-          btn("Edit", () => objectiveForm(audit.id, obj, reload), "secondary")) : null),
+          btn("Edit", () => objectiveForm(audit.id, obj, reload), "secondary"),
+          btn("Clone", () => goFieldwork(audit.id, `objview:${obj.id}`), "secondary")) : null),
       o.description ? el("p", { class: "muted small" }, o.description) : null,
       o.risks.length || unlinked.length ? el("div", { class: "table-wrap" }, el("table", { class: "dense plan-matrix" },
         el("thead", null, el("tr", null, el("th", { scope: "col" }, "Risk"), el("th", { scope: "col" }, "Rating"), el("th", { scope: "col" }, "Procedures"))),
@@ -306,7 +313,7 @@ async function renderProjectPlan(body, { audit, open, reload }) {
             el("td", null, el("div", { class: "proc-chips" }, ...unlinked.map(procChip)))) : null)))
         : el("p", { class: "muted small" }, "No risks or procedures under this objective yet.")));
   });
-  if (open) body.append(el("div", null, btn("Add objective", () => objectiveForm(audit.id, null, reload), "secondary")));
+  if (open) body.append(el("div", { class: "actions" }, btn("Add objective", () => objectiveForm(audit.id, null, reload), "secondary"), objectiveImportButton(audit.id, reload)));
 }
 
 async function procedureForm(auditId, wp, objective, p, reload) {
@@ -654,73 +661,6 @@ function issueExtraActions(f, auditId, canWrite, onSaved) {
 
 // ------------------------------------------------------------------ Issue Tracker page
 
-async function renderIssueTracker(tab = state.issueTab || "list") {
-  state.issueTab = tab;
-  clear(viewRoot);
-  viewRoot.append(viewHeader("Issue Tracker", null));
-  viewRoot.append(tabBar([{ key: "list", label: "List" }, { key: "kpis", label: "KPIs" }], tab, (k) => renderIssueTracker(k)));
-  const body = el("div");
-  viewRoot.append(body);
-  let types = [];
-  let owners = [];
-  let entities = [];
-  try {
-    const [s, u] = await Promise.all([API.get("/api/findings/register/summary"), safeGet("/api/audit-universe", { entities: [] })]);
-    types = s.issue_types; owners = s.owners; entities = u.entities.filter((e) => e.status === "Active");
-  }
-  catch (err) { body.append(errorState(err, () => renderIssueTracker(tab))); return; }
-  if (tab === "kpis") { renderIssueKpis(body); return; }
-
-  const charts = el("div", { class: "chart-row" });
-  body.append(charts);
-  const paintCharts = async (values = {}) => {
-    const sp = new URLSearchParams(Object.entries(values).filter(([, v]) => v !== "" && v != null));
-    try {
-      const s = await API.get(`/api/findings/register/summary?${sp.toString()}`);
-      clear(charts);
-      charts.append(donutChart("By Issue Type", s.by_issue_type.map((x) => ({ ...x, label: x.label === "(none)" ? "Not set" : x.label }))), donutChart("By Severity", s.by_severity, SEVERITY_TONES),
-        el("div", { class: "chart-card kpi-mini" }, el("figcaption", null, "At a glance"),
-          el("dl", { class: "kv compact" }, el("dt", null, "Open"), el("dd", null, String(s.open)), el("dt", null, "Overdue"), el("dd", { class: s.overdue ? "text-danger" : null }, String(s.overdue)),
-            el("dt", null, "Unpublished"), el("dd", null, String(s.unpublished)))));
-    } catch { /* charts are optional */ }
-  };
-  paintCharts();
-  const table = serverTable({
-    url: "/api/findings/register", storageKey: "issues", defaultSort: "-updated_at", exportName: "issue-tracker",
-    onFilter: (v) => paintCharts(v),
-    filters: [
-      { key: "status", label: "Status", options: ["Open", "Remediating", "Closed"] },
-      { key: "severity", label: "Severity", options: ["High", "Medium", "Low"] },
-      { key: "owner", label: "Owner", options: owners.map((o) => ({ value: o.email, label: o.name })) },
-      { key: "issue_type", label: "Issue type", options: [...types, { value: "(none)", label: "Not set" }] },
-      { key: "published", label: "Published", options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
-      { key: "overdue", label: "Deadline", options: [{ value: "true", label: "Overdue" }] },
-      ...(entities.length ? [{ key: "entity_id", label: "Entity", options: entities.map((e) => ({ value: e.id, label: e.name })) }] : []),
-    ],
-    columns: [
-      { key: "title", label: "Issue", sort: true, render: (r) => el("span", null, el("span", { class: "ref" }, r.ref), " ", el("span", { class: "cell-title" }, r.title)), csv: (r) => `${r.ref} ${r.title}` },
-      { key: "status", label: "Status", sort: true, render: (r) => statusBadge(r.status), csv: (r) => r.status },
-      { key: "severity", label: "Severity", sort: true, render: (r) => statusBadge(r.severity), csv: (r) => r.severity },
-      { key: "owner", label: "Owner", sort: true },
-      { key: "remediation_deadline", label: "Remediation deadline", sort: true,
-        render: (r) => (r.remediation_deadline ? el("span", { class: r.overdue ? "text-danger" : null }, fmtDay(r.remediation_deadline), r.overdue ? " · overdue" : "") : "-"),
-        csv: (r) => r.remediation_deadline || "" },
-      { key: "issue_type", label: "Issue type", sort: true },
-      { key: "published", label: "Published", sort: true, render: (r) => (r.published ? "Yes" : "No") },
-      { key: "signoffs", label: "Sign-offs", render: (r) => signoffDots(r.signoffs), csv: (r) => `${r.signoffs.filter((d) => d.done).length}/${r.signoffs.length}` },
-      { key: "audit", label: "Project", sort: true },
-      { key: "remediation", label: "Remediation", hidden: true },
-      { key: "source", label: "Source", hidden: true },
-    ],
-    onRow: async (r) => {
-      try { const f = await API.get(`/api/findings/${r.id}`); issueForm(f, r.audit_id, canWriteModule("audits"), () => table.reload()); }
-      catch (err) { toast(err.message, "error"); }
-    },
-    emptyTitle: "No issues yet", emptyText: "Issues raised in audits appear here.",
-  });
-  body.append(el("div", { class: "card" }, table.root));
-}
-
 async function renderIssueKpis(body) {
   let s;
   try { s = await API.get("/api/findings/register/summary"); } catch (err) { body.append(errorState(err)); return; }
@@ -737,82 +677,6 @@ async function renderIssueKpis(body) {
 }
 
 // ------------------------------------------------------------------ Assurance plan: Entities coverage and Risks
-
-async function renderPlanCoverage(pane, plan, mode = "entities") {
-  const values = state.covFilter && state.covFilter.plan === plan.id ? state.covFilter : { plan: plan.id, category: "", not_covered: false };
-  state.covFilter = values;
-  const reload = () => { clear(pane); renderPlanCoverage(pane, plan, mode); };
-  pane.append(loadingState());
-  const sp = new URLSearchParams();
-  if (values.category && mode === "entities") sp.set("category", values.category);
-  if (values.not_covered && mode === "entities") sp.set("not_covered", "true");
-  let cov;
-  try { cov = await API.get(`/api/assurance-plans/${plan.id}/coverage?${sp.toString()}`); } catch (err) { clear(pane); pane.append(errorState(err, reload)); return; }
-  clear(pane);
-  if (mode === "risks") { renderPlanRisks(pane, cov); return; }
-  // Diligent: "Show coverage in" Entities (one column per entity) or Categories (one column per entity category).
-  values.view = values.view || "entities";
-  pane.append(subNav([{ key: "entities", label: "Entities" }, { key: "categories", label: "Categories" }], values.view,
-    (k) => { values.view = k; reload(); }, "Show coverage in"));
-  if (values.view === "categories") { renderCoverageByCategory(pane, cov); return; }
-
-  const cat = el("select", { class: "fb-select", "aria-label": "Entity category" }, el("option", { value: "" }, "Entity category: All"),
-    ...cov.categories.map((c) => el("option", { value: c.id, selected: String(c.id) === String(values.category) ? "1" : null }, `Entity category: ${c.name}`)));
-  cat.addEventListener("change", () => { values.category = cat.value; reload(); });
-  const nc = el("input", { type: "checkbox", id: "covNc", checked: values.not_covered ? "1" : null });
-  nc.addEventListener("change", () => { values.not_covered = nc.checked; reload(); });
-  pane.append(el("div", { class: "filter-bar" }, cat, el("label", { class: "check", for: "covNc" }, nc, ` Entities not covered (${cov.not_covered})`),
-    cov.not_covered_high ? el("span", { class: "text-danger small" }, `${cov.not_covered_high} high-risk not covered`) : null,
-    el("button", { class: "link-btn", type: "button", onclick: () => { values.category = ""; values.not_covered = false; reload(); } }, "Clear")));
-
-  if (!cov.engagements.length && !cov.entities.length) { pane.append(emptyState({ icon: "grid-3x3", title: "Nothing to show" })); return; }
-  const ents = cov.entities;
-  pane.append(el("div", { class: "card" }, el("div", { class: "table-wrap cov-wrap" }, el("table", { class: "dense cov-grid" },
-    el("thead", null, el("tr", null, el("th", { scope: "col", class: "sticky" }, "Project"), el("th", { scope: "col" }, "Status"), el("th", { scope: "col", class: "num" }, "Hours"),
-      el("th", { scope: "col" }, "Progress"),
-      ...ents.map((u) => el("th", { scope: "col", class: "ent", title: `${u.location} / ${u.name} · risk ${u.risk_score} (${u.risk})` },
-        el("span", { class: "ent-l" }, u.name), el("span", { class: `ent-risk ${u.risk.toLowerCase()}` }, u.risk))))),
-    el("tbody", null, ...cov.engagements.map((e) => el("tr", { class: `no-click ${e.cancelled ? "row-muted" : ""}` },
-      el("td", { class: "sticky" }, e.audit_id ? el("a", { href: "#", onclick: (ev) => { ev.preventDefault(); openAudit(e.audit_id); } }, e.title) : e.title,
-        el("div", { class: "muted small" }, [e.quarter, e.lead].filter(Boolean).join(" · "))),
-      el("td", null, statusBadge(e.status)),
-      el("td", { class: "num" }, `${e.hours}h`, e.actual_hours ? el("div", { class: "muted small" }, `${e.actual_hours}h charged`) : null),
-      el("td", null, progressBar(e.progress)),
-      ...ents.map((u) => el("td", { class: "ent-cell" }, e.entity_unit_id === u.id ? el("i", { class: "bi bi-check-lg cov-tick", "aria-label": "Covered", title: `${e.title} covers ${u.name}` }) : null)))),
-      ents.length ? el("tr", { class: "no-click cov-foot" }, el("td", { class: "sticky muted small" }, "Coverage"), el("td"), el("td"), el("td"),
-        ...ents.map((u) => el("td", { class: "ent-cell" }, u.covered ? el("span", { class: "outcome ok small" }, "Covered") : el("span", { class: "outcome bad small" }, "Not covered")))) : null)))));
-}
-
-function renderCoverageByCategory(pane, cov) {
-  const cats = [...new Set(cov.entities.map((u) => u.location))].sort();
-  const locOf = Object.fromEntries(cov.entities.map((u) => [u.id, u.location]));
-  const total = (c) => cov.entities.filter((u) => u.location === c).length;
-  const covered = (c) => cov.entities.filter((u) => u.location === c && u.covered).length;
-  if (!cats.length) { pane.append(emptyState({ icon: "grid-3x3", title: "No auditable entities yet" })); return; }
-  pane.append(el("div", { class: "card" }, el("div", { class: "table-wrap cov-wrap" }, el("table", { class: "dense cov-grid" },
-    el("thead", null, el("tr", null, el("th", { scope: "col", class: "sticky" }, "Project"), el("th", { scope: "col" }, "Status"), el("th", { scope: "col" }, "Progress"),
-      ...cats.map((c) => el("th", { scope: "col", class: "ent" }, el("span", { class: "ent-l" }, c))))),
-    el("tbody", null, ...cov.engagements.filter((e) => !e.cancelled).map((e) => el("tr", { class: "no-click" },
-      el("td", { class: "sticky" }, e.audit_id ? el("a", { href: "#", onclick: (ev) => { ev.preventDefault(); openAudit(e.audit_id); } }, e.title) : e.title),
-      el("td", null, statusBadge(e.status)), el("td", null, progressBar(e.progress)),
-      ...cats.map((c) => el("td", { class: "ent-cell" }, locOf[e.entity_unit_id] === c ? el("i", { class: "bi bi-check-lg cov-tick", "aria-label": "Covers this category" }) : null)))),
-    el("tr", { class: "no-click cov-foot" }, el("td", { class: "sticky muted small" }, "Entities covered"), el("td"), el("td"),
-      ...cats.map((c) => el("td", { class: "ent-cell small" }, `${covered(c)} of ${total(c)}`))))))));
-}
-
-function renderPlanRisks(pane, cov) {
-  const ents = [...cov.entities].sort((a, b) => b.risk_score - a.risk_score);
-  pane.append(el("div", { class: "card" }, el("h3", null, "Auditable entities by risk"),
-    ents.length ? el("div", { class: "table-wrap" }, el("table", { class: "dense" },
-      el("thead", null, el("tr", null, ...["Entity", "Category", "Risk score", "Rating", "Covered by the plan"].map((h) => el("th", { scope: "col" }, h)))),
-      el("tbody", null, ...ents.map((u) => el("tr", { class: "no-click" },
-        el("td", null, el("span", { class: "ref" }, u.code), ` ${u.name}`), el("td", null, u.location), el("td", null, heat(u.risk_score)),
-        el("td", null, statusBadge(u.risk)),
-        el("td", null, u.covered ? el("span", { class: "outcome ok" }, el("i", { class: "bi bi-check-circle" }), " Yes")
-          : el("span", { class: `outcome ${u.risk === "High" ? "bad" : ""}` }, el("i", { class: "bi bi-dash-circle" }), " No")))))))
-      : emptyState({ icon: "diagram-2", title: "No entities in the Audit Universe" })));
-}
-
 
 // ---- auditable entities covered by the audit, and detailed scoping from them
 

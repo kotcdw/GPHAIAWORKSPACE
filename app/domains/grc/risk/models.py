@@ -123,3 +123,24 @@ class KriReading(Base):
     comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
     recorded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     recorded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class RiskTreatment(Base):
+    """A strategic risk's treatment: an audit objective whose work gives assurance over the risk (Strategy ›
+    Treatment). Assurance on the risk is rolled up from the controls, tests and issues of the linked objectives."""
+
+    __tablename__ = "risk_treatments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    risk_id: Mapped[int] = mapped_column(ForeignKey("enterprise_risks.id", ondelete="CASCADE"), nullable=False,
+                                         index=True)
+    # Either a project objective, or a framework objective (programme + objective title): linking a framework
+    # objective rolls up assurance from every project objective that came from it.
+    objective_id: Mapped[int | None] = mapped_column(ForeignKey("objectives.id", ondelete="CASCADE"), nullable=True,
+                                                     index=True)
+    program_id: Mapped[int | None] = mapped_column(ForeignKey("audit_programs.id", ondelete="CASCADE"),
+                                                   nullable=True)
+    program_objective: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

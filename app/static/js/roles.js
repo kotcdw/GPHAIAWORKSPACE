@@ -29,7 +29,7 @@ function viewAllowed(view) {
     apps: ["system.superadmin"],
     risk: GRC_VIEW_PERMS, compliance: GRC_VIEW_PERMS, policies: GRC_VIEW_PERMS, assets: GRC_VIEW_PERMS,
   };
-  if (["programs", "practice", "library", "scheduler", "issues", "orgstructure", "processes", "riskassess", "statustracker", "results", "robots", "audittypes", "universe", "universe_units", "universe_processes", "universe_entities", "universe_assurance"].includes(view)) return state.user.role !== "Auditee";
+  if (["programs", "practice", "library", "scheduler", "issues", "activity", "reports", "orgstructure", "processes", "riskassess", "statustracker", "results", "robots", "audittypes", "universe", "universe_units", "universe_processes", "universe_entities", "universe_assurance"].includes(view)) return state.user.role !== "Auditee";
   if (view === "logs" || view === "backups") return hasPerm("system.technical");
   if (view === "imports") return hasPerm("system.users", "system.reference", "method.library", "followup.manage", "grc.risk");
   if (view === "users") return hasPerm("system.users");

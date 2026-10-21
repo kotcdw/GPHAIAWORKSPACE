@@ -71,6 +71,11 @@ class PlanUpdate(BaseModel):
         return value
 
 
+class FrameworkObjectiveRef(BaseModel):
+    program_id: int
+    title: str = Field(min_length=1, max_length=255)
+
+
 class EngagementIn(BaseModel):
     title: Title
     entity_unit_id: int | None = None
@@ -82,6 +87,9 @@ class EngagementIn(BaseModel):
     audit_type: str | None = Field(default=None, max_length=60)
     program_id: int | None = None
     source_audit_id: int | None = None
+    # Create project › Objectives and › Entities (optional).
+    objectives: list[FrameworkObjectiveRef] = Field(default_factory=list, max_length=500)
+    entity_unit_ids: list[int] = Field(default_factory=list, max_length=200)
 
 
 class EngagementUpdate(BaseModel):
@@ -96,6 +104,8 @@ class EngagementUpdate(BaseModel):
     audit_type: str | None = Field(default=None, max_length=60)
     program_id: int | None = None
     source_audit_id: int | None = None
+    objectives: list[FrameworkObjectiveRef] | None = Field(default=None, max_length=500)
+    entity_unit_ids: list[int] | None = Field(default=None, max_length=200)
 
 
 class EngagementOut(ORMModel):
@@ -120,6 +130,8 @@ class EngagementOut(ORMModel):
     program_name: str | None = None
     source_audit_id: int | None = None
     source_audit_ref: str | None = None
+    objectives: list[FrameworkObjectiveRef] = []
+    entity_unit_ids: list[int] = []
     created_at: datetime
 
 
@@ -163,6 +175,8 @@ class PlanSummary(BaseModel):
     cancelled: int
     planned_hours: int
     budget_hours: int
+    hours_remaining: int = 0  # available hours not yet allocated to a project
+    hours_over: int = 0  # budgeted hours above the plan's available hours
     universe_units: int
     covered_units: int
     coverage_pct: float

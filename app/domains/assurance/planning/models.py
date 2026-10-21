@@ -176,6 +176,33 @@ class PlanEngagement(Base):
     entity_unit: Mapped[EntityUnit | None] = relationship()
 
 
+class EngagementEntity(Base):
+    """An auditable entity a planned project covers (Create project › Entities); drives plan coverage."""
+
+    __tablename__ = "plan_engagement_entities"
+    __table_args__ = (UniqueConstraint("engagement_id", "entity_unit_id", name="uq_engagement_entity"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("plan_engagements.id", ondelete="CASCADE"),
+                                               nullable=False, index=True)
+    entity_unit_id: Mapped[int] = mapped_column(ForeignKey("entity_units.id", ondelete="CASCADE"), nullable=False,
+                                                index=True)
+
+
+class EngagementObjective(Base):
+    """A framework objective chosen for a planned project (Create project › Objectives); copied in when the
+    project's audit starts."""
+
+    __tablename__ = "plan_engagement_objectives"
+    __table_args__ = (UniqueConstraint("engagement_id", "program_id", "title", name="uq_engagement_objective"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    engagement_id: Mapped[int] = mapped_column(ForeignKey("plan_engagements.id", ondelete="CASCADE"),
+                                               nullable=False, index=True)
+    program_id: Mapped[int] = mapped_column(ForeignKey("audit_programs.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
 class PlanChange(Base):
     """A documented change to an approved plan (engagement added, cancelled or changed; committee approval)."""
 

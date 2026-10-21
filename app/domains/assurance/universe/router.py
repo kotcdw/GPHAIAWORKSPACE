@@ -1274,8 +1274,10 @@ def delete_ara(ara_id: int, request: Request, db: DBSession = Depends(get_db), u
 def start_planning(ara_id: int, payload: PlanningIn, request: Request, db: DBSession = Depends(get_db),
                    user: User = Staff) -> dict:
     """Start planning: add an audit plan or link an existing draft plan, and generate an engagement for each
-    prioritised entity not yet in the plan (named after the entity, budget from configuration)."""
+    prioritised entity not yet in the plan (named after the entity, budget from configuration).
+    Generating engagements creates projects, so the Project Creator permission is needed as well."""
     ensure_perm(user, "plan.prepare", "plan.amend")
+    ensure_perm(user, "audit.create")
     a = _ara(db, ara_id)
     if a.status != "Completed":
         raise _conflict("Complete the assessment before planning from it")

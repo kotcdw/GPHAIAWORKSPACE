@@ -144,6 +144,20 @@ class Finding(Base):
     review_trail: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     criterion_id: Mapped[int | None] = mapped_column(ForeignKey("criteria.id", ondelete="SET NULL"), nullable=True)
+    # Follow-up & Remediation and Retest Information (PROJECTBLUEPRINT 5.8): management's plan and the auditor's
+    # retest. A status alone never proves remediation; closure needs validated actions and, where required, a
+    # retest concluded Effective.
+    remediation_status: Mapped[str] = mapped_column(String(40), nullable=False, default="Open", server_default="Open")
+    remediation_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    remediation_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    actual_remediation_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    retest_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    retest_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    retest_result: Mapped[str | None] = mapped_column(String(20), nullable=True)  # Effective / Not effective
+    retest_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retest_working_paper_id: Mapped[int | None] = mapped_column(ForeignKey("working_papers.id", ondelete="SET NULL"),
+                                                                nullable=True)
+    retested_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     custom_fields: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

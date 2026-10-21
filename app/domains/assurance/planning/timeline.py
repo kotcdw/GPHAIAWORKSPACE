@@ -146,7 +146,9 @@ def _may_change(plan: AssurancePlan, user: User, reason: str) -> bool:
 def include_audits(plan_id: int, payload: IncludeIn, request: Request, db: DBSession = Depends(get_db),
                    user: User = Staff) -> dict:
     from app.domains.assurance.planning.projects import ensure_room
+    from app.domains.assurance.planning.router import plan_editor
 
+    plan_editor(user)
     plan = _plan_or_404(db, plan_id)
     logged = _may_change(plan, user, payload.reason)
     ensure_room(plan, len(set(payload.audit_ids)))
@@ -180,6 +182,9 @@ def include_audits(plan_id: int, payload: IncludeIn, request: Request, db: DBSes
 @router.post("/api/plan-engagements/{eng_id}/exclude")
 def exclude_audit(eng_id: int, payload: ExcludeIn, request: Request, db: DBSession = Depends(get_db),
                   user: User = Staff) -> dict:
+    from app.domains.assurance.planning.router import plan_editor
+
+    plan_editor(user)
     eng = _engagement_or_404(db, eng_id)
     plan = eng.plan
     logged = _may_change(plan, user, payload.reason)

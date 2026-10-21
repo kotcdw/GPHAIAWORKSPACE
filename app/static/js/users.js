@@ -29,7 +29,8 @@ async function renderUsersAdmin() {
   const f = state.usersFilter || (state.usersFilter = { q: "", status: "", job_role: "", mfa: "", workplace: "", sort: "name", desc: false, page: 1 });
   const cat = await ensureRoleCatalogue();
   const add = hasPerm("system.users") ? el("button", { class: "btn", type: "button", onclick: newUserForm }, el("i", { class: "bi bi-person-plus" }), " Add user") : null;
-  viewRoot.append(viewHeader("Users & access", add));
+  const groups = hasPerm("system.users") ? el("button", { class: "btn secondary", type: "button", onclick: groupsDialog }, el("i", { class: "bi bi-people" }), " Groups") : null;
+  viewRoot.append(viewHeader("Users & access", [groups, add].filter(Boolean)));
 
   const tabs = el("div", { class: "tabs users-tabs", role: "tablist" });
   const search = el("input", { type: "search", class: "compact", placeholder: "Search name, username, e-mail or unit", "aria-label": "Search users", value: f.q });

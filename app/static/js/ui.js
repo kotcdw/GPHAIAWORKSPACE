@@ -190,7 +190,7 @@ function serverTable(opts) {
   let last = null;
   let seq = 0;
 
-  const fb = filterBar({ filters, values: opts.values || {}, onChange: (v) => { q.values = v; q.page = 1; load(); if (opts.onFilter) opts.onFilter(v); } });
+  const fb = filterBar({ filters, placeholder: opts.placeholder || "Search list…", values: opts.values || {}, onChange: (v) => { q.values = v; q.page = 1; load(); if (opts.onFilter) opts.onFilter(v); } });
   if (opts.values) q.values = { ...opts.values };
   const colsBtn = el("button", { class: "btn small secondary", type: "button", "aria-haspopup": "true", title: "Choose columns",
     onclick: () => openColumnChooser() }, el("i", { class: "bi bi-layout-three-columns" }), " Columns");
@@ -310,40 +310,58 @@ function plainText(v) {
 // opts: { crumbs, title, ref, status, meta: [nodes], actions: [nodes], utility: [{label, icon, count, onClick}],
 //         tabs: [{key, label, count?}], active, onTab(key, pane, side), side: node | null }
 function recordLayout(opts) {
-  const tabsNav = el("div", { class: "rec-tabs", role: "tablist", "aria-label": `${opts.title} sections` });
+  // Record pages use the application frame: the title bar names the app and the record and carries the
+  // utility links; the record's sections are the left navigation; the work area holds the breadcrumb, the
+  // toolbar of actions, the band (lifecycle or phases) and the section content.
+  const crumbs = opts.crumbs || [];
+  const app = opts.app || (crumbs.length > 1 ? crumbs[crumbs.length - 2].label : (crumbs[0] || {}).label) || "Workspace";
+  const tabsNav = el("nav", { class: "ws-side rec-tabs", role: "tablist", "aria-orientation": "vertical", "aria-label": `${opts.title} sections` });
   const pane = el("div", { class: "rec-pane", role: "tabpanel" });
   const side = el("aside", { class: "rec-side", "aria-label": "Summary" });
   const grid = el("div", { class: `rec-grid ${opts.side === null ? "no-side" : ""}` }, pane, opts.side === null ? null : side);
-  const head = el("div", { class: "rec-head" },
-    el("div", { class: "rec-title-row" },
-      opts.back ? el("button", { class: "back-link", type: "button", title: "Back", "aria-label": "Back", onclick: opts.back }, el("i", { class: "bi bi-arrow-left" })) : null,
+  const crumb = el("div", { class: "ws-crumb" });
+  const top = el("div", { class: "ws-top" },
+    el("div", { class: "ws-top-l rec-title-row" },
+      opts.back ? el("button", { class: "back-link ws-back", type: "button", title: "Back", "aria-label": "Back", onclick: opts.back }, el("i", { class: "bi bi-arrow-left" })) : null,
+      el("span", { class: "ws-app" }, app),
       el("h1", { class: "rec-title" }, opts.title),
       opts.ref ? el("span", { class: "ref" }, opts.ref) : null,
       opts.status ? statusBadge(opts.status) : null,
-      ...(opts.meta || []),
-      el("span", { class: "rec-util" }, ...(opts.utility || []).map((u) => el("button", { class: "link-btn", type: "button", onclick: u.onClick },
-        u.icon ? el("i", { class: `bi bi-${u.icon}`, "aria-hidden": "true" }) : null, ` ${u.label}`, u.count ? el("span", { class: "count-pill" }, String(u.count)) : null))),
-      opts.actions && opts.actions.length ? el("span", { class: "rec-actions" }, ...opts.actions) : null),
-    opts.band || null,
-    tabsNav);
-  const root = el("div", { class: "record" }, head, grid);
+      ...(opts.meta || [])),
+    el("div", { class: "ws-top-r rec-util" }, ...(opts.utility || []).map((u) => el("button", { class: "ws-util link-btn", type: "button", onclick: u.onClick },
+      u.icon ? el("i", { class: `bi bi-${u.icon}`, "aria-hidden": "true" }) : null, ` ${u.label}`, u.count ? el("span", { class: "count-pill" }, String(u.count)) : null))));
+  const toolbar = opts.actions && opts.actions.length ? el("div", { class: "ws-toolbar rec-actions" }, ...opts.actions) : null;
+  const work = el("main", { class: "ws-work" }, crumb, toolbar, opts.band || null, grid);
+  const root = el("div", { class: "record ws" }, top, el("div", { class: "ws-shell" }, tabsNav, work));
   let current = null;
+  function paintCrumb() {
+    clear(crumb);
+    const t = (opts.tabs || []).find((x) => x.key === current);
+    [app, opts.ref || opts.title, t ? t.label : null].filter(Boolean).forEach((p, i) => {
+      if (i) crumb.append(el("span", { class: "ws-crumb-sep", "aria-hidden": "true" }, " / "));
+      crumb.append(i === 0 && opts.back ? el("button", { class: "ws-crumb-link", type: "button", onclick: opts.back }, p) : el("span", null, p));
+    });
+  }
   function select(key) {
     current = key;
     tabsNav.querySelectorAll("[role=tab]").forEach((b) => {
       const on = b.dataset.key === key;
       b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false"); b.tabIndex = on ? 0 : -1;
     });
+    paintCrumb();
     clear(pane);
     opts.onTab(key, pane, side);
   }
   (opts.tabs || []).forEach((t) => {
     tabsNav.append(el("button", { class: "rec-tab", role: "tab", type: "button", "data-key": t.key, onclick: () => select(t.key),
       onkeydown: (e) => {
-        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        const fwd = e.key === "ArrowRight" || e.key === "ArrowDown";
+        const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+        if (!fwd && !back) return;
+        e.preventDefault();
         const all = [...tabsNav.querySelectorAll("[role=tab]")]; const i = all.indexOf(e.currentTarget);
-        const next = all[(i + (e.key === "ArrowRight" ? 1 : all.length - 1)) % all.length]; next.focus(); next.click();
-      } }, t.label, t.count ? el("span", { class: "count-pill" }, String(t.count)) : null));
+        const next = all[(i + (fwd ? 1 : all.length - 1)) % all.length]; next.focus(); next.click();
+      } }, el("span", null, t.label), t.count ? el("span", { class: "count-pill" }, String(t.count)) : null));
   });
   if (opts.side && opts.side !== null) side.append(opts.side);
   if (opts.crumbs) setCrumbs(opts.crumbs);
@@ -446,12 +464,13 @@ function fmtDay(value) {
 const HOST_GROUPS = [
   { host: "portal", tabs: [["portal", "Priorities"], ["tasks", "To-dos"], ["evidence", "Requests"]] },
   { host: "universe", tabs: [["universe", "Overview"], ["universe_units", "Units"], ["universe_processes", "Processes"], ["universe_entities", "Entities"], ["universe_assurance", "Assurance map"]] },
-  { host: "issues", tabs: [["issues", "Issues"], ["capa", "Actions"]] },
+  { host: "issues", tabs: [["activity", "Issues & Actions"], ["issues", "Issues"], ["capa", "Actions"]] },
   { host: "committee", tabs: [["committee", "Committee pack"], ["governance", "Governance portal"], ["portfolio", "Port portfolio"]] },
   { host: "qaip", tabs: [["qaip", "Quality reviews"], ["practice", "Professional practice"], ["service-feedback", "Service feedback"]] },
   { host: "orgstructure", tabs: [["orgstructure", "Org Structure"], ["organizations", "Organizations"], ["stakeholders", "Contacts"]] },
   { host: "configuration", tabs: [["configuration", "Business rules"], ["audittypes", "Audit types"], ["apps", "Apps & customization"], ["imports", "Data import"], ["logs", "Audit trail"]] },
   { host: "robots", tabs: [["robots", "Robots"], ["automations", "Automations"]] },
+  { host: "reports", tabs: [["reports", "Reports"], ["storyboards", "Storyboards"]] },
 ];
 
 function hostGroup(view) {

@@ -181,11 +181,16 @@ def apply_program(audit_id: int, program_id: int, request: Request, db: DBSessio
     return {"program": program.prog_ref, **counts}
 
 
-def copy_program(db: DBSession, audit: Audit, program: AuditProgram, user: User) -> dict:
-    """Copy a programme's steps into the audit (no commit). Used by Apply audit programme and when an audit starts
-    from a plan engagement that names a programme."""
+def copy_program(db: DBSession, audit: Audit, program: AuditProgram, user: User,
+                 only_objectives: set[str] | None = None) -> dict:
+    """Copy a programme's steps into the audit (no commit). Used by Apply audit programme, Import Objective
+    (``only_objectives``: the objective titles chosen) and when an audit starts from a plan engagement that names
+    a programme."""
     audit_id = audit.id
     steps = [Step(**s) for s in program.step_list]
+    if only_objectives is not None:
+        wanted = {t.strip().lower() for t in only_objectives}
+        steps = [s for s in steps if s.objective.strip().lower() in wanted]
     objectives = {o.title.lower(): o for o in db.execute(select(Objective).where(Objective.audit_id == audit_id))
                   .scalars()}
     counts = {"objectives": 0, "risks": 0, "controls": 0, "tests": 0, "procedures": 0}
@@ -195,7 +200,8 @@ def copy_program(db: DBSession, audit: Audit, program: AuditProgram, user: User)
     for s in steps:
         obj = objectives.get(s.objective.lower())
         if obj is None:
-            obj = Objective(audit_id=audit_id, ref=next_reference(db, "OBJ"), title=s.objective, created_by=user.id)
+            obj = Objective(audit_id=audit_id, ref=next_reference(db, "OBJ"), title=s.objective, created_by=user.id,
+                            source_program_id=program.id)
             db.add(obj)
             db.flush()
             objectives[s.objective.lower()] = obj

@@ -91,8 +91,11 @@ def plan_coverage(
 
     units = list(db.execute(select(EntityUnit).join(Location, Location.id == EntityUnit.location_id)
                             .where(EntityUnit.is_active.is_(True)).order_by(Location.name, EntityUnit.code)).scalars())
+    from app.domains.assurance.planning.projects import engagement_entity_ids
+
+    covers = {e.id: engagement_entity_ids(db, e) for e in engagements}
     live = [e for e in engagements if e.status != EngagementStatus.Cancelled]
-    covered_ids = {e.entity_unit_id for e in live if e.entity_unit_id}
+    covered_ids = set().union(*(covers[e.id] for e in live)) if live else set()
     uncovered = [u for u in units if u.id not in covered_ids]
     shown = [u for u in units if (category is None or u.location_id == category)
              and (not not_covered or u.id not in covered_ids)]
@@ -107,7 +110,7 @@ def plan_coverage(
             "audit_id": audit.id if audit else None, "lead": leads.get(e.lead_auditor_id),
             "hours": e.budget_hours, "actual_hours": round(float(actual.get(e.audit_id, 0) or 0), 1),
             "progress": progress, "cancelled": e.status == EngagementStatus.Cancelled,
-            "entity_unit_id": e.entity_unit_id,
+            "entity_unit_id": e.entity_unit_id, "entity_ids": sorted(covers[e.id]),
         })
     counted = [r for r in rows if not r["cancelled"]]
     planned_hours = sum(r["hours"] for r in counted)

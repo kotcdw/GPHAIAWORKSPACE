@@ -10,6 +10,7 @@ Levels, raised once each as an action stays overdue:
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -75,7 +76,11 @@ def run_escalations(db: DBSession, now: datetime | None = None) -> int:
             f"{capa.title}\nOwner: {capa.owner_email or 'not assigned'}\n"
             f"Due: {capa.due_date:%d %b %Y}. Escalation level: {LEVEL_NAMES[item.due_level]}."
         )
-        recipients: list[int | None] = [owner, capa.created_by]
+        try:  # the owner can be left out of reminders for one action (Actions › Add › Reminders)
+            reminders = json.loads(capa.custom_fields or "{}").get("reminders", True) is not False
+        except ValueError:
+            reminders = True
+        recipients: list[int | None] = [owner if reminders else None, capa.created_by]
         if item.due_level >= 2:
             recipients += user_ids_with_level(db, ReviewLevel.Manager)
         if item.due_level >= 3:

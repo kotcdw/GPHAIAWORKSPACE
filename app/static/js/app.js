@@ -566,6 +566,8 @@ function navigate(view) {
   if (view === "statustracker") return renderStatusTracker();
   if (view === "results") return renderResults();
   if (view === "storyboards") return renderStoryboards();
+  if (view === "reports") return renderReportsApp();
+  if (view === "activity") return renderActivityCenter();
   if (view === "robots") return renderRobots();
   if (view === "audittypes") return renderAuditTypes();
   if (view === "orgstructure") return renderOrgStructure();
@@ -854,38 +856,39 @@ async function openRecord(key, id) {
   const allowedActions = (canWrite ? m.actions.filter((act) => (!act.adminOnly || isAdmin()) && (!act.perm || hasPerm(act.perm))) : [])
     .filter((act) => !(key === "capa" && act.key === "close" && !(record.status === "Review" && record.validation_result === "Effective")));
 
-  viewRoot.append(viewHeader(String(title),
-    [
-      ...allowedActions.map((act) => el("button", {
-        class: `btn small ${act.kind === "esign" ? "" : "secondary"}`.trim(),
-        onclick: () => runAction(key, id, act, openRecord) }, act.label)),
-      canWrite && record.status !== "Closed" ? el("button", { class: "btn small secondary", onclick: () => editRecordModal(key, record) },
-        el("i", { class: "bi bi-pencil" }), " Edit") : null,
-      iconBtn("printer", "Print", () => window.print()),
-    ],
-    { back: () => navigate(key), meta: [el("span", { class: "ref" }, record[m.refKey] || ""), record.status ? badge(record.status) : null] }));
-
-  const detail = el("div");
-  viewRoot.append(detail);
-  const tabs = [
-    { key: "info", label: "Information" },
-    { key: "tasks", label: "Tasks" },
-    { key: "history", label: "History" },
+  const actions = [
+    ...allowedActions.map((act) => el("button", {
+      class: `btn small ${act.kind === "esign" ? "" : "secondary"}`.trim(),
+      onclick: () => runAction(key, id, act, openRecord) }, act.label)),
+    canWrite && record.status !== "Closed" ? el("button", { class: "btn small secondary", onclick: () => editRecordModal(key, record) },
+      el("i", { class: "bi bi-pencil" }), " Edit") : null,
+    iconBtn("printer", "Print", () => window.print()),
+  ].filter(Boolean);
+  // Remediation actions follow the Issue follow-up walkthrough: Information, Action Follow-Up, Complete Action.
+  const tabs = key === "capa" ? [
+    { key: "info", label: "Information" }, { key: "followup", label: "Action Follow-Up" }, { key: "complete", label: "Complete Action" },
+    { key: "tasks", label: "Tasks" }, { key: "history", label: "History" }, { key: "approvals", label: "Approval cycles" },
+  ] : [
+    { key: "info", label: "Information" }, { key: "tasks", label: "Tasks" }, { key: "history", label: "History" },
     { key: "approvals", label: "Approval cycles" },
   ];
-  let active = "info";
-
-  function paint() {
-    clear(detail);
-    detail.append(tabBar(tabs, active, (k) => { active = k; paint(); }));
-    const panel = el("div");
-    detail.append(panel);
-    if (active === "info") renderInfoTab(panel, key, record, canWrite);
-    if (active === "tasks") renderTasksTab(panel, m.recordType, id);
-    if (active === "history") renderHistoryTab(panel, m.recordType, id);
-    if (active === "approvals") renderApprovalsTab(panel, m.recordType, id);
-  }
-  paint();
+  clear(viewRoot);
+  const layout = recordLayout({
+    crumbs: recordCrumbs(key, record[m.refKey] || String(title)),
+    back: () => navigate(key), title: String(title), ref: record[m.refKey] || "", status: record.status || null,
+    actions, tabs, side: null,
+    onTab: (k, panel) => {
+      if (k === "info") renderInfoTab(panel, key, record, canWrite);
+      if (k === "followup") renderCapaFollowup(panel, record, () => openRecord("capa", record.id));
+      if (k === "complete") renderCapaComplete(panel, record, () => openRecord("capa", record.id));
+      if (k === "tasks") renderTasksTab(panel, m.recordType, id);
+      if (k === "history") renderHistoryTab(panel, m.recordType, id);
+      if (k === "approvals") renderApprovalsTab(panel, m.recordType, id);
+    },
+  });
+  viewRoot.append(msg, layout.root);
+  layout.select(state.recordTab && state.recordTab.key === key && state.recordTab.id === id ? state.recordTab.tab : "info");
+  state.recordTab = null;
 }
 
 function fieldValue(f, record) {
@@ -927,7 +930,6 @@ function renderInfoTab(panel, key, record, canWrite) {
       el("div", { class: `lf-value ${fieldValue(f, record) ? "" : "muted"}`.trim() }, fieldValue(f, record) || "Not recorded"))));
   panel.append(card);
   if (key === "organizations") renderEntityExtras(panel, record, canWrite);
-  if (key === "capa") renderCapaFollowup(panel, record, () => openRecord("capa", record.id));
 }
 
 async function renderTasksTab(panel, recordType, id) {
@@ -1075,6 +1077,7 @@ function workspaceGroups() {
       { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Headline indicators, heat map, trends and repeat findings", staff: true },
       { view: "results", icon: "table", name: "Results", desc: "Analytic tables with priority, status, assignee and triggers", staff: true },
       { view: "storyboards", icon: "easel", name: "Storyboards", desc: "Charts, metrics and text from Results, shared read-only", staff: true },
+      { view: "reports", icon: "file-earmark-bar-graph", name: "Reports", desc: "Reports, dashboards, presentations and AI Reporting", staff: true },
       { view: "robots", icon: "robot", name: "Robots", desc: "Scheduled analytic tasks and automation rules", staff: true },
       { view: "committee", icon: "bar-chart-line", name: "Audit Committee", desc: "Committee pack, governance portal and port portfolio" },
       { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews, professional practice and service feedback", staff: true },
@@ -1370,14 +1373,17 @@ async function openAudit(id, startTab = null) {
   const tabs = [
     { key: "dashboard", label: "Overview" },
     ...(canWrite ? [{ key: "memo", label: termOf(terms, "planning", "Planning") }, { key: "fieldwork", label: termOf(terms, "fieldwork", "Fieldwork") }] : []),
-    { key: "findings", label: `${termOf(terms, "issue", "Finding")}s` },
-    { key: "report", label: termOf(terms, "results", "Report") },
+    { key: "report", label: termOf(terms, "results", "Results") },
+    { key: "findings", label: `${termOf(terms, "issue", "Issue")}s` },
     ...(canWrite ? [{ key: "quality", label: termOf(terms, "reviews", "Supervision & review") }] : []),
-    { key: "evidence", label: `${termOf(terms, "request", "Evidence request")}s` },
+    { key: "evidence", label: `${termOf(terms, "request", "Request")}s` },
     ...(canWrite ? [{ key: "progress", label: "Progress" }] : []),
     { key: "survey", label: "Feedback survey" },
+    ...(isStaff() ? [{ key: "settings", label: "Project settings" }] : []),
   ];
   const utility = [
+    { label: "Requests", icon: "envelope-paper", key: "evidence" },
+    ...(isStaff() ? [{ label: "Issues", icon: "flag", key: "@issues" }] : []),
     ...(canWrite ? [{ label: "Review notes", icon: "chat-square-text", key: "notes" }, { label: "Time entries", icon: "clock", key: "time" }] : []),
     { label: "To-dos", icon: "check2-square", key: "tasks" },
     { label: "History", icon: "clock-history", key: "history" },
@@ -1391,14 +1397,14 @@ async function openAudit(id, startTab = null) {
     meta: audit.approval_status ? [statusBadge(audit.approval_status)] : [],
     band: phaseTracker(audit, canWrite, (k) => layout.select(k)),
     actions,
-    utility: utility.map((u) => ({ ...u, onClick: () => layout.select(u.key) })),
+    utility: utility.map((u) => ({ ...u, onClick: () => (u.key === "@issues" ? issuesSidePanel(audit, canWrite) : layout.select(u.key)) })),
     tabs,
     side,
     onTab: (key, pane) => {
       state.lastAuditTab = { id, key };
       if (typeof setRoute === "function") setRoute(`#/audit/${id}/${key}`);
       // Work screens (HighBond execution views) use the full width; the summary panel shows on the others.
-      layout.root.querySelector(".rec-grid").classList.toggle("no-side", ["fieldwork", "findings", "evidence", "progress"].includes(key));
+      layout.root.querySelector(".rec-grid").classList.toggle("no-side", ["fieldwork", "findings", "evidence", "progress", "settings", "report"].includes(key));
       paintTab(key, pane);
     },
   });
@@ -1419,10 +1425,11 @@ async function openAudit(id, startTab = null) {
     if (key === "report") {
       // Results: the report, then the supporting workpapers (Diligent: Results > Supporting Workpapers).
       const rep = el("div"); const wp = el("div", { class: "supporting-wp" });
-      pane.append(rep, wp);
+      pane.append(resultsCards(audit, (k) => layout.select(k)), rep, wp);
       renderReportTab(rep, id, canWrite);
       renderPapers(wp, id, canWrite);
     }
+    if (key === "settings") renderProjectSettings(pane, audit, canWrite);
     if (key === "tasks") renderTasksTab(pane, "audit", id);
     if (key === "history") renderHistoryTab(pane, "audit", id);
     if (key === "approvals") renderApprovalsTab(pane, "audit", id);

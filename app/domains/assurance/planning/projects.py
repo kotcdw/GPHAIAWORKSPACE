@@ -93,6 +93,62 @@ def apply_setup(eng: PlanEngagement, sent: dict) -> None:
             setattr(eng, key, sent[key] or None)
 
 
+def set_engagement_scope(db: DBSession, eng: PlanEngagement, objectives: list | None,  # noqa: ANN001
+                         entity_ids: list[int] | None) -> None:
+    """Store the framework objectives and entities chosen for a planned project (replaces earlier choices)."""
+    from app.domains.assurance.planning.models import EngagementEntity, EngagementObjective
+    from app.domains.audit.programs.models import AuditProgram
+
+    if objectives is not None:
+        db.query(EngagementObjective).filter(EngagementObjective.engagement_id == eng.id).delete()
+        seen = set()
+        for o in objectives:
+            pid, title = (o["program_id"], o["title"]) if isinstance(o, dict) else (o.program_id, o.title)
+            p = db.get(AuditProgram, pid)
+            known = {s.get("objective", "").strip().lower(): s.get("objective", "").strip()
+                     for s in (p.step_list if p and p.status == "Active" else [])}
+            if title.strip().lower() not in known:
+                raise field_error("objectives", f"'{title}' is not an objective of an active framework")
+            key = (pid, title.strip().lower())
+            if key not in seen:
+                seen.add(key)
+                db.add(EngagementObjective(engagement_id=eng.id, program_id=pid, title=known[key[1]]))
+    if entity_ids is not None:
+        db.query(EngagementEntity).filter(EngagementEntity.engagement_id == eng.id).delete()
+        wanted = set(entity_ids)
+        found = set(db.execute(select(EntityUnit.id).where(EntityUnit.id.in_(wanted or {0}),
+                                                            EntityUnit.is_active.is_(True))).scalars())
+        if wanted - found:
+            raise field_error("entity_unit_ids", "choose active auditable entities")
+        for uid in sorted(found):
+            db.add(EngagementEntity(engagement_id=eng.id, entity_unit_id=uid))
+        if eng.entity_unit_id is None and found:
+            eng.entity_unit_id = min(found)
+    db.flush()
+
+
+@router.get("/api/assurance-plans/{plan_id}/framework-objectives")
+def framework_objectives(plan_id: int, db: DBSession = Depends(get_db), _: User = Staff) -> dict:
+    """Create project › Objectives: framework objectives, those linked to strategic risks first."""
+    from app.domains.audit.programs.models import AuditProgram
+    from app.domains.grc.risk.models import EnterpriseRisk, RiskTreatment
+
+    _plan(db, plan_id)
+    risks = {r.id: r for r in db.execute(select(EnterpriseRisk)).scalars()}
+    linked: dict[tuple[int, str], list[str]] = defaultdict(list)
+    for t in db.execute(select(RiskTreatment).where(RiskTreatment.program_id.is_not(None))).scalars():
+        r = risks.get(t.risk_id)
+        if r is not None:
+            linked[(t.program_id, (t.program_objective or "").strip().lower())].append(f"{r.ref} {r.title}")
+    rows = []
+    active = select(AuditProgram).where(AuditProgram.status == "Active").order_by(AuditProgram.name)
+    for p in db.execute(active).scalars():
+        for title in dict.fromkeys(s.get("objective", "").strip() for s in p.step_list if s.get("objective")):
+            rows.append({"program_id": p.id, "framework": p.name, "framework_ref": p.prog_ref, "title": title,
+                         "strategic_risks": linked.get((p.id, title.lower()), [])})
+    return {"linked": [r for r in rows if r["strategic_risks"]], "all": rows}
+
+
 def setup_out(db: DBSession, eng: PlanEngagement, out) -> None:  # noqa: ANN001
     from app.domains.audit.programs.models import AuditProgram
 
@@ -103,11 +159,18 @@ def setup_out(db: DBSession, eng: PlanEngagement, out) -> None:  # noqa: ANN001
         out.source_audit_ref = f"AUD-{eng.source_audit_id:04d}"
 
 
-def _roll_forward(db: DBSession, source: Audit, audit: Audit, user: User) -> dict:
-    """Copy the earlier audit's objectives, risks, controls with their test plan, narratives and procedures (not
-    its results, tests or sign-offs) into the new audit."""
+def copy_objective(db: DBSession, o, audit: Audit, user: User, *, include_results: bool = False,  # noqa: ANN001, C901
+                   counts: dict | None = None):  # noqa: ANN201
+    """Copy one objective with its risks, controls (with test plan), narratives and procedures into ``audit``.
+
+    Narratives are copied only when the target audit uses the Internal Control workflow. With
+    ``include_results`` the procedures keep their results and status, and the control tests are copied with
+    their results; sign-offs and reviews never travel, so the copied work must be reviewed again."""
+    from app.core.enums import TestStatus
+    from app.domains.audit.fieldwork.router import INTERNAL_CONTROL, default_workflow
     from app.domains.audit.rcm.models import (
         Control,
+        ControlTest,
         Narrative,
         NarrativeControl,
         Objective,
@@ -117,36 +180,48 @@ def _roll_forward(db: DBSession, source: Audit, audit: Audit, user: User) -> dic
         RiskControl,
     )
 
-    counts = {"objectives": 0, "risks": 0, "controls": 0, "narratives": 0, "procedures": 0}
-    for o in db.execute(select(Objective).where(Objective.audit_id == source.id).order_by(Objective.id)).scalars():
-        no = Objective(audit_id=audit.id, ref=next_reference(db, "OBJ"), title=o.title, description=o.description,
-                       created_by=user.id)
-        db.add(no)
+    counts = counts if counts is not None else {"objectives": 0, "risks": 0, "controls": 0, "narratives": 0,
+                                                "procedures": 0, "tests": 0}
+    narratives_allowed = (audit.workflow or default_workflow(audit.audit_type)) == INTERNAL_CONTROL
+    no = Objective(audit_id=audit.id, ref=next_reference(db, "OBJ"), title=o.title, description=o.description,
+                   created_by=user.id, source_program_id=o.source_program_id)
+    db.add(no)
+    db.flush()
+    counts["objectives"] += 1
+    risks: dict[int, int] = {}
+    for r in o.risks:
+        nr = Risk(objective_id=no.id, ref=next_reference(db, "RSK"), title=r.title, description=r.description,
+                  likelihood=r.likelihood, impact=r.impact, enterprise_risk_id=r.enterprise_risk_id,
+                  created_by=user.id)
+        db.add(nr)
         db.flush()
-        counts["objectives"] += 1
-        risks: dict[int, int] = {}
-        for r in o.risks:
-            nr = Risk(objective_id=no.id, ref=next_reference(db, "RSK"), title=r.title, description=r.description,
-                      likelihood=r.likelihood, impact=r.impact, enterprise_risk_id=r.enterprise_risk_id,
-                      created_by=user.id)
-            db.add(nr)
-            db.flush()
-            risks[r.id] = nr.id
-            counts["risks"] += 1
-        controls: dict[int, int] = {}
-        for c in o.controls:
-            nc = Control(objective_id=no.id, ref=next_reference(db, "CTL"), title=c.title, description=c.description,
-                         control_type=c.control_type, nature=c.nature, frequency=c.frequency,
-                         owner_email=c.owner_email, is_key=c.is_key, library_control_id=c.library_control_id,
-                         test_method=c.test_method, total_sample_size=c.total_sample_size, test_steps=c.test_steps,
-                         created_by=user.id)
-            db.add(nc)
-            db.flush()
-            controls[c.id] = nc.id
-            counts["controls"] += 1
-            for r in c.risks:
-                if r.id in risks:
-                    db.add(RiskControl(risk_id=risks[r.id], control_id=nc.id))
+        risks[r.id] = nr.id
+        counts["risks"] += 1
+    controls: dict[int, int] = {}
+    for c in o.controls:
+        nc = Control(objective_id=no.id, ref=next_reference(db, "CTL"), title=c.title, description=c.description,
+                     control_type=c.control_type, nature=c.nature, frequency=c.frequency,
+                     owner_email=c.owner_email, is_key=c.is_key, library_control_id=c.library_control_id,
+                     test_method=c.test_method, total_sample_size=c.total_sample_size, test_steps=c.test_steps,
+                     created_by=user.id)
+        db.add(nc)
+        db.flush()
+        controls[c.id] = nc.id
+        counts["controls"] += 1
+        for r in c.risks:
+            if r.id in risks:
+                db.add(RiskControl(risk_id=risks[r.id], control_id=nc.id))
+        if include_results:
+            for t in c.tests:
+                db.add(ControlTest(control_id=nc.id, ref=next_reference(db, "TST"), test_type=t.test_type,
+                                   procedure=t.procedure, population_size=t.population_size,
+                                   sample_size=t.sample_size, sample_items=t.sample_items,
+                                   exceptions_found=t.exceptions_found, results=t.results,
+                                   status=TestStatus.Completed if t.status == TestStatus.Reviewed else t.status,
+                                   conclusion=t.conclusion, performed_by=t.performed_by,
+                                   performed_at=t.performed_at))
+                counts["tests"] += 1
+    if narratives_allowed:
         for n in db.execute(select(Narrative).where(Narrative.objective_id == o.id)
                             .order_by(Narrative.position)).scalars():
             nn = Narrative(objective_id=no.id, ref=next_reference(db, "NAR"), title=n.title,
@@ -157,16 +232,29 @@ def _roll_forward(db: DBSession, source: Audit, audit: Audit, user: User) -> dic
             for c in n.controls:
                 if c.id in controls:
                     db.add(NarrativeControl(narrative_id=nn.id, control_id=controls[c.id]))
-        for p in db.execute(select(Procedure).where(Procedure.objective_id == o.id).order_by(Procedure.id)).scalars():
-            np_ = Procedure(objective_id=no.id, ref=next_reference(db, "PRC"), title=p.title, steps=p.steps,
-                            status="Not Started", results="", review_comment="", created_by=user.id)
-            db.add(np_)
-            db.flush()
-            counts["procedures"] += 1
-            for r in p.risks:
-                if r.id in risks:
-                    db.add(ProcedureRisk(procedure_id=np_.id, risk_id=risks[r.id]))
+    for p in db.execute(select(Procedure).where(Procedure.objective_id == o.id).order_by(Procedure.id)).scalars():
+        np_ = Procedure(objective_id=no.id, ref=next_reference(db, "PRC"), title=p.title, steps=p.steps,
+                        # Copied results are kept as work in progress: sign-offs never travel.
+                        status=("In Progress" if include_results and p.status != "Not Started" else "Not Started"),
+                        results=p.results if include_results else "", review_comment="", created_by=user.id)
+        db.add(np_)
+        db.flush()
+        counts["procedures"] += 1
+        for r in p.risks:
+            if r.id in risks:
+                db.add(ProcedureRisk(procedure_id=np_.id, risk_id=risks[r.id]))
     db.flush()
+    return no
+
+
+def _roll_forward(db: DBSession, source: Audit, audit: Audit, user: User) -> dict:
+    """Copy the earlier audit's objectives, risks, controls with their test plan, narratives and procedures (not
+    its results, tests or sign-offs) into the new audit."""
+    from app.domains.audit.rcm.models import Objective
+
+    counts = {"objectives": 0, "risks": 0, "controls": 0, "narratives": 0, "procedures": 0, "tests": 0}
+    for o in db.execute(select(Objective).where(Objective.audit_id == source.id).order_by(Objective.id)).scalars():
+        copy_objective(db, o, audit, user, counts=counts)
     return counts
 
 
@@ -185,9 +273,30 @@ def prepare_started_audit(db: DBSession, eng: PlanEngagement, audit: Audit, user
         c = _roll_forward(db, source, audit, user)
         return f"rolled forward from AUD-{source.id:04d} ({c['objectives']} objective(s), {c['controls']} control(s))"
     program = db.get(AuditProgram, eng.program_id) if eng.program_id else None
+    notes = []
     if program is not None and program.status == "Active" and program.step_list:
         copy_program(db, audit, program, user)
-        return f"audit programme {program.prog_ref} applied"
+        notes.append(f"audit programme {program.prog_ref} applied")
+    from app.domains.assurance.planning.models import EngagementEntity, EngagementObjective
+    from app.domains.assurance.universe.models import AuditEntity
+
+    chosen: dict[int, set[str]] = defaultdict(set)
+    for o in db.execute(select(EngagementObjective).where(EngagementObjective.engagement_id == eng.id)).scalars():
+        if o.program_id != eng.program_id:  # the whole programme is already applied
+            chosen[o.program_id].add(o.title)
+    for pid, titles in chosen.items():
+        p = db.get(AuditProgram, pid)
+        if p is not None and p.status == "Active":
+            c = copy_program(db, audit, p, user, only_objectives=titles)
+            notes.append(f"{c['objectives']} objective(s) from {p.prog_ref}")
+    have = set(db.execute(select(AuditEntity.entity_id).where(AuditEntity.audit_id == audit.id)).scalars())
+    for (uid,) in db.execute(select(EngagementEntity.entity_unit_id)
+                             .where(EngagementEntity.engagement_id == eng.id)).all():
+        if uid not in have:
+            db.add(AuditEntity(audit_id=audit.id, entity_id=uid))
+            have.add(uid)
+    if notes:
+        return "; ".join(notes)
     if eng.entity_unit_id and _scope_plan(db, audit):
         c = scope_into(db, audit, user)
         return f"scoped from the auditable entity ({c['risks']} risk(s), {c['controls'] or c['procedures']} item(s))"
@@ -235,10 +344,15 @@ def rollforward(plan_id: int, payload: RollforwardIn, request: Request, db: DBSe
                 user: User = Staff) -> dict:
     """Plan an engagement from an earlier audit: same entity, audit type and site; when the audit starts it
     receives the earlier audit's objectives, risks, controls, test plan and narratives."""
-    from app.core.deps import ensure_perm
-    from app.domains.assurance.planning.router import _check_refs, _engagement_out, _history, check_site
+    from app.domains.assurance.planning.router import (
+        _check_refs,
+        _engagement_out,
+        _history,
+        check_site,
+        project_creator,
+    )
 
-    ensure_perm(user, "plan.prepare", "plan.amend")
+    project_creator(user)
     plan = _plan(db, plan_id)
     if plan.status != PlanStatus.Draft:
         raise _conflict("Engagements are added to a draft plan; use a change request for an approved plan")
@@ -269,21 +383,51 @@ def rollforward(plan_id: int, payload: RollforwardIn, request: Request, db: DBSe
 # ------------------------------------------------------------------ programme overview
 
 
+def engagement_entity_ids(db: DBSession, e: PlanEngagement) -> set[int]:
+    """Entities a planned project covers: its main entity and those chosen under Create project › Entities."""
+    from app.domains.assurance.planning.models import EngagementEntity
+
+    ids = set(db.execute(select(EngagementEntity.entity_unit_id).where(EngagementEntity.engagement_id == e.id))
+              .scalars())
+    if e.entity_unit_id:
+        ids.add(e.entity_unit_id)
+    return ids
+
+
 def _strategic_risks(db: DBSession, plan: AssurancePlan, audits: dict[int, Audit]) -> dict[int, set[int]]:
-    """Enterprise (strategic) risk id -> engagement ids that address it: linked to the engagement's entity (Process
-    library / Risk Manager links) or to a risk inside its audit."""
+    """Enterprise (strategic) risk id -> engagement ids that address it, from explicit links only: the risk is linked
+    to one of the engagement's entities (Process library / Risk Manager links), names a risk inside its audit, or is
+    treated by one of its objectives (Strategy › Treatment, project or framework objective)."""
+    from app.domains.assurance.planning.models import EngagementObjective
     from app.domains.audit.rcm.models import Objective, Risk
     from app.domains.grc.links import linked_ids
+    from app.domains.grc.risk.models import RiskTreatment
 
+    framework = defaultdict(set)  # (program_id, lower title) -> risk ids
+    for t in db.execute(select(RiskTreatment).where(RiskTreatment.program_id.is_not(None))).scalars():
+        framework[(t.program_id, (t.program_objective or "").strip().lower())].add(t.risk_id)
     out: dict[int, set[int]] = defaultdict(set)
     for e in live(plan):
-        if e.entity_unit_id:
-            for rid in linked_ids(db, "unit", e.entity_unit_id, "risk"):
+        for unit_id in engagement_entity_ids(db, e):
+            for rid in linked_ids(db, "unit", unit_id, "risk"):
                 out[rid].add(e.id)
         if e.audit_id and e.audit_id in audits:
             for (rid,) in db.execute(select(Risk.enterprise_risk_id).join(Objective, Objective.id == Risk.objective_id)
                                      .where(Objective.audit_id == e.audit_id,
                                             Risk.enterprise_risk_id.is_not(None))).all():
+                out[rid].add(e.id)
+            for (rid,) in db.execute(select(RiskTreatment.risk_id).join(Objective, Objective.id ==
+                                                                        RiskTreatment.objective_id)
+                                     .where(Objective.audit_id == e.audit_id)).all():
+                out[rid].add(e.id)
+            chosen = [(o.source_program_id, o.title.strip().lower()) for o in db.execute(
+                select(Objective).where(Objective.audit_id == e.audit_id, Objective.source_program_id.is_not(None)))
+                .scalars()]
+        else:
+            chosen = [(o.program_id, o.title.strip().lower()) for o in db.execute(
+                select(EngagementObjective).where(EngagementObjective.engagement_id == e.id)).scalars()]
+        for key in chosen:
+            for rid in framework.get(key, ()):
                 out[rid].add(e.id)
     return out
 
@@ -326,6 +470,11 @@ def program_overview(plan_id: int, db: DBSession = Depends(get_db), user: User =
         c[0] += 1
         c[1] += 1 if u["covered"] else 0
     total, covered = len(cov["entities"]), sum(1 for u in cov["entities"] if u["covered"])
+    from app.core.access import staff_audit_scope
+    from app.domains.grc.risk.assurance import risk_assurance
+
+    scope = staff_audit_scope(db, user)
+    top = 25  # 5 x 5 likelihood x impact
     risks = []
     for rid, engs in risk_map.items():
         er = db.get(EnterpriseRisk, rid)
@@ -339,9 +488,14 @@ def program_overview(plan_id: int, db: DBSession = Depends(get_db), user: User =
 
             so = db.get(StrategicObjective, er.objective_id)
             objective = so.title if so else None
+        assurance = risk_assurance(db, er.id, scope)
         risks.append({"id": er.id, "ref": er.ref, "title": er.title, "category": er.category,
-                      "objective": objective, "impact": er.residual_impact, "likelihood": er.residual_likelihood,
-                      "score": score, "projects": len(engs), "progress": round(sum(vals) / len(vals)) if vals else 0})
+                      "description": er.description, "objective": objective, "impact": er.residual_impact,
+                      "likelihood": er.residual_likelihood, "score": score,
+                      "inherent_score": er.inherent_score, "inherent_heat": round(100 * er.inherent_score / top, 1),
+                      "residual_heat": round(100 * score / top, 1),
+                      "overall_assurance": assurance["overall_assurance"],
+                      "projects": len(engs), "progress": round(sum(vals) / len(vals)) if vals else 0})
     risks.sort(key=lambda x: (-x["score"], x["ref"]))
     return {
         "plan_id": plan.id,
@@ -438,12 +592,14 @@ async def import_narrative(objective_id: int, request: Request, file: UploadFile
                            user: User = Staff) -> dict:
     """Create a process narrative from a document (.docx, .xlsx or .txt): its text becomes the description."""
     from app.core.upload_policy import max_bytes, max_mb
+    from app.domains.audit.fieldwork.extras import ensure_narratives_allowed
     from app.domains.audit.rcm.models import Narrative
     from app.domains.audit.rcm.router import _audit_or_404, _ensure_open, _history, _objective
 
     obj = _objective(db, objective_id)
     audit = _audit_or_404(db, obj.audit_id)
     _ensure_open(audit)
+    ensure_narratives_allowed(audit)
     name = (file.filename or "narrative").strip()
     suffix = name[name.rfind("."):].lower() if "." in name else ""
     data = await file.read(max_bytes() + 1)

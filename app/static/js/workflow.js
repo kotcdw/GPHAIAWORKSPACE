@@ -539,6 +539,7 @@ async function openLink(type, id) {
     if (type === "audit_report") { const r = await API.get(`/api/reports/${id}`); return openAudit(r.audit_id, "report"); }
     if (type === "finding") { const f = await API.get(`/api/findings/${id}`); return openAudit(f.audit_id, "findings"); }
     if (type === "capa") return openRecord("capa", id);
+    if (type === "report_item") return openReportItem(id);
     if (type === "assurance_plan") return openPlan(id);
     if (type === "task") return navigate("tasks");
     if (type === "erm_risk") return openRisk(id);

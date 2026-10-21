@@ -57,6 +57,18 @@ PlanApprove = Depends(require_perm("plan.approve"))
 PlanAmend = Depends(require_perm("plan.amend"))
 
 
+def plan_editor(user: User) -> None:
+    """Prepare or amend the plan (the Assurance Plans role): edit plan details, link and exclude projects."""
+    ensure_perm(user, "plan.prepare", "plan.amend")
+
+
+def project_creator(user: User) -> None:
+    """Creating a new project or rolling one forward also needs the Project Creator permission (audit.create).
+    A plan role without it may link existing projects only (PROJECTBLUEPRINT 5.6)."""
+    plan_editor(user)
+    ensure_perm(user, "audit.create")
+
+
 def _conflict(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
@@ -130,7 +142,16 @@ def _engagement_out(eng: PlanEngagement) -> EngagementOut:
 
     from app.domains.assurance.planning.projects import setup_out
 
-    setup_out(_session(eng), eng, out)
+    session = _session(eng)
+    setup_out(session, eng, out)
+    from app.domains.assurance.planning.models import EngagementObjective
+    from app.domains.assurance.planning.projects import engagement_entity_ids
+
+    out.entity_unit_ids = sorted(engagement_entity_ids(session, eng))
+    from app.domains.assurance.planning.schemas import FrameworkObjectiveRef
+
+    out.objectives = [FrameworkObjectiveRef(program_id=o.program_id, title=o.title) for o in session.execute(
+        select(EngagementObjective).where(EngagementObjective.engagement_id == eng.id)).scalars()]
     return out
 
 
@@ -138,7 +159,9 @@ def _summary(db: DBSession, plan: AssurancePlan) -> PlanSummary:
     live = [e for e in plan.engagements if e.status != EngagementStatus.Cancelled]
     counts = Counter(e.status for e in plan.engagements)
     units = list(db.execute(select(EntityUnit).where(EntityUnit.is_active.is_(True))).scalars())
-    covered = {e.entity_unit_id for e in live if e.entity_unit_id is not None}
+    from app.domains.assurance.planning.projects import engagement_entity_ids
+
+    covered = set().union(*(engagement_entity_ids(db, e) for e in live)) if live else set()
     uncovered_high = [
         UncoveredUnit(
             id=u.id,
@@ -157,6 +180,8 @@ def _summary(db: DBSession, plan: AssurancePlan) -> PlanSummary:
         cancelled=counts[EngagementStatus.Cancelled],
         planned_hours=sum(e.budget_hours for e in live),
         budget_hours=plan.total_budget_hours,
+        hours_remaining=max(0, plan.total_budget_hours - sum(e.budget_hours for e in live)),
+        hours_over=max(0, sum(e.budget_hours for e in live) - plan.total_budget_hours),
         universe_units=len(units),
         covered_units=len(covered & {u.id for u in units}),
         coverage_pct=round(100 * len(covered & {u.id for u in units}) / len(units), 1) if units else 0.0,
@@ -197,6 +222,7 @@ def list_plans(
 
 @router.post("/api/assurance-plans", response_model=PlanDetail, status_code=status.HTTP_201_CREATED)
 def create_plan(payload: PlanIn, request: Request, db: DBSession = Depends(get_db), user: User = Staff) -> PlanDetail:
+    plan_editor(user)
     if db.execute(select(AssurancePlan).where(AssurancePlan.fiscal_year == payload.fiscal_year)).first():
         raise _conflict(f"An Assurance Plan for {payload.fiscal_year} already exists")
     plan = AssurancePlan(plan_ref=next_reference(db, "AP"), created_by=user.id, **payload.model_dump())
@@ -218,6 +244,7 @@ def get_plan(plan_id: int, db: DBSession = Depends(get_db), _: User = Staff) -> 
 def update_plan(
     plan_id: int, payload: PlanUpdate, request: Request, db: DBSession = Depends(get_db), user: User = Staff
 ) -> PlanDetail:
+    plan_editor(user)
     plan = _plan_or_404(db, plan_id)
     _require_draft(plan)
     changes = payload.model_dump(exclude_none=True)
@@ -374,6 +401,7 @@ def add_engagement(
 ) -> EngagementOut:
     from app.domains.assurance.planning.projects import check_setup, ensure_room
 
+    project_creator(user)
     plan = _plan_or_404(db, plan_id)
     _require_draft(plan)
     ensure_room(plan)
@@ -392,11 +420,14 @@ def add_engagement(
     )
     if duplicate is not None:
         raise _conflict(f"'{payload.title}' is already planned for this entity (engagement #{duplicate.id})")
-    data = payload.model_dump()
+    data = payload.model_dump(exclude={"objectives", "entity_unit_ids"})
     data["audit_type"] = data.get("audit_type") or None
     eng = PlanEngagement(plan_id=plan.id, created_by=user.id, **data)
     db.add(eng)
     db.flush()
+    from app.domains.assurance.planning.projects import set_engagement_scope
+
+    set_engagement_scope(db, eng, payload.objectives, payload.entity_unit_ids)
     log_action(db, user_id=user.id, action=f"ENGAGEMENT_ADD id={eng.id} plan={plan.id}", request=request)
     _history(db, plan.id, user, f"ENGAGEMENT ADDED #{eng.id} {eng.title} ({eng.planned_quarter})", request)
     db.commit()
@@ -410,11 +441,17 @@ def update_engagement(
 ) -> EngagementOut:
     from app.domains.assurance.planning.projects import apply_setup, check_setup
 
+    plan_editor(user)
     eng = _engagement_or_404(db, eng_id)
     _require_draft(eng.plan)
     _check_refs(db, payload.entity_unit_id, payload.lead_auditor_id)
     check_site(db, payload.site_entity_id)
     changes = payload.model_dump(exclude_none=True)
+    scope = {k: changes.pop(k) for k in ("objectives", "entity_unit_ids") if k in changes}
+    if scope:
+        from app.domains.assurance.planning.projects import set_engagement_scope
+
+        set_engagement_scope(db, eng, scope.get("objectives"), scope.get("entity_unit_ids"))
     setup = {k: changes.pop(k) for k in ("audit_type", "program_id", "source_audit_id") if k in changes}
     after = {k: (setup[k] if k in setup else getattr(eng, k)) or None for k in ("audit_type", "program_id",
                                                                                "source_audit_id")}
@@ -423,6 +460,7 @@ def update_engagement(
         setattr(eng, key, value)
     apply_setup(eng, setup)
     changes.update(setup)
+    changes.update(scope)
     log_action(db, user_id=user.id, action=f"ENGAGEMENT_UPDATE id={eng.id} [{', '.join(changes)}]", request=request)
     _history(db, eng.plan_id, user, f"ENGAGEMENT UPDATED #{eng.id} [{', '.join(changes)}]", request)
     db.commit()
@@ -432,6 +470,7 @@ def update_engagement(
 
 @router.delete("/api/plan-engagements/{eng_id}", response_model=MessageOut)
 def remove_engagement(eng_id: int, request: Request, db: DBSession = Depends(get_db), user: User = Staff) -> MessageOut:
+    plan_editor(user)
     eng = _engagement_or_404(db, eng_id)
     _require_draft(eng.plan)
     if eng.audit_id is not None:

@@ -64,14 +64,17 @@ def signoffs_map(db: DBSession, findings: list[Finding]) -> dict[int, list[dict]
 
 def _row(f: Finding, audit: Audit, owners: dict[str, str], dots: dict[int, list[dict]]) -> dict:
     now = utcnow()
-    deadline = f.target_date
+    deadline = f.remediation_deadline or f.target_date
+    retest = (f"Retested: {f.retest_result}" if f.retest_result
+              else "Scheduled" if f.retest_deadline else "Not started")
     return {
         "id": f.id, "ref": f"ISS-{f.id:04d}", "title": f.title, "status": f.status.value,
         "severity": f.risk_rating.value, "owner_email": f.assigned_owner_email,
         "owner": owners.get((f.assigned_owner_email or "").lower()) or f.assigned_owner_email,
         "remediation_deadline": deadline.date().isoformat() if deadline else None,
         "overdue": bool(deadline and deadline < now and f.status != FindingStatus.Closed),
-        "issue_type": f.issue_type, "published": f.published,
+        "issue_type": f.issue_type, "published": f.published, "remediation_status": f.remediation_status,
+        "retest": retest,
         "published_at": f.published_at.isoformat() if f.published_at else None,
         "signoffs": dots.get(f.id, []), "reviewed": bool(f.reviewed_at),
         "review_stage": review_chain.label(f.review_stage) if f.review_stage else None,
@@ -143,8 +146,9 @@ def issue_filters(
 def issue_register(db: DBSession = Depends(get_db), user: User = StaffUser, params: PageParams = Depends(page_params),
                    filters: dict = Depends(issue_filters)) -> Page[dict]:
     rows = _rows(db, user, params, **filters)
-    sortable = {k: (lambda r, k=k: r[k]) for k in ("id", "title", "status", "owner", "remediation_deadline",
-                                                   "issue_type", "audit", "updated_at")}
+    keys = ("id", "title", "status", "owner", "remediation_deadline", "remediation_status", "issue_type", "audit",
+            "updated_at")
+    sortable = {k: (lambda r, k=k: r[k]) for k in keys}
     sortable["severity"] = lambda r: {"High": 3, "Medium": 2, "Low": 1}[r["severity"]]
     sortable["published"] = lambda r: int(r["published"])
     page, total, sort = paginate_rows(rows, params, sortable, "-updated_at")

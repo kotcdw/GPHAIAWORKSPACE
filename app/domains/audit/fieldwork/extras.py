@@ -49,10 +49,10 @@ Reference = Depends(require_perm("system.reference"))
 
 TERMS: dict[str, str] = {
     "project": "Audit", "planning": "Planning", "fieldwork": "Fieldwork", "objective": "Objective",
-    "narrative": "Process narrative", "rcm": "Risk & control matrix", "risk": "Risk", "control": "Control",
+    "narrative": "Narrative", "rcm": "Risk & control matrix", "risk": "Risk", "control": "Control",
     "walkthrough": "Walkthrough", "test_plan": "Test plan", "testing": "Testing", "procedure": "Procedure",
-    "work_program": "Work programme", "execute": "Execute procedures", "issue": "Finding",
-    "request": "Evidence request", "results": "Report", "reviews": "Supervision & review",
+    "work_program": "Work programme", "execute": "Execute procedures", "issue": "Issue",
+    "request": "Request", "results": "Results", "reviews": "Supervision & review",
 }
 
 
@@ -219,12 +219,22 @@ def list_narratives(audit_id: int, db: DBSession = Depends(get_db), _: User = St
     return [_narrative_out(n, dots[n.id], objectives[n.objective_id]) for n in items]
 
 
+def ensure_narratives_allowed(audit) -> None:  # noqa: ANN001
+    """Process narratives belong to the Internal Control workflow (PROJECTBLUEPRINT 5.5)."""
+    from app.domains.audit.fieldwork.router import INTERNAL_CONTROL, default_workflow
+
+    if (audit.workflow or default_workflow(audit.audit_type)) != INTERNAL_CONTROL:
+        raise HTTPException(status_code=409, detail="Process narratives are part of the Internal Control workflow; "
+                                                    "this audit uses the Workplan workflow")
+
+
 @router.post("/api/objectives/{objective_id}/narratives", status_code=status.HTTP_201_CREATED)
 def create_narrative(objective_id: int, payload: NarrativeIn, request: Request, db: DBSession = Depends(get_db),
                      user: User = Staff) -> dict:
     obj = _objective(db, objective_id)
     audit = _audit_or_404(db, obj.audit_id)
     _ensure_open(audit)
+    ensure_narratives_allowed(audit)
     count = db.execute(select(func.count()).select_from(Narrative)
                        .where(Narrative.objective_id == obj.id)).scalar_one()
     n = Narrative(objective_id=obj.id, ref=next_reference(db, "NAR"), title=payload.title.strip(),

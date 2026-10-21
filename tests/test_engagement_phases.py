@@ -36,4 +36,4 @@ def test_register_phase_nature_and_fieldwork_steps(client, db):
                if x["id"] == a["id"])
     assert row["phase"] == "Perform" and row["open_high"] == 1
     terms = client.get(f"/api/audits/{a['id']}/terms", headers=h).json()
-    assert terms["issue"] == "Finding" and terms["rcm"] == "Risk & control matrix"
+    assert terms["issue"] == "Issue" and terms["rcm"] == "Risk & control matrix"
