@@ -11,6 +11,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
@@ -206,6 +207,16 @@ class PeriodIn(BaseModel):
     date_to: date | None = None
 
 
+class DesignIn(BaseModel):
+    """Report Builder › Design: font, size, borders and alignment of the report output."""
+
+    font: Literal["Default", "Serif", "Monospace"] = "Default"
+    size: Literal["Small", "Medium", "Large"] = "Medium"
+    borders: Literal["Rows", "Grid", "None"] = "Rows"
+    align: Literal["Left", "Center", "Right"] = "Left"
+    page_layout: Literal["Portrait", "Landscape"] = "Portrait"
+
+
 class SpecIn(BaseModel):
     view: str = Field(max_length=40)
     columns: list[str] = Field(default_factory=list, max_length=40)
@@ -216,6 +227,15 @@ class SpecIn(BaseModel):
     sort: str | None = Field(default=None, max_length=60)
     sort_desc: bool = False
     limit: int = Field(default=500, ge=1, le=MAX_ROWS)
+    # Table (rows) or Cross Tab: rows = group_by, columns = cross_column, cells = count or the sum of `measure`.
+    layout: Literal["table", "crosstab"] = "table"
+    cross_column: str | None = Field(default=None, max_length=60)
+    measure: str | None = Field(default=None, max_length=60)
+    # Sections: the table is split into one section per value of this column.
+    section_by: str | None = Field(default=None, max_length=60)
+    # Analysis Style: "drill" lets readers open the records behind a chart bar or a Cross Tab cell.
+    analysis: Literal["none", "drill"] = "none"
+    design: DesignIn = Field(default_factory=DesignIn)
 
 
 def available(user: User) -> list[View]:
@@ -238,9 +258,17 @@ def validate(user: User, spec: SpecIn) -> View:
     v = view_for(user, spec.view)
     keys = {c.key for c in v.columns}
     for name in [*spec.columns, *(f.column for f in spec.filters), spec.group_by, spec.sort,
-                 spec.period.column if spec.period else None]:
+                 spec.period.column if spec.period else None, spec.cross_column, spec.measure, spec.section_by]:
         if name and name not in keys:
             raise HTTPException(status_code=422, detail=f"'{name}' is not a column of {v.label}")
+    kinds = {c.key: c.type for c in v.columns}
+    if spec.measure and kinds[spec.measure] != "number":
+        raise HTTPException(status_code=422, detail="The Cross Tab value must be a number column (or the count)")
+    if spec.layout == "crosstab":
+        if not spec.group_by or not spec.cross_column:
+            raise HTTPException(status_code=422, detail="A Cross Tab needs a row field and a column field")
+        if spec.group_by == spec.cross_column:
+            raise HTTPException(status_code=422, detail="Choose different fields for the Cross Tab rows and columns")
     for f in spec.filters:
         if f.op not in OPS:
             raise HTTPException(status_code=422, detail=f"Unknown filter operator '{f.op}'")
@@ -287,6 +315,37 @@ def describe(v: View, spec: SpecIn) -> tuple[str, str]:
     return ("; ".join(parts) or "No filters"), period
 
 
+def _label(value: object) -> str:
+    return "(blank)" if value in (None, "") else str(value)
+
+
+def _crosstab(rows: list[dict], spec: SpecIn) -> dict:
+    """Rows x columns of counts (or sums of the measure), with row, column and grand totals."""
+    def amount(r: dict) -> float:
+        if not spec.measure:
+            return 1
+        try:
+            return float(r.get(spec.measure) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    cells: dict[tuple[str, str], float] = {}
+    row_keys: dict[str, float] = {}
+    col_keys: dict[str, float] = {}
+    for r in rows:
+        a, b, n = _label(r.get(spec.group_by)), _label(r.get(spec.cross_column)), amount(r)
+        cells[(a, b)] = cells.get((a, b), 0) + n
+        row_keys[a] = row_keys.get(a, 0) + n
+        col_keys[b] = col_keys.get(b, 0) + n
+    cols = sorted(col_keys)
+    tidy = lambda x: int(x) if float(x).is_integer() else round(x, 2)  # noqa: E731
+    return {"row_key": spec.group_by, "column_key": spec.cross_column, "measure": spec.measure or "count",
+            "columns": cols,
+            "rows": [{"value": a, "cells": [tidy(cells.get((a, b), 0)) for b in cols], "total": tidy(row_keys[a])}
+                     for a in sorted(row_keys)],
+            "totals": [tidy(col_keys[b]) for b in cols], "grand": tidy(sum(row_keys.values()))}
+
+
 def run(db: DBSession, user: User, spec: SpecIn) -> dict:
     """Run a report definition with this user's access."""
     from app.core.access import staff_audit_scope
@@ -313,17 +372,29 @@ def run(db: DBSession, user: User, spec: SpecIn) -> dict:
     if spec.columns:
         order = {k: i for i, k in enumerate(spec.columns)}
         cols.sort(key=lambda c: order[c.key])
+    shown = [{c.key: r.get(c.key) for c in cols} for r in rows[: spec.limit]]
+    sections = None
+    if spec.section_by:
+        sec: dict[str, list[dict]] = {}
+        for r, out in zip(rows[: spec.limit], shown, strict=True):
+            sec.setdefault(_label(r.get(spec.section_by)), []).append(out)
+        sections = [{"value": k, "count": len(v_)} for k, v_ in sec.items()]
+        for s_ in sections:
+            s_["rows"] = sec[s_["value"]]
+    crosstab = _crosstab(rows, spec) if spec.layout == "crosstab" else None
     filters_text, period_text = describe(v, spec)
     scope = staff_audit_scope(db, user)
     audit_ids = sorted({r["_audit_id"] for r in rows if r.get("_audit_id")})
     return {
         "view": v.key, "view_label": v.label,
         "columns": [{"key": c.key, "label": c.label, "type": c.type} for c in cols],
-        "rows": [{c.key: r.get(c.key) for c in cols} for r in rows[: spec.limit]],
+        "rows": shown,
         "total": total, "truncated": total > spec.limit, "groups": groups, "group_by": spec.group_by,
-        "chart": spec.chart if spec.group_by else None,
+        "chart": spec.chart if spec.group_by and spec.layout == "table" else None,
+        "layout": spec.layout, "crosstab": crosstab, "sections": sections, "section_by": spec.section_by,
+        "analysis": spec.analysis, "design": spec.design.model_dump(),
         "filters_text": filters_text, "period_text": period_text,
-        "source": f"{v.label} (GIAW live data)",
+        "source": f"{v.label} (GPHA INTERNAL AUDIT WORKSPACE live data)",
         "scope_text": "All audits" if scope is None else f"Audits you may see ({len(scope)})",
         "generated_at": utcnow().isoformat(timespec="seconds"),
         "audit_ids": audit_ids,

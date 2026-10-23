@@ -46,8 +46,9 @@ MY_REPORTS = "My Reports"
 
 
 class WidgetIn(BaseModel):
-    type: Literal["report", "text", "image", "filter"]
+    type: Literal["report", "text", "image", "filter", "video"]
     report_id: int | None = None
+    video_id: int | None = None
     visualization: Literal["table", "chart", "both"] = "both"
     title: str = Field(default="", max_length=200)
     text: str = Field(default="", max_length=10_000)
@@ -167,6 +168,13 @@ def _check_widgets(db: DBSession, user: User, widgets: list[WidgetIn]) -> None:
             rep = _item(db, user, w.report_id, "report")
             if not _settings(rep)["allow_dashboards"] and rep.owner_id != user.id:
                 raise HTTPException(status_code=422, detail=f"'{rep.name}' cannot be added to dashboards")
+        if w.type == "video":
+            from app.services.reporting.media import can_see
+            from app.services.reporting.models import ReportMedia
+
+            m = db.get(ReportMedia, w.video_id) if w.video_id else None
+            if m is None or not can_see(db, user, m):
+                raise HTTPException(status_code=422, detail="A video widget needs a video you uploaded")
         if w.type == "filter" and w.filter is None:
             raise HTTPException(status_code=422, detail="Choose what the filter widget filters (Project or Period)")
 
@@ -418,43 +426,51 @@ def run_item(item_id: int, audit: str | None = Query(None, max_length=20), date_
     return out
 
 
-@router.post("/items/{item_id}/email")
-def email_item(item_id: int, payload: EmailIn, request: Request, db: DBSession = Depends(get_db),
-               user: User = Depends(require_active_user)) -> dict:
-    """Email: notify chosen users and groups (in the app, and by e-mail when mail is set up). Only people the item
-    is shared with can be sent it; each opens it with their own access."""
+def deliver(db: DBSession, sender: User | None, it: ReportItem, user_ids: list[int], group_ids: list[int],
+            message: str) -> tuple[int, int]:
+    """Notify chosen users and members of chosen groups (in the app, and by e-mail when mail is set up). Only people
+    the item is shared with receive it; each opens it with their own access. Returns (sent, not shared)."""
     from app.platform.groups.models import UserGroupMember
     from app.platform.notifications.service import notify
 
+    recipients = set(user_ids)
+    if group_ids:
+        recipients |= set(db.execute(select(UserGroupMember.user_id)
+                                     .where(UserGroupMember.group_id.in_(group_ids))).scalars())
+    if sender is not None:
+        recipients.discard(sender.id)
+    who = (sender.full_name or sender.username) if sender else "a broadcast schedule"
+    sent = blocked = 0
+    for uid in sorted(recipients):
+        target = db.get(User, uid)
+        if target is None or not target.is_active or not _visible(db, target, it):
+            blocked += 1
+            continue
+        body = (message.strip() + "\n\n" if message.strip() else "") + \
+            f"{it.kind.capitalize()} '{it.name}' shared by {who}."
+        if notify(db, uid, f"{it.kind.capitalize()}: {it.name}"[:255], body, link_type="report_item",
+                  link_id=it.id) is not None:
+            sent += 1
+    return sent, blocked
+
+
+@router.post("/items/{item_id}/email")
+def email_item(item_id: int, payload: EmailIn, request: Request, db: DBSession = Depends(get_db),
+               user: User = Depends(require_active_user)) -> dict:
+    """Email: send it now to chosen users and groups it is shared with."""
     ensure_staff(user)
     it = _item(db, user, item_id)
     if it.status != "Active":
         raise HTTPException(status_code=409, detail="Activate it before sending it")
-    recipients = set(payload.user_ids)
-    if payload.group_ids:
-        recipients |= set(db.execute(select(UserGroupMember.user_id)
-                                     .where(UserGroupMember.group_id.in_(payload.group_ids))).scalars())
-    recipients.discard(user.id)
-    if not recipients:
+    if not (set(payload.user_ids) - {user.id}) and not payload.group_ids:
         raise HTTPException(status_code=422, detail="Choose who to send it to")
-    blocked = []
-    sent = 0
-    for uid in sorted(recipients):
-        target = db.get(User, uid)
-        if target is None or not target.is_active or not _visible(db, target, it):
-            blocked.append(uid)
-            continue
-        body = (payload.message.strip() + "\n\n" if payload.message.strip() else "") + \
-            f"{it.kind.capitalize()} '{it.name}' shared by {user.full_name or user.username}."
-        if notify(db, uid, f"{it.kind.capitalize()}: {it.name}"[:255], body, link_type="report_item",
-                  link_id=it.id) is not None:
-            sent += 1
-    if blocked and not sent:
+    sent, blocked = deliver(db, user, it, payload.user_ids, payload.group_ids, payload.message)
+    if not sent:
         raise HTTPException(status_code=422, detail="It is not shared with the people chosen; change its access first")
     log_action(db, user_id=user.id, request=request,
-               action=f"REPORTING_EMAIL {it.kind} id={it.id} sent={sent} not_shared={len(blocked)}")
+               action=f"REPORTING_EMAIL {it.kind} id={it.id} sent={sent} not_shared={blocked}")
     db.commit()
-    return {"sent": sent, "not_shared": len(blocked)}
+    return {"sent": sent, "not_shared": blocked}
 
 
 @router.get("/items/{item_id}/export")
@@ -478,8 +494,15 @@ def export_report(item_id: int, request: Request, fmt: Literal["csv", "xlsx"] = 
     if fmt == "xlsx":
         meta = [["Source", res["source"]], ["Filters", res["filters_text"]], ["Period", res["period_text"]],
                 ["Access", res["scope_text"]], ["Generated", res["generated_at"]]]
-        return xlsx_response(workbook([("Report", head, body), ("About", ["Item", "Value"], meta)], title=it.name),
-                             f"{stem}.xlsx")
+        sheets = [("Report", head, body)]
+        ct = res.get("crosstab")
+        if ct:
+            labels = {c.key: c.label for c in views.view_for(user, spec.view).columns}
+            sheets.insert(0, ("Cross Tab", [f"{labels[ct['row_key']]} / {labels[ct['column_key']]}", *ct["columns"],
+                                            "Total"],
+                              [[r["value"], *r["cells"], r["total"]] for r in ct["rows"]]
+                              + [["Total", *ct["totals"], ct["grand"]]]))
+        return xlsx_response(workbook([*sheets, ("About", ["Item", "Value"], meta)], title=it.name), f"{stem}.xlsx")
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(safe_row(head))

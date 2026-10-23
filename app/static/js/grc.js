@@ -147,31 +147,25 @@ async function renderRiskOverview(body, reg) {
       el("button", { class: "link-btn", type: "button", onclick: () => navigate("mywork") }, "View all tasks")), my, group, quick)));
 }
 
-async function renderRiskManager(tab = state.riskTab || "register", filters = state.riskFilters || {}) {
+async function renderRiskManager(tab = state.riskTab || "overview", filters = state.riskFilters || {}) {
   state.riskTab = tab; state.riskFilters = filters;
-  const sides = [{ key: "register", label: "Risk Profile" }, { key: "heat", label: "Heatmaps" }, { key: "strategy", label: "Strategy Map" },
-    { key: "library", label: "Risk Library" }, { key: "kris", label: "Metrics" }, { key: "overview", label: "Dashboard" },
-    { key: "planning", label: "Planning feedback" }];
-  if (!sides.some((x) => x.key === tab)) tab = "register";
-  const label = sides.find((x) => x.key === tab).label;
-  const f = wsPage({ app: "Risk Manager", util: [{ label: "Assurance Plans", onClick: () => navigate("plans") }, { label: "Reports", onClick: () => navigate("reports") }],
-    side: sides, active: tab, onSide: (k) => renderRiskManager(k, k === "register" ? filters : {}), crumb: ["Risk Manager", label], title: label });
-  const body = f.body;
+  clear(viewRoot);
   const msg = el("div");
-  body.append(msg);
   let reg; let sum;
   try {
     const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v));
     [reg, sum] = await Promise.all([API.get(`/api/grc/risks?${qs}`), API.get("/api/grc/risks/summary")]);
-  } catch (err) { notify(msg, err.message, "error"); return; }
+  } catch (err) { viewRoot.append(viewHeader("Risk Manager"), msg); notify(msg, err.message, "error"); return; }
   GRC.thr = sum.thresholds;
-  f.setHead(label, reg.can_edit ? [
-    tab === "register" ? wsAction("Risk Library", () => renderRiskManager("library")) : null,
-    tab === "strategy" || tab === "register" ? wsAction("Strategic objective", () => strategicObjectiveForm(null), { icon: "flag" }) : null,
-    wsAction("+ Add", () => riskForm(null, reg), { primary: true, focus: tab === "register" }),
-  ] : []);
-  if (tab === "library") { renderRiskLibrary(body); return; }
-  if (tab === "planning") { renderPlanningFeedback(body); return; }
+  viewRoot.append(viewHeader("Risk Manager", reg.can_edit ? [
+    el("button", { class: "btn small secondary", onclick: () => strategicObjectiveForm(null) }, el("i", { class: "bi bi-flag" }), " Objective"),
+    el("button", { class: "btn small", onclick: () => riskForm(null, reg) }, el("i", { class: "bi bi-plus-lg" }), " Risk"),
+  ] : null, { sub: `Welcome, ${state.user.full_name || state.user.username}` }), msg);
+  viewRoot.append(tabBar([{ key: "overview", label: "Overview" }, { key: "register", label: "Register" }, { key: "heat", label: "Heat maps" }, { key: "strategy", label: "Strategy" }, { key: "kris", label: "Indicators" }],
+    tab, (k) => renderRiskManager(k, k === "register" ? filters : {})));
+  const body = el("div");
+  viewRoot.append(body);
+
   if (tab === "overview") { renderRiskOverview(body, reg); return; }
 
   if (tab === "register") {
@@ -294,6 +288,51 @@ async function riskForm(r, reg) {
     },
     onDone: (rec) => { toast(`${rec.ref} saved`); openRisk(rec.id); },
   });
+}
+
+async function openRisk(id) {
+  clear(viewRoot);
+  let r;
+  try { r = await API.get(`/api/grc/risks/${id}`); } catch (err) { toast(err.message, "error"); return; }
+  grcOpened("risk");
+  const back = grcBack(() => renderRiskManager());
+  viewRoot.append(viewHeader(`${r.ref} · ${r.title}`, [
+    r.can_assess && r.status !== "Closed" ? el("button", { class: "btn small", onclick: () => assessRiskForm(r) }, el("i", { class: "bi bi-speedometer2" }), " Assess") : null,
+    r.can_edit ? el("button", { class: "btn small secondary", onclick: () => riskForm(r) }, el("i", { class: "bi bi-pencil" }), " Edit") : null,
+  ].filter(Boolean), { back, meta: el("span", { class: "chips" }, badge(r.status), r.category ? el("span", { class: "chip static" }, r.category) : null,
+    r.review_overdue ? el("span", { class: "chip-mini warn" }, "Review overdue") : null) }));
+  const pos = (lk, im, label) => el("div", { class: "score-box" }, el("div", { class: "muted small" }, label),
+    lk ? levelChip(GRC_band(lk * im), lk * im) : el("span", { class: "muted" }, "-"), lk ? el("div", { class: "muted small" }, `L${lk} × I${im}`) : null);
+  viewRoot.append(el("div", { class: "two-cols" },
+    panel("Risk", el("dl", { class: "kv" },
+      el("dt", null, "Owner"), el("dd", null, r.owner || "-"), el("dt", null, "Objective"), el("dd", null, r.objective || "-"),
+      el("dt", null, "Entity"), el("dd", null, r.entity || "-"), el("dt", null, "Causes"), el("dd", { class: "pre" }, r.cause || "-"),
+      el("dt", null, "Consequences"), el("dd", { class: "pre" }, r.consequence || "-"), el("dt", null, "Appetite"), el("dd", null, r.appetite || "-"),
+      el("dt", null, "Treatment"), el("dd", null, r.treatment || "-"), el("dt", null, "Treatment plan"), el("dd", { class: "pre" }, r.treatment_plan || "-"),
+      el("dt", null, "Last assessed"), el("dd", null, fmtDate(r.last_assessed_at)), el("dt", null, "Next review"), el("dd", null, dateOnly(r.next_review_date)))),
+    panel("Scores", el("div", null, el("div", { class: "score-row" }, pos(r.inherent_likelihood, r.inherent_impact, "Inherent"),
+      el("i", { class: "bi bi-arrow-right muted" }), pos(r.residual_likelihood, r.residual_impact, "Residual"),
+      el("i", { class: "bi bi-arrow-right muted" }), pos(r.target_likelihood, r.target_impact, "Target")),
+    r.above_target ? el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }), el("div", null, "Residual risk is above the target: the treatment plan needs to go further.")) : null,
+    r.description ? longBlock("Description", r.description) : null))));
+
+  // KRIs
+  const kriBody = el("div");
+  if (!r.kris.length) kriBody.append(el("p", { class: "muted small" }, "No indicators yet."));
+  r.kris.forEach((k) => kriBody.append(el("div", { class: "kri-item" },
+    el("div", { class: "kri-head" }, ragBadge(k.rag), el("strong", null, k.name),
+      el("span", { class: "muted small" }, `Amber ${k.higher_is_worse ? "≥" : "≤"} ${k.amber_at} · Red ${k.higher_is_worse ? "≥" : "≤"} ${k.red_at} ${k.unit} · ${k.frequency}${k.owner ? ` · ${k.owner}` : ""}`),
+      el("span", { class: "spacer" }),
+      (r.can_assess || k.owner_id === state.user.id) ? el("button", { class: "btn tiny secondary", onclick: () => kriReadingForm(k, r.id) }, "Record reading") : null,
+      r.can_edit ? el("button", { class: "btn tiny secondary", onclick: () => kriForm(r.id, k) }, "Edit") : null),
+    k.readings.length ? el("div", { class: "kri-spark", "aria-label": `Readings of ${k.name}` }, ...[...k.readings].reverse().map((x) => el("span", { class: `kri-dot rag-${x.rag.toLowerCase()}`, title: `${dateOnly(x.period_date)}: ${x.value} ${k.unit}${x.comment ? ` · ${x.comment}` : ""}` }, String(x.value)))) : null)));
+  viewRoot.append(panel("Key risk indicators", kriBody, r.can_edit ? el("button", { class: "btn small secondary", onclick: () => kriForm(r.id, null) }, el("i", { class: "bi bi-plus" }), " Indicator") : null));
+  viewRoot.append(linksCard("risk", r.id, r.links, ["control", "requirement", "asset", "unit", "policy"], r.can_edit, () => openRisk(r.id)));
+  viewRoot.append(panel("Assessment history", dataTable(r.assessments, [
+    { key: "at", label: "When", render: (a) => fmtDate(a.at) }, { key: "by", label: "By" },
+    { key: "inherent_score", label: "Inherent", num: true }, { key: "residual_score", label: "Residual", num: true },
+    { key: "control_effectiveness", label: "Controls" }, { key: "comment", label: "Comment" },
+  ], { pageSize: 10 })));
 }
 
 function GRC_band(score) { return score >= (GRC.thr?.high || 15) ? "High" : score >= (GRC.thr?.medium || 8) ? "Medium" : "Low"; }

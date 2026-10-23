@@ -1,4 +1,4 @@
-// Follow-up returns (MoF / IAA), Audit Committee register, report distribution, professional practice
+// Follow-up returns (MoF / IAA), report distribution, professional practice
 // (declarations, CPD, charter, external assessment) and automation rules.
 
 const IMPL_STATUSES = ["Not Implemented", "Partially Implemented", "Fully Implemented", "Withdrawn"];
@@ -65,12 +65,15 @@ function capaFollowupExtras(card, c, refresh) {
   if (c.followup_comment) card.append(longBlock("Internal Audit follow-up comment", c.followup_comment, ""));
   if (c.withdrawal_reason) {
     card.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-x-octagon" }),
-      el("div", null, el("strong", null, c.implementation_status === "Withdrawn" ? "Withdrawn by the Audit Committee. " : "Withdrawal proposed to the Audit Committee. "),
+      el("div", null, el("strong", null, c.implementation_status === "Withdrawn" ? "Withdrawn by the GM Audit. " : "Withdrawal proposed to the GM Audit. "),
         c.withdrawal_reason)));
   }
   const btns = el("div", { class: "actions" });
   if (open && (isStaff() || mine)) {
     btns.append(el("button", { class: "btn small secondary", onclick: () => capaProgressForm(c, refresh) }, el("i", { class: "bi bi-graph-up" }), " Progress update"));
+  }
+  if (c.status !== "Closed" && c.withdrawal_proposed_at && state.user.review_level === "CAE" && c.withdrawal_proposed_by !== state.user.id) {
+    btns.append(el("button", { class: "btn small", onclick: () => capaWithdrawDecisionForm(c, refresh) }, el("i", { class: "bi bi-check2-square" }), " Decide withdrawal"));
   }
   if (c.status !== "Closed" && !c.withdrawal_proposed_at && hasPerm("followup.manage")) {
     btns.append(el("button", { class: "btn small secondary", onclick: () => capaWithdrawForm(c, refresh) }, el("i", { class: "bi bi-x-octagon" }), " Propose withdrawal"));
@@ -89,13 +92,25 @@ function capaProgressForm(c, refresh) {
   });
 }
 
-// Propose withdrawing a recommendation (Audit Committee decides).
+// The GM Audit agrees (closes as Withdrawn) or disagrees (stays open) with a proposed withdrawal.
+function capaWithdrawDecisionForm(c, refresh) {
+  return openForm({
+    title: `Withdrawal - ${c.capa_ref}`, key: `capa:${c.id}:wddecide`, width: 640, draftable: false,
+    fields: [{ name: "decision", label: "Decision", type: "select", required: true, options: ["Agree", "Disagree"] },
+      { name: "comment", label: "Comment", type: "textarea", rows: 3, required: true, minLength: 10, maxLength: 5000 }],
+    submitLabel: "Record decision",
+    onSubmit: (v) => API.post(`/api/capa/${c.id}/withdrawal/decision`, v),
+    onDone: (r) => { toast(r.implementation_status === "Withdrawn" ? "Withdrawn" : "Withdrawal not agreed"); refresh(); },
+  });
+}
+
+// Propose withdrawing a recommendation (the GM Audit decides).
 function capaWithdrawForm(c, refresh) {
   return openForm({
     title: `Propose withdrawal - ${c.capa_ref}`, key: `capa:${c.id}:withdraw`, width: 640,
     fields: [{ name: "reason", label: "Why it is no longer relevant or feasible", type: "textarea", rows: 4, required: true, minLength: 20, maxLength: 5000 }],
-    submitLabel: "Send to the Audit Committee",
-    onSubmit: (v) => API.post(`/api/capa/${c.id}/propose-withdrawal`, v), onDone: () => { toast("Sent to the Audit Committee for decision"); refresh(); },
+    submitLabel: "Send to the GM Audit",
+    onSubmit: (v) => API.post(`/api/capa/${c.id}/propose-withdrawal`, v), onDone: () => { toast("Sent to the GM Audit for decision"); refresh(); },
   });
 }
 
@@ -221,126 +236,6 @@ function distributionForm(r, d, paint) {
     submitLabel: "Record",
     onSubmit: (v) => API.post(`/api/reports/${r.id}/distribution`, { ...v, sent_at: `${v.sent_at}T12:00:00`, reference: v.reference || "" }),
     onDone: () => { toast("Copy recorded"); paint(); },
-  });
-}
-
-// ------------------------------------------------------------------ Audit Committee meetings register
-async function renderCommitteeMeetings(body) {
-  clear(body);
-  const canRecord = hasPerm("committee.record");
-  let data;
-  try { data = await API.get("/api/committee/meetings"); } catch (err) { body.append(el("div", { class: "msg error" }, err.message)); return; }
-  const queue = await safeGet("/api/committee/for-decision", []);
-  body.append(el("div", { class: "card" },
-    el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-people" }), " Meetings, minutes and decisions"),
-      canRecord ? el("button", { class: "btn small", onclick: () => newMeetingForm(data.types, () => renderCommitteeMeetings(body)) }, el("i", { class: "bi bi-plus-lg" }), " New meeting") : null),
-    dataTable(data.items, [
-      { key: "meeting_ref", label: "Ref" }, { key: "meeting_date", label: "Date", render: (m) => dayOnly(m.meeting_date) },
-      { key: "meeting_type", label: "Type" }, { key: "status", label: "Status", render: (m) => badge(m.status) },
-      { key: "decisions_count", label: "Decisions" },
-      { key: "followup_report_considered", label: "Follow-up report", render: (m) => (m.followup_report_considered ? "Considered" : "-") },
-    ], { onRow: (m) => openMeeting(m.id, () => renderCommitteeMeetings(body)), emptyText: "No meetings recorded yet.", pageSize: 10 })));
-  body.append(el("div", { class: "card" }, el("h3", null, `Recommendations for the Committee's decision (${queue.length})`),
-    dataTable(queue, [
-      { key: "capa_ref", label: "Ref" }, { key: "title", label: "Recommendation" }, { key: "source_body", label: "Source" },
-      { key: "implementation_status", label: "Status", render: (q) => badge(q.implementation_status) },
-      { key: "reasons", label: "For decision", render: (q) => q.reasons.join("; ") },
-    ], { onRow: (q) => openRecord("capa", q.id), emptyText: "Nothing waiting for the Committee.", pageSize: 10 })));
-}
-
-// Schedule an Audit Committee meeting.
-function newMeetingForm(types, back) {
-  return openForm({
-    title: "Schedule a Committee meeting", key: "acm:new", width: 640, draftable: false,
-    fields: [
-      { name: "meeting_date", label: "Date and time", type: "datetime-local", required: true },
-      { name: "meeting_type", label: "Type", type: "select", required: true, options: types },
-      { name: "venue", label: "Venue", maxLength: 160, singleLine: true },
-      { name: "agenda", label: "Agenda", type: "textarea", rows: 5, maxLength: 20000 },
-    ],
-    initial: { meeting_type: "Ordinary", agenda: "1. Opening and apologies\n2. Minutes of the previous meeting\n3. Quarterly follow-up report on audit recommendations\n4. Audit reports issued\n5. Internal audit plan progress\n6. Any other business" },
-    submitLabel: "Create",
-    onSubmit: (v) => API.post("/api/committee/meetings", v),
-    onDone: (m) => { toast("Meeting created"); openMeeting(m.id, back); },
-  });
-}
-
-async function openMeeting(id, back) {
-  let m;
-  try { m = await API.get(`/api/committee/meetings/${id}`); } catch (err) { toast(err.message, "error"); return; }
-  const canRecord = hasPerm("committee.record");
-  const locked = m.status === "Minutes approved";
-  const reopen = () => { dlg.close(); openMeeting(id, back); back(); };
-  const body = el("div", null,
-    el("div", { class: "view-meta" }, el("span", { class: "ref" }, m.meeting_ref), badge(m.status),
-      el("span", { class: "muted" }, `${fmtDate(m.meeting_date)} · ${m.meeting_type} · ${m.venue || "venue not set"}`)),
-    longBlock("Agenda", m.agenda, "-"), longBlock("Present", m.attendees, "Not recorded"), longBlock("Apologies", m.apologies, "-"),
-    el("p", { class: "small" }, `Quorum: ${m.quorum ? "Yes" : "No"} · Quarterly follow-up report considered: ${m.followup_report_considered ? "Yes" : "No"}`),
-    longBlock("Minutes", m.minutes, "Not recorded"),
-    el("h4", null, "Decisions"),
-    dataTable(m.decisions, [
-      { key: "subject", label: "Subject", render: (d) => d.subject || "Other matter" }, { key: "decision", label: "Decision", render: (d) => badge(d.decision) },
-      { key: "new_due_date", label: "New due date", render: (d) => (d.new_due_date ? dayOnly(d.new_due_date) : "-") },
-      { key: "reference", label: "Reference" }, { key: "notes", label: "Notes" },
-    ], { emptyText: "No decisions recorded.", pageSize: 20 }));
-  const actions = [];
-  if (canRecord && !locked) {
-    actions.push(el("button", { class: "btn secondary", onclick: () => meetingProceedingsForm(m, id, reopen) }, el("i", { class: "bi bi-pencil" }), " Record proceedings"));
-  }
-  if (canRecord && m.status === "Held") {
-    actions.push(el("button", { class: "btn secondary", onclick: async () => {
-      const queue = await safeGet("/api/committee/for-decision", []);
-      const all = await safeGet("/api/capa?status=Open", { items: [] });
-      const inprog = await safeGet("/api/capa?status=In Progress", { items: [] });
-      const options = [...queue.map((q) => ({ value: q.id, label: `${q.capa_ref} ${q.title} [${q.reasons.join("; ")}]` })),
-        ...[...(all.items || []), ...(inprog.items || [])].filter((c) => !queue.some((q) => q.id === c.id)).map((c) => ({ value: c.id, label: `${c.capa_ref} ${c.title}` }))];
-      openForm({
-        title: "Record a Committee decision", key: `acm:${id}:decision`, width: 760, draftable: false,
-        fields: [
-          { name: "subject_id", label: "Recommendation (leave empty for another matter)", type: "select", options, emptyLabel: "- other matter -", full: true },
-          { name: "decision", label: "Decision", type: "select", required: true, options: ["Close", "Withdraw", "Extend deadline", "Escalate to management", "Accept risk", "Reject risk acceptance", "Noted"] },
-          { name: "new_due_date", label: "New due date (extensions)", type: "date" },
-          { name: "reference", label: "Minute / external closure reference", maxLength: 120, singleLine: true,
-            help: "For recommendations from the Auditor-General, PAC or Parliament give that body's closure reference" },
-          { name: "notes", label: "Notes", type: "textarea", rows: 3, full: true },
-        ],
-        initial: { decision: "Noted" },
-        submitLabel: "Record decision",
-        onSubmit: (v) => API.post(`/api/committee/meetings/${id}/decisions`, {
-          subject_type: v.subject_id ? "capa" : "other", subject_id: v.subject_id ? Number(v.subject_id) : null, decision: v.decision,
-          new_due_date: v.new_due_date ? `${v.new_due_date}T00:00:00` : null, reference: v.reference || "", notes: v.notes || "" }),
-        onDone: () => { toast("Decision recorded"); reopen(); },
-      });
-    } }, el("i", { class: "bi bi-hammer" }), " Record decision"));
-    actions.push(el("button", { class: "btn", onclick: async () => {
-      try { await API.post(`/api/committee/meetings/${id}/approve-minutes`); toast("Minutes approved and locked"); reopen(); }
-      catch (err) { toast(err.message, "error"); }
-    } }, el("i", { class: "bi bi-lock" }), " Approve minutes"));
-  }
-  actions.push(el("a", { class: "btn secondary", href: `/api/committee/meetings/${id}/minutes.docx` }, el("i", { class: "bi bi-file-earmark-word" }), " Minutes (Word)"));
-  const dlg = modal({ title: `Audit Committee meeting ${m.meeting_ref}`, body, width: 900,
-    footer: el("div", { class: "form-foot-wrap" }, el("button", { class: "btn secondary", onclick: () => dlg.close() }, "Close"), el("div", { class: "actions" }, ...actions)) });
-}
-
-// Record the proceedings of an Audit Committee meeting.
-function meetingProceedingsForm(m, id, reopen) {
-  return openForm({
-    title: `Record proceedings - ${m.meeting_ref}`, key: `acm:${id}:edit`, width: 820,
-    fields: [
-      { name: "status", label: "Status", type: "select", required: true, options: ["Scheduled", "Held", "Cancelled"] },
-      { name: "meeting_date", label: "Date and time", type: "datetime-local", required: true },
-      { name: "venue", label: "Venue", maxLength: 160, singleLine: true },
-      { name: "attendees", label: "Present", type: "textarea", rows: 3 },
-      { name: "apologies", label: "Apologies", type: "textarea", rows: 2 },
-      { name: "quorum", label: "Quorum formed", type: "checkbox" },
-      { name: "followup_report_considered", label: "Quarterly follow-up report considered", type: "checkbox" },
-      { name: "agenda", label: "Agenda", type: "textarea", rows: 4, full: true },
-      { name: "minutes", label: "Minutes", type: "textarea", rows: 10, full: true, maxLength: 100000 },
-    ],
-    initial: { ...m, meeting_date: String(m.meeting_date).slice(0, 16) },
-    submitLabel: "Save",
-    onSubmit: (v) => API.patch(`/api/committee/meetings/${id}`, v),
-    onDone: () => { toast("Meeting saved"); reopen(); },
   });
 }
 
@@ -551,16 +446,14 @@ async function paintCharter(body) {
         canEdit && !draft ? el("button", { class: "btn small", onclick: () => editForm(null) }, el("i", { class: "bi bi-plus-lg" }), " New version") : null,
         canEdit && draft && draft.status === "Draft" ? el("button", { class: "btn small secondary", onclick: () => editForm(draft) }, " Edit draft") : null,
         canEdit && draft && draft.status === "Draft" ? el("button", { class: "btn small", onclick: async () => {
-          try { await API.post(`/api/charter/${draft.id}/submit`); toast("Submitted to the Audit Committee"); renderPractice("charter"); } catch (err) { toast(err.message, "error"); }
-        } }, " Submit to Committee") : null,
+          try { await API.post(`/api/charter/${draft.id}/submit`); toast("Submitted for approval"); renderPractice("charter"); } catch (err) { toast(err.message, "error"); }
+        } }, " Submit for approval") : null,
         hasPerm("committee.record") && draft && draft.status === "Submitted" ? el("button", { class: "btn small", onclick: async () => {
-          const meetings = (await safeGet("/api/committee/meetings", { items: [] })).items;
-          openForm({ title: `Record Committee approval - v${draft.version}`, key: `charterok:${draft.id}`, width: 600, draftable: false,
+          openForm({ title: `Record approval - v${draft.version}`, key: `charterok:${draft.id}`, width: 600, draftable: false,
             fields: [{ name: "approved_at", label: "Date approved", type: "date", required: true },
-              { name: "approval_reference", label: "Minute reference", required: true, maxLength: 120, singleLine: true },
-              { name: "meeting_id", label: "Meeting", type: "select", options: meetings.map((m) => ({ value: m.id, label: `${m.meeting_ref} ${dayOnly(m.meeting_date)}` })), emptyLabel: "-" }],
+              { name: "approval_reference", label: "Minute reference", required: true, maxLength: 120, singleLine: true }],
             submitLabel: "Record approval",
-            onSubmit: (v) => API.post(`/api/charter/${draft.id}/approve`, { approved_at: `${v.approved_at}T12:00:00`, approval_reference: v.approval_reference, meeting_id: v.meeting_id ? Number(v.meeting_id) : null }),
+            onSubmit: (v) => API.post(`/api/charter/${draft.id}/approve`, { approved_at: `${v.approved_at}T12:00:00`, approval_reference: v.approval_reference }),
             onDone: () => { toast("Charter approved"); renderPractice("charter"); } });
         } }, " Record approval") : null));
     const card = el("div", { class: "card" }, head);

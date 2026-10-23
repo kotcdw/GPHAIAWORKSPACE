@@ -5,7 +5,15 @@ from __future__ import annotations
 import pytest
 
 from app.core.enums import Role
-from tests.conftest import csrf_headers, login, make_entity, make_user, release_plan, walk_plan_to_review
+from tests.conftest import (
+    csrf_headers,
+    decide_topicals,
+    login,
+    make_entity,
+    make_user,
+    release_plan,
+    walk_plan_to_review,
+)
 
 PASSWORD = "Passw0rd!"
 
@@ -215,6 +223,7 @@ def test_rcm_test_issue_action_flow(client, client2, people):
     # Close is blocked while fieldwork is unreviewed.
     for step in ("In Progress", "Review"):
         client.patch(f"/api/audits/{audit_id}", json={"status": step}, headers=aud)
+    decide_topicals(client, audit_id, aud)
     blocked = client2.post(f"/api/audits/{audit_id}/close", json={"password": PASSWORD}, headers=adm)
     assert blocked.status_code == 409 and "not yet reviewed" in blocked.json()["detail"]
 

@@ -1,8 +1,8 @@
 @echo off
-title Reset a GPHA Internal Audit Workspace password
+title Reset a GPHA INTERNAL AUDIT WORKSPACE password
 cd /d "%~dp0"
 echo ============================================================
-echo  Reset a password - GPHA Internal Audit Workspace
+echo  Reset a password - GPHA INTERNAL AUDIT WORKSPACE
 echo ============================================================
 echo  The database must be running (start the app with Start-GPHA.cmd first).
 echo.

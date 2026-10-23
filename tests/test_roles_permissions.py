@@ -190,23 +190,3 @@ def test_evidence_request_cycle(client, client2, db):
     assert any(p["title"].startswith(er["request_ref"]) for p in papers)
     fid = done["files"][0]["id"]
     assert client2.get(f"/api/evidence-files/{fid}/download").content == b"employee,net\nA,100"
-
-
-def test_governance_view_for_audit_clients_is_granted_by_the_super_admin(client, client2, db):
-    root = _u(db, "gvroot", Role.Admin)
-    client_user = _u(db, "gvcli", job="audit_client")
-    aud = _u(db, "gvaud", job="auditor")
-    login(client2, client_user.username)
-    assert client2.get("/api/governance/overview").status_code == 403
-    h = csrf_headers(login(client, root.username))
-    base = next(r for r in client.get("/api/roles").json()["roles"] if r["code"] == "audit_client")["permissions"]
-    client.put("/api/roles/audit_client/permissions", json={"permissions": [*base, "governance.view"]}, headers=h)
-    perms.invalidate()
-    ov = client2.get("/api/governance/overview")
-    assert ov.status_code == 200 and "plan_completion_pct" in ov.json()["kpis"]
-    ch = csrf_headers(login(client2, client_user.username))
-    assert client2.post("/api/audits", json={"title": "x", "scope": "x"}, headers=ch).status_code == 403
-    client.post("/api/roles/audit_client/reset", headers=h)
-    perms.invalidate()
-    login(client2, aud.username)
-    assert client2.get("/api/governance/overview").status_code == 403

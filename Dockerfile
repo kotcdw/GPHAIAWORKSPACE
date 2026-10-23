@@ -1,4 +1,4 @@
-# GPHA Internal Audit Workspace (GIAW) - application image.
+# GPHA INTERNAL AUDIT WORKSPACE - application image.
 # Built on the server by deploy/vps/install.sh (docker compose build); nothing secret is baked in:
 # every setting comes from the environment (.env.production on the server).
 FROM python:3.12-slim

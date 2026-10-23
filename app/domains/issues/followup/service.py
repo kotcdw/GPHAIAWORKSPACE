@@ -4,8 +4,7 @@ Levels, raised once each as an action stays overdue:
   1 - overdue: the owner (and the auditor who raised it) are notified;
   2 - ``escalate_manager_days`` overdue: Audit Managers are notified;
   3 - ``escalate_cae_days`` overdue: the CAE is notified;
-  4 - ``escalate_committee_days`` overdue: reported to the Audit Committee (CAE and Admins notified,
-      listed in the Committee pack).
+  4 - ``escalate_committee_days`` overdue: reported to the Audit Committee (CAE and Admins notified).
 """
 
 from __future__ import annotations

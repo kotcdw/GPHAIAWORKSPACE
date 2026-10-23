@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - integrated audit universe (Diligent One / HighBond Audit model).
+// GPHA INTERNAL AUDIT WORKSPACE - integrated audit universe (Diligent One / HighBond Audit model).
 //
 //   Org Structure            the internal org tree (ports, offices, departments, units), bulk add
 //   Process library          business processes and the org units that perform them, bulk add
@@ -27,6 +27,7 @@ function ratingBadge(r) {
 async function renderOrgStructure() {
   clear(viewRoot);
   const can = UNIVERSE_EDIT();
+  const superadmin = hasPerm("system.superadmin");
   const showInactive = !!state.orgShowInactive;
   const exportBtn = hasPerm("data.export") ? btn("Export", () => exportOrgStructure(), "secondary") : null;
   viewRoot.append(viewHeader("Org Structure", el("div", { class: "actions" }, exportBtn,
@@ -59,6 +60,15 @@ async function renderOrgStructure() {
     noHead ? el("span", { class: "chip-mini" }, `${noHead} without a head`) : null,
     data.inactive_count ? el("label", { class: "org-toggle" }, toggle, ` Show ${data.inactive_count} deactivated unit${data.inactive_count === 1 ? "" : "s"}`) : null));
 
+  // Row actions in one drop-down: add a sub-unit, edit or move, details; the Super Administrator also deletes.
+  const rowMenu = (r) => dropMenu("Actions", [
+    can && r.is_active ? ["Add sub-unit", () => orgUnitForm(null, r)] : null,
+    can ? ["Edit or move", () => orgUnitForm(r)] : null,
+    ["Open details", () => openOrgUnitPanel(r.id)],
+    superadmin ? ["Delete…", async () => {
+      try { deleteOrgUnit(await API.get(`/api/organizations/${r.id}/overview`), () => renderOrgStructure()); } catch (err) { toast(err.message, "error"); }
+    }, true] : null,
+  ]);
   const collapsed = state.orgCollapsed || (state.orgCollapsed = new Set());
   const table = el("div");
   const fb = filterBar({ placeholder: "Search units, references or heads…",
@@ -94,7 +104,7 @@ async function renderOrgStructure() {
         el("td", { class: "num", "data-label": "Processes", title: r.processes.map((p) => p.name).join(", ") }, r.processes.length ? String(r.processes.length) : "-"),
         el("td", { class: "num", "data-label": "Auditable entities" }, r.entities ? String(r.entities) : "-"),
         el("td", { "data-label": "Status" }, r.is_active ? badge(r.status) : badge("Deactivated")),
-        el("td", null, can && r.is_active ? btn("Add unit", (e) => { if (e) e.stopPropagation(); orgUnitForm(null, r); }, "secondary") : null)))))));
+        el("td", { class: "row-actions", onclick: (e) => e.stopPropagation() }, rowMenu(r))))))));
   }
   paint();
 }
@@ -209,11 +219,51 @@ async function openOrgUnitPanel(id) {
     el("div", { class: "admin-change-line" }, el("strong", null, h.by)), el("div", { class: "admin-change-action" }, h.action), el("div", { class: "muted small" }, fmtDate(h.at)))))
     : el("p", { class: "muted small" }, "No changes recorded."));
 
-  if (d.can.delete) body.append(el("div", { class: "user-danger" },
-    el("button", { class: "btn small danger-ghost", type: "button", title: "Only for pending units that nothing uses", onclick: async () => {
-      const ok = await confirmDialog({ title: `Delete ${u.name}?`, danger: true, confirmLabel: "Delete", text: "This removes the unit completely." });
-      if (ok.ok) act(() => API.del(`/api/organizations/${u.id}`), "Unit deleted", false);
-    } }, el("i", { class: "bi bi-trash" }), " Delete unit")));
+  if (d.can.superdelete || d.can.delete) body.append(el("div", { class: "user-danger" },
+    el("button", { class: "btn small danger-ghost", type: "button", onclick: () => deleteOrgUnit(d, () => { panel.close(); refreshOrgAfter(null); }) },
+      el("i", { class: "bi bi-trash" }), " Delete unit")));
+}
+
+// Delete a unit. A Super Administrator deletes any unit (approved or deactivated, with its sub-units if chosen),
+// giving a reason and their password; what still uses the unit (audits, workplaces, entities, risk assessments)
+// is listed and blocks the delete. An administrator deletes an empty pending unit.
+async function deleteOrgUnit(d, after) {
+  const u = d.unit;
+  if (!d.can.superdelete) {
+    const ok = await confirmDialog({ title: `Delete ${u.name}?`, danger: true, confirmLabel: "Delete", text: "This removes the unit completely." });
+    if (!ok.ok) return;
+    try { await API.del(`/api/organizations/${u.id}`); toast("Unit deleted"); after(); } catch (err) { toast(err.message, "error"); }
+    return;
+  }
+  const c = d.delete_check;
+  const subs = c.subunits;
+  const blockersFor = (all) => (all ? c.with_subunits_blockers : c.blockers);
+  const list = el("div");
+  const paint = (all) => {
+    clear(list);
+    const b = blockersFor(all);
+    if (b.length) list.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-exclamation-triangle" }),
+      el("div", null, el("strong", null, "Not possible yet"), el("ul", null, ...b.map((x) => el("li", null, x))))));
+    else if (all && subs) list.append(el("p", { class: "muted small" }, `${subs} sub-unit${subs === 1 ? "" : "s"} will be deleted with it.`));
+    if (c.process_mappings) list.append(el("p", { class: "muted small" }, `${c.process_mappings} process link${c.process_mappings === 1 ? "" : "s"} will be removed.`));
+  };
+  paint(false);
+  const form = openForm({
+    title: `Delete ${u.name}`, draftable: false, columns: 1, width: 520, extra: list,
+    fields: [
+      ...(subs ? [{ name: "with_subunits", label: `Also delete the ${subs} unit${subs === 1 ? "" : "s"} under it`, type: "checkbox" }] : []),
+      { name: "reason", label: "Reason", type: "textarea", required: true, maxLength: 500, rows: 2 },
+      { name: "password", label: "Your password", type: "password", required: true, maxLength: 200 },
+    ],
+    initial: { with_subunits: false },
+    submitLabel: "Delete permanently",
+    validate: (v) => (blockersFor(!!v.with_subunits).length ? { reason: "Resolve what still uses the unit first" }
+      : (v.reason || "").trim().length < 5 ? { reason: "At least 5 characters" } : {}),
+    onSubmit: (v) => API.del(`/api/organizations/${u.id}`, { reason: v.reason, password: v.password, with_subunits: !!v.with_subunits }),
+    onDone: (r) => { toast(r.message); after(); },
+  });
+  const box = form && form.body ? form.body.querySelector("input[name=with_subunits]") : null;
+  if (box) box.addEventListener("change", () => paint(box.checked));
 }
 
 async function orgUnitForm(unit, parent = null) {
@@ -224,13 +274,21 @@ async function orgUnitForm(unit, parent = null) {
     let grew = true; below.add(unit.id);
     while (grew) { grew = false; data.items.forEach((r) => { if (r.parent_id && below.has(r.parent_id) && !below.has(r.id)) { below.add(r.id); grew = true; } }); }
   }
-  const options = data.items.filter((r) => !below.has(r.id)).map((r) => ({ value: r.id, label: `${"  ".repeat(r.depth)}${r.name}` }));
+  // Type to search: same-named units are told apart by the unit above them.
+  const byId = Object.fromEntries(data.items.map((r) => [r.id, r]));
+  const counts = data.items.reduce((m, r) => ({ ...m, [r.name.toLowerCase()]: (m[r.name.toLowerCase()] || 0) + 1 }), {});
+  const options = data.items.filter((r) => !below.has(r.id)).map((r) => ({ value: r.id,
+    label: counts[r.name.toLowerCase()] > 1 && byId[r.parent_id] ? `${r.name} (${byId[r.parent_id].name})` : r.name }));
+  // Someone who manages reference data may type a new type; it is added to the configured types.
+  const newTypes = hasPerm("system.reference");
   openForm({
     title: unit ? `Edit ${unit.name}` : parent ? `Add a unit under ${parent.name}` : "Create organizational unit", draftable: false, width: 640,
     fields: [
       { name: "name", label: "Name", required: true, maxLength: 255, singleLine: true, full: true },
-      { name: "category", label: "Type", type: "select", required: true, options: data.types },
-      { name: "parent_id", label: "Parent unit", type: "select", emptyLabel: "- top level -", options },
+      { name: "category", label: "Type", type: "combo", required: true, allowNew: newTypes, maxLength: 60,
+        options: unit && unit.category && !data.types.includes(unit.category) ? [...data.types, unit.category] : data.types,
+        help: newTypes ? "Choose one, or type a new type to add it." : null },
+      { name: "parent_id", label: "Parent unit", type: "combo", options, placeholder: "Type to search; empty = top level" },
     ],
     initial: unit ? { name: unit.name, category: unit.category, parent_id: unit.parent_id } : { parent_id: parent ? parent.id : null, category: data.types[2] || data.types[0] },
     submitLabel: unit ? "Save" : "Create",
@@ -503,7 +561,7 @@ async function renderUniverseUnits() {
   const rows = d.items;
   const cols = [{ key: "code", label: "Code" }, { key: "name", label: "Unit" }, { key: "type", label: "Type" }, { key: "parent", label: "Parent unit", csv: (r) => (r.parent ? r.parent.name : "") },
     { key: "location", label: "Location" }, { key: "owner", label: "Business owner" }, { key: "processes", label: "Processes" }, { key: "status", label: "Status" }, { key: "reason", label: "Reason" }];
-  head.append(uHead("Organizational units", el("div", { class: "actions" }, uExport("audit-universe-units", cols, rows))));
+  head.replaceWith(uHead("Organizational units", el("div", { class: "actions" }, uExport("audit-universe-units", cols, rows))));
   if (!rows.length) {
     body.append(emptyState({ icon: "diagram-3", title: "No org units yet",
       action: viewAllowed("orgstructure") ? btn("Open Org Structure", () => navigate("orgstructure")) : null }));
@@ -622,7 +680,7 @@ async function renderUniverseProcesses() {
   const cols = [{ key: "ref", label: "Code" }, { key: "name", label: "Process" }, { key: "group", label: "Process group" },
     { key: "units", label: "Performed by units", csv: (r) => r.units.map((u) => u.name).join("; ") }, { key: "owner", label: "Owner" },
     { key: "risks", label: "Linked risks" }, { key: "controls", label: "Linked controls" }, { key: "mapping", label: "Mapping" }];
-  head.append(uHead("Process library review", el("div", { class: "actions" },
+  head.replaceWith(uHead("Process library review", el("div", { class: "actions" },
     uExport("audit-universe-processes", cols, rows), viewAllowed("processes") ? btn("Visit Process library", () => navigate("processes"), "secondary") : null)));
   if (!rows.length) {
     body.append(emptyState({ icon: "diagram-2", title: "No processes yet",
@@ -711,7 +769,7 @@ async function renderUniverseEntities() {
     { key: "org_units", label: "Org units", csv: (r) => r.org_units.map((o) => o.name).join("; ") }, { key: "processes", label: "Processes", csv: (r) => r.processes.map((p) => p.name).join("; ") },
     { key: "owner", label: "Business owner" }, { key: "risks", label: "Linked risks" }, { key: "last_audited_at", label: "Last audit", csv: (r) => (r.last_audited_at ? r.last_audited_at.slice(0, 10) : "") },
     { key: "definition_status", label: "Status" }];
-  head.append(uHead("Auditable entities", el("div", { class: "actions" },
+  head.replaceWith(uHead("Auditable entities", el("div", { class: "actions" },
     uExport("auditable-entities", cols, rows), can ? btn("New entity", () => openEntityForm(null)) : null)));
   if (!rows.length) {
     body.append(emptyState({ icon: "bullseye", title: "No auditable entities yet",
@@ -774,7 +832,7 @@ async function renderAssuranceMap() {
   const flat = d.rows.map((r) => ({ ...r, ...Object.fromEntries(d.lines.map((l) => [l, (r.cells[l] || []).map((c) => `${c.provider} (${c.result}, reliance ${c.reliance})`).join("; ")])),
     ia: r.internal_audit ? r.internal_audit.slice(0, 10) : "" }));
   const cols = [{ key: "code", label: "Code" }, { key: "name", label: "Entity" }, { key: "ia", label: "Internal audit (last audit)" }, ...d.lines.map((l) => ({ key: l, label: l }))];
-  head.append(uHead("Assurance map", el("div", { class: "actions" },
+  head.replaceWith(uHead("Assurance map", el("div", { class: "actions" },
     uExport("assurance-map", cols, flat), can ? btn("New provider", () => providerForm(null, prov.lines)) : null)));
   const s = d.summary;
   const fb = filterBar({ placeholder: "Search entities", values: {}, onChange: () => paint(),
@@ -1031,7 +1089,7 @@ async function openEntity(id, tab = "overview") {
       } }, "Delete") : null)) : null;
   const layout = recordLayout({
     crumbs: uCrumbs(e.code), back: () => navigate("universe_entities"),
-    title: e.name, ref: e.code, meta: [uChip(e.definition_status), el("span", { class: "u-chip muted" }, e.entity_type)],
+    title: e.name, ref: e.code, record: { type: "entity_unit", id: e.id }, meta: [uChip(e.definition_status), el("span", { class: "u-chip muted" }, e.entity_type)],
     actions: [can && !retired ? btn("Edit", () => openEntityForm(e), "secondary") : null, handoff, more].filter(Boolean),
     tabs: [{ key: "overview", label: "Overview" }, { key: "assess", label: "Risk assessment" }, { key: "assurance", label: "Assurance" }, { key: "audits", label: "Audits" },
       { key: "findings", label: "Findings", count: e.open_findings || null }, { key: "history", label: "History" }],
@@ -1308,7 +1366,7 @@ async function openAssessment(id, tab = null) {
     a.status === "Completed" && hasPerm("plan.prepare", "plan.amend") ? btn(a.plan_id ? "Planning" : "Start planning", () => startPlanningDialog(a)) : null,
   ].filter(Boolean);
   const layout = recordLayout({
-    crumbs: recordCrumbs("riskassess", a.ref), back: () => navigate("riskassess"), title: a.name, ref: a.ref, status: a.status,
+    crumbs: recordCrumbs("riskassess", a.ref), back: () => navigate("riskassess"), title: a.name, ref: a.ref, status: a.status, record: { type: "risk_assessment", id: a.id },
     meta: [el("span", { class: "muted small" }, `${a.scale} · ${a.entities} entities · ${a.factors} factors`), a.plan ? el("span", { class: "chip-mini" }, `Plan ${a.plan}`) : null].filter(Boolean),
     actions, tabs: [{ key: "score", label: "Scoring" }, { key: "conclude", label: "Conclude" }], side: null,
     onTab: (key, pane) => { state.araTabRec = { id, key }; if (key === "score") paintScoring(pane, a, open); else paintConclude(pane, a, open); },

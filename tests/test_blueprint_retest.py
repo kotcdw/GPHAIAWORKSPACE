@@ -20,10 +20,6 @@ def _u(db, prefix, role=Role.Auditor):
 
 def _close_action(client2, ah, capa_id):
     closed = client2.post(f"/api/capa/{capa_id}/close", json={"password": DEFAULT_PASSWORD}, headers=ah)
-    if closed.status_code == 409 and "Committee" in closed.text:
-        client2.put("/api/config", json={"values": {"committee_closes_recommendations": False}}, headers=ah)
-        closed = client2.post(f"/api/capa/{capa_id}/close", json={"password": DEFAULT_PASSWORD}, headers=ah)
-        client2.post("/api/config/committee_closes_recommendations/reset", headers=ah)
     assert closed.status_code == 200, closed.text
 
 

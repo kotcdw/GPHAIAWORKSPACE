@@ -167,7 +167,7 @@ def update_capa(
     if payload.status == CapaStatus.Closed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_CLOSE_VIA_ESIGN)
     # The follow-up workflow owns Review and Closed: implementation is recorded (-> Review), an auditor validates
-    # it (-> In Progress if not effective) and an e-signature or Committee decision closes it.
+    # it (-> In Progress if not effective) and an e-signature closes it.
     if payload.status is not None and payload.status != capa.status:
         if payload.status == CapaStatus.Review:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT,
@@ -326,10 +326,6 @@ def close_capa(
             status_code=status.HTTP_409_CONFLICT,
             detail="An auditor must validate the implementation as Effective before the action can be closed",
         )
-    if is_internal(capa) and cfg("committee_closes_recommendations"):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail="Internal audit recommendations are closed by an Audit Committee decision. "
-                                   "Record the decision in the Committee meetings register.")
     if not is_internal(capa) and not (capa.external_closure_ref or "").strip():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail=f"Recommendations from {capa.source_body} are closed by that body. Record its "

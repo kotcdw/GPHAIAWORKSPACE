@@ -88,7 +88,7 @@ def platform_map() -> dict:
     url = settings.database_url
     db_name = url.rsplit("/", 1)[-1].split("?")[0] if "/" in url else ""
     return {
-        "system": "GPHA Internal Audit Workspace",
+        "system": "GPHA INTERNAL AUDIT WORKSPACE",
         "core": {**CORE, "tables": _owned(tables, "app.core")},
         "platform": _layer(platform, tables),
         "domains": [_layer(d, tables) for d in layers()],

@@ -3,10 +3,8 @@ declarations, CPD, automation rules and custom fields on audits, findings and ac
 
 from __future__ import annotations
 
-import io
 import json
 import uuid
-import zipfile
 from datetime import datetime, timedelta
 
 from app.core.config import settings
@@ -14,7 +12,7 @@ from app.core.enums import ReportStatus, ReviewLevel, Role, ValidationResult, ut
 from app.core.workdays import add_working_days
 from app.domains.issues.capa.models import Capa
 from app.platform.notifications.models import Notification
-from tests.conftest import csrf_headers, login, make_user
+from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
 
 
 def _u(db, prefix, role=Role.Auditor, job=None, email=None):
@@ -106,7 +104,7 @@ def test_report_distribution_register(client, db):
     assert future.status_code == 422
 
 
-def test_external_recommendation_progress_withdrawal_and_committee(client, client2, db):
+def test_external_recommendation_progress_withdrawal_and_closure(client, client2, db):
     gm = _u(db, "acgm", job="gm_audit")
     owner = _u(db, "acown", Role.Auditee, email=f"own{uuid.uuid4().hex[:5]}@gpha.gov.gh")
     h = csrf_headers(login(client, gm.username))
@@ -153,42 +151,24 @@ def test_external_recommendation_progress_withdrawal_and_committee(client, clien
                          headers=csrf_headers(login(c3, adm.username)))
     assert closed.status_code == 409 and "closure reference" in closed.json()["detail"]
 
-    # Audit Committee meeting: decisions only once held; decisions applied to the actions.
-    m = client.post("/api/committee/meetings", json={"meeting_date": (utcnow() - timedelta(days=1)).isoformat(),
-                                                     "meeting_type": "Ordinary", "venue": "Boardroom"}, headers=h)
-    assert m.status_code == 201, m.text
-    mid = m.json()["id"]
-    assert m.json()["meeting_ref"].startswith("ACM-")
-    early = client.post(f"/api/committee/meetings/{mid}/decisions",
-                        json={"subject_id": internal["id"], "decision": "Withdraw"}, headers=h)
-    assert early.status_code == 409
-    queue = client.get("/api/committee/for-decision").json()
-    assert {q["id"] for q in queue} >= {internal["id"], ext["id"]}
-    client.patch(f"/api/committee/meetings/{mid}", json={"status": "Held", "attendees": "Chair; Members; GM Audit",
-                                                         "quorum": True, "followup_report_considered": True},
-                 headers=h)
-    w = client.post(f"/api/committee/meetings/{mid}/decisions",
-                    json={"subject_id": internal["id"], "decision": "Withdraw"}, headers=h)
-    assert w.status_code == 201, w.text
-    noref = client.post(f"/api/committee/meetings/{mid}/decisions",
-                        json={"subject_id": ext["id"], "decision": "Close"}, headers=h)
-    assert noref.status_code == 422
-    ok = client.post(f"/api/committee/meetings/{mid}/decisions",
-                     json={"subject_id": ext["id"], "decision": "Close", "reference": "AG/CL/2026/3"}, headers=h)
-    assert ok.status_code == 201
-    got = client.get(f"/api/capa/{internal['id']}").json()
-    assert got["status"] == "Closed" and got["implementation_status"] == "Withdrawn"
-    got = client.get(f"/api/capa/{ext['id']}").json()
-    assert got["implementation_status"] == "Fully Implemented" and got["external_closure_ref"] == "AG/CL/2026/3"
-    assert client.post(f"/api/committee/meetings/{mid}/approve-minutes", headers=h).status_code == 422
-    client.patch(f"/api/committee/meetings/{mid}", json={"minutes": "The Committee considered the Q3 follow-up "
-                                                                    "report and took the decisions below."}, headers=h)
-    assert client.post(f"/api/committee/meetings/{mid}/approve-minutes", headers=h).json()["status"] == \
-        "Minutes approved"
-    assert client.patch(f"/api/committee/meetings/{mid}", json={"venue": "x"}, headers=h).status_code == 409
-    docx = client.get(f"/api/committee/meetings/{mid}/minutes.docx")
-    with zipfile.ZipFile(io.BytesIO(docx.content)) as zf:
-        assert "Withdraw" in zf.read("word/document.xml").decode()
+    # The GM Audit decides a proposed withdrawal; the proposer cannot.
+    gm2 = _u(db, "acgm2", job="gm_audit")
+    wurl = f"/api/capa/{internal['id']}/withdrawal/decision"
+    agree = {"decision": "Agree", "comment": "The telex system no longer exists."}
+    assert client.post(wurl, json=agree, headers=h).status_code == 403
+    with TestClient(app) as c4:
+        g2 = csrf_headers(login(c4, gm2.username))
+        w = c4.post(wurl, json=agree, headers=g2)
+        assert w.status_code == 200, w.text
+        assert w.json()["status"] == "Closed" and w.json()["implementation_status"] == "Withdrawn"
+        assert c4.post(wurl, json=agree, headers=g2).status_code == 409
+    # With the external body's closure reference recorded, the external recommendation closes by e-signature.
+    ref = client.patch(f"/api/capa/{ext['id']}", json={"external_closure_ref": "AG/CL/2026/3"}, headers=h)
+    assert ref.status_code == 200, ref.text
+    with TestClient(app) as c3:
+        done = c3.post(f"/api/capa/{ext['id']}/close", json={"password": DEFAULT_PASSWORD},
+                       headers=csrf_headers(login(c3, adm.username)))
+    assert done.status_code == 200, done.text
 
     # Quarterly report and annual statement with the MoF columns; submission register keeps a frozen copy.
     now = utcnow()
@@ -208,24 +188,6 @@ def test_external_recommendation_progress_withdrawal_and_committee(client, clien
     assert sub.status_code == 201, sub.text
     assert client.get(f"/api/follow-up/submissions/{sub.json()['id']}/export.docx").status_code == 200
     assert any(s["id"] == sub.json()["id"] for s in client.get("/api/follow-up/submissions").json())
-    pack = client.get("/api/committee/summary").json()
-    assert "Withdrawn" in pack["implementation_status"] and pack["conformance"]["statement"]
-
-
-def test_committee_closes_internal_recommendations_when_configured(client, db):
-    admin = _u(db, "cladm", Role.Admin)
-    h = csrf_headers(login(client, admin.username))
-    capa = client.post("/api/capa", json={"title": "Fix cash count"}, headers=h).json()
-    db.rollback()
-    c = db.get(Capa, capa["id"])
-    c.status, c.validation_result, c.implemented_at = "Review", ValidationResult.Effective, utcnow()
-    db.commit()
-    _set(client, h, committee_closes_recommendations=True)
-    try:
-        r = client.post(f"/api/capa/{capa['id']}/close", json={"password": "Passw0rd!x"}, headers=h)
-        assert r.status_code == 409 and "Audit Committee decision" in r.json()["detail"]
-    finally:
-        _reset(client, h, "committee_closes_recommendations")
 
 
 def test_charter_and_external_assessment(client, client2, db):

@@ -1,4 +1,4 @@
-"""Results, Storyboards and Robots (Diligent One analytics apps) over GIAW data.
+"""Results, Storyboards and Robots (GPHA INTERNAL AUDIT WORKSPACE analytics apps) over workspace data.
 
 * **Results**: Collections hold tables; a table's records carry Priority (Low, Medium, High, Critical), Status
   (New, Open, Under Review, Closed, False Positive), Assignee and Published date. Interpretations are saved

@@ -1,4 +1,4 @@
-# GPHA Internal Audit Workspace - step 1: create the production .env on the PRODUCTION server.
+# GPHA INTERNAL AUDIT WORKSPACE - step 1: create the production .env on the PRODUCTION server.
 #
 # Run from the application folder:   powershell -ExecutionPolicy Bypass -File deploy\windows\1-new-production-env.ps1
 #
@@ -29,7 +29,7 @@ function AskSecret([string]$label, [int]$minLength = 1) {
 }
 
 Write-Host ""
-Write-Host "GPHA Internal Audit Workspace - production configuration" -ForegroundColor Cyan
+Write-Host "GPHA INTERNAL AUDIT WORKSPACE - production configuration" -ForegroundColor Cyan
 Write-Host "Press Enter to accept a [default]." -ForegroundColor DarkGray
 Write-Host ""
 
@@ -89,7 +89,7 @@ if (Test-Path .env) {
 }
 
 $lines = @(
-    "# GPHA Internal Audit Workspace - PRODUCTION. Generated $(Get-Date -Format 'yyyy-MM-dd HH:mm') by deploy\windows\1-new-production-env.ps1",
+    "# GPHA INTERNAL AUDIT WORKSPACE - PRODUCTION. Generated $(Get-Date -Format 'yyyy-MM-dd HH:mm') by deploy\windows\1-new-production-env.ps1",
     "# Never copy this file into e-mail, chat or source control.",
     "GPHA_ENVIRONMENT=production",
     "GPHA_SECRET_KEY=$secret",

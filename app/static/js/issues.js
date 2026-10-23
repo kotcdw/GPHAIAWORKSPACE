@@ -10,6 +10,17 @@ function issueTrackerFrame(title, crumb, actions = []) {
 
 // ------------------------------------------------------------------ Activity Center › Issues & Actions
 
+// Activity Center › Dashboards: the dashboards shared with the viewer (Reports app), opened in place.
+async function renderActivityDashboards() {
+  const f = wsPage({ app: "Activity Center", util: [{ label: "Reports", onClick: () => navigate("reports") }], crumb: ["Activity Center", "Dashboards"], title: "Dashboards" });
+  f.body.append(loadingState());
+  const items = (await safeGet("/api/reporting/items?kind=dashboard", [])).filter((d) => d.status === "Active" || d.can_edit);
+  clear(f.body);
+  if (!items.length) { f.body.append(emptyState({ icon: "grid-1x2", title: "No dashboards shared with you yet", action: wsAction("Open Reports", () => navigate("reports"), { primary: true }) })); return; }
+  f.body.append(dataTable(items, [{ key: "name", label: "Dashboard" }, { key: "owner", label: "Owner" }, { key: "folder", label: "Folder" },
+    { key: "updated_at", label: "Updated", render: (d) => fmtDay(String(d.updated_at).slice(0, 10)) }], { onRow: (d) => openReportItem(d.id) }));
+}
+
 async function renderActivityCenter(filters = state.acFilters || {}) {
   state.acFilters = filters;
   const f = wsPage({ app: "Activity Center", util: [{ label: "Issue Tracker", onClick: () => navigate("issues") }, { label: "Reports", onClick: () => navigate("reports") }],
@@ -111,7 +122,7 @@ async function openIssue(id, tab = null) {
   ];
   const layout = recordLayout({
     app: "Issue Tracker", crumbs: recordCrumbs("issues", `Issue #${f.id}`), back: () => navigate("issues"),
-    title: f.title, ref: `ISS-${String(f.id).padStart(4, "0")}`, status: f.status,
+    title: f.title, ref: `ISS-${String(f.id).padStart(4, "0")}`, status: f.status, record: { type: "finding", id: f.id },
     meta: [el("span", { class: "chip-mini" }, f.risk_rating)],
     utility: [
       { label: "Project", icon: "kanban", onClick: () => openAudit(audit.id) },
@@ -181,8 +192,13 @@ function issueRemediationPane(pane, f, audit, opts, actions, reload) {
     if (!resp.value.trim()) { toast("Enter the planned corrective action", "error"); return; }
     try { await API.post(`/api/findings/${f.id}/response`, { management_response: resp.value, responsible_officer: officer.value.trim() || null, target_date: target.value || null }); toast("Management response saved"); reload("remediation"); }
     catch (err) { wsShowErrors(mr, err); }
-  })) : null);
+  }), staff && f.status !== "Closed" && hasPerm("audit.findings", "followup.manage") ? wsAction("Assign action", () => {
+    const fm = pane.querySelector(".issue-action-form");
+    if (fm) { fm.hidden = false; fm.scrollIntoView({ block: "center" }); const t = fm.querySelector("input[name=title]"); if (t) { if (officer.value.includes("@")) fm.querySelector("input[name=owner_email]").value = officer.value; t.focus(); } }
+  }) : null) : null);
   pane.append(mr);
+  pane.append(wsCard("Retest Information", el("p", null, "After remediation, document the retest result and whether the issue is resolved."),
+    wsToolbar(wsAction("Open retest details", () => reload("retest")))));
 
   // Actions.
   const canAdd = staff && f.status !== "Closed" && hasPerm("audit.findings", "followup.manage");
@@ -211,6 +227,7 @@ function issueRemediationPane(pane, f, audit, opts, actions, reload) {
     } catch (err) { wsShowErrors(form, err); }
   }, { primary: true })));
   form.hidden = true;
+  form.classList.add("issue-action-form");
   pane.append(form);
 }
 

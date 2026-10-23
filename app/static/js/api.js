@@ -1,4 +1,4 @@
-// Tiny fetch wrapper for the GPHA Audit Workspace JSON API.
+// Tiny fetch wrapper for the GPHA INTERNAL AUDIT WORKSPACE JSON API.
 // Handles cookie credentials and the double-submit CSRF token.
 
 function readCookie(name) {
@@ -70,7 +70,7 @@ const API = {
   post(path, json) { return this.request("POST", path, { json }); },
   patch(path, json) { return this.request("PATCH", path, { json }); },
   put(path, json) { return this.request("PUT", path, { json }); },
-  del(path) { return this.request("DELETE", path); },
+  del(path, json) { return this.request("DELETE", path, json ? { json } : {}); },
   upload(path, form) { return this.request("POST", path, { form }); },
 };
 

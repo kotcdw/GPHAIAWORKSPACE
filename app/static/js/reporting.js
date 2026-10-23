@@ -24,7 +24,7 @@ function repCreateMenu() {
 }
 
 function repFrame(active, { crumb = [], title = null, actions = [] } = {}) {
-  return wsPage({ app: "Reports", side: REP_SIDE, active, sideLabel: "Reports pages",
+  return wsPage({ app: "Reports", hubLinks: true, side: REP_SIDE, active, sideLabel: "Reports pages",
     onSide: (k) => (k === "ai" ? renderAiReporting("new") : renderReportsApp(k)),
     util: [{ label: "Storyboards", icon: "easel", onClick: () => navigate("storyboards") }],
     crumb: [{ label: "Reports", onClick: () => renderReportsApp("browse") }, ...crumb], title, actions });
@@ -56,8 +56,8 @@ function itemTable(items, { empty = "Nothing here yet" } = {}) {
 
 // Browse › By Folder / Recent. A folder is Templates, My Reports, Shared Reports or a configured folder.
 async function renderBrowse(folder = null, mode = "folder") {
-  const f = repFrame("browse", { crumb: ["Browse", folder ? folder.label : null], title: folder ? folder.label : "Browse content",
-    actions: [repCreateMenu()] });
+  const f = repFrame("browse", { crumb: ["Browse", folder ? folder.label : null], title: folder ? (folder.key === "templates" ? "Choose a starting point" : folder.label) : "Reports · Browse",
+    actions: [wsAction("Browse content", () => renderBrowse()), repCreateMenu()] });
   if (!folder) {
     f.body.append(el("div", { class: "ws-flow", role: "tablist" },
       ...[["folder", "By Folder"], ["recent", "Recent"]].map(([k, l]) => el("button", { type: "button", role: "tab", class: k === mode ? "on" : "",
@@ -81,6 +81,9 @@ async function renderBrowse(folder = null, mode = "folder") {
       try { const it = await API.post(`/api/reporting/templates/${t.key}/copy`); toast(`${it.name} saved as a draft in My Reports`); reportBuilder(it); }
       catch (err) { toast(err.message, "error"); }
     };
+    f.body.append(wsGrid(
+      wsCard("Start a new report", el("p", null, "Build a custom report from a View."), wsAction("Create → Report", () => reportBuilder(null), { primary: true })),
+      wsCard("Copy a report template", el("p", null, "Right-click a template below, or use its Actions, and choose Make a copy."), wsTag("Right-click → Make a copy"))));
     if (!ts.length) { f.body.append(emptyState({ icon: "files", title: "No templates for the data you can see" })); return; }
     f.body.append(el("div", { class: "ws-card" }, ...ts.map((t) => {
       const row = wsRow(el("span", null, el("strong", null, t.name), el("span", { class: "ws-caption" }, t.description)),
@@ -139,15 +142,71 @@ function resultTable(res, pageSize = 25) {
     render: c.type === "date" ? (r) => (r[c.key] ? fmtDay(r[c.key]) : "-") : null })), { pageSize });
 }
 
+function designClass(d) {
+  const x = d || {};
+  return `rep-d f-${(x.font || "Default").toLowerCase()} s-${(x.size || "Medium").toLowerCase()} b-${(x.borders || "Rows").toLowerCase()} a-${(x.align || "Left").toLowerCase()}`;
+}
+
+function crossTabView(res, onDrill) {
+  const ct = res.crosstab;
+  const label = (k) => (res.columns.find((c) => c.key === k) || {}).label || k;
+  const cell = (n, row, col) => (onDrill && n ? el("button", { type: "button", class: "rep-drill", title: "Open these records",
+    onclick: () => onDrill([[ct.row_key, row], ...(col === null ? [] : [[ct.column_key, col]])]) }, String(n)) : String(n));
+  return el("div", { class: "table-wrap" }, el("table", { class: "ws-table rep-crosstab" },
+    el("caption", { class: "ws-caption" }, `${ct.measure === "count" ? "Count" : `Sum of ${label(ct.measure)}`} · ${label(ct.row_key)} by ${label(ct.column_key)}`),
+    el("thead", null, el("tr", null, el("th", { scope: "col" }, `${label(ct.row_key)} / ${label(ct.column_key)}`),
+      ...ct.columns.map((c) => el("th", { scope: "col", class: "num" }, c)), el("th", { scope: "col", class: "num" }, "Total"))),
+    el("tbody", null, ...ct.rows.map((r) => el("tr", null, el("th", { scope: "row" }, r.value),
+      ...r.cells.map((n, i) => el("td", { class: "num" }, cell(n, r.value, ct.columns[i]))), el("td", { class: "num" }, el("b", null, cell(r.total, r.value, null)))))),
+    el("tfoot", null, el("tr", null, el("th", { scope: "row" }, "Total"), ...ct.totals.map((n) => el("td", { class: "num" }, String(n))),
+      el("td", { class: "num" }, el("b", null, String(ct.grand)))))));
+}
+
 // visualization: "table", "chart" or "both" (dashboard and slide widgets); compact for widgets.
-function resultView(res, { compact = false, visualization = "both", meta = true } = {}) {
-  const box = el("div", { class: "rep-result" }, meta ? resultMeta(res) : null);
+// onDrill(pairs): open the records behind a chart group or Cross Tab cell (Analysis Style: Drill).
+function resultView(res, { compact = false, visualization = "both", meta = true, onDrill = null } = {}) {
+  const drill = res.analysis === "drill" ? onDrill : null;
+  const box = el("div", { class: `rep-result ${designClass(res.design)}` }, meta ? resultMeta(res) : null);
   box.append(el("p", null, el("strong", null, String(res.total)), ` record${res.total === 1 ? "" : "s"}`,
     res.truncated ? el("span", { class: "muted small" }, ` (first ${res.rows.length} shown)`) : null));
+  if (res.crosstab) {
+    box.append(crossTabView(res, drill));
+    if (!compact && visualization !== "chart") box.append(el("details", { class: "rep-details" }, el("summary", null, "Records"), resultTable(res, 25)));
+    return box;
+  }
   const chart = visualization === "table" ? null : resultChart(res);
   if (chart) box.append(chart);
-  if (visualization !== "chart" || !chart) box.append(resultTable(res, compact ? 5 : 25));
+  if (chart && drill) {
+    box.append(el("div", { class: "ws-flow rep-drills", "aria-label": "Drill into a group" }, ...res.groups.map((g) => el("button", { type: "button",
+      onclick: () => drill([[res.group_by, g.value]]) }, `${g.value} · ${g.count}`))));
+  }
+  if (visualization !== "chart" || !chart) {
+    if (res.sections && !compact) {
+      res.sections.forEach((sec) => box.append(el("section", { class: "rep-section" },
+        el("h4", null, `${(res.columns.find((c) => c.key === res.section_by) || {}).label || res.section_by}: ${sec.value}`, el("span", { class: "ws-caption" }, ` · ${sec.count}`)),
+        resultTable({ ...res, rows: sec.rows }, 25))));
+    } else box.append(resultTable(res, compact ? 5 : 25));
+  }
   return box;
+}
+
+// Print with the report's page layout (portrait or landscape).
+function printReport(design) {
+  const st = el("style", { id: "rep-page-size" }, `@page { size: ${(design && design.page_layout) === "Landscape" ? "landscape" : "portrait"}; }`);
+  document.head.append(st);
+  window.print();
+  setTimeout(() => st.remove(), 1000);
+}
+
+// Drill: run the report again with the chosen values as filters and show the records in a dialog.
+function drillHandler(spec, title) {
+  return async (pairs) => {
+    const filters = [...(spec.filters || []), ...pairs.map(([column, value]) => (value === "(blank)" ? { column, op: "empty" } : { column, op: "eq", value }))];
+    try {
+      const res = await API.post("/api/reporting/run", { ...spec, filters, layout: "table", section_by: null, analysis: "none", group_by: null, chart: null });
+      modal({ title: `${title} · ${pairs.map(([, v]) => v).join(" · ")}`, width: 1000, body: resultView(res) });
+    } catch (err) { toast(err.message, "error"); }
+  };
 }
 
 // ------------------------------------------------------------------ audience (Public to folder users / Private)
@@ -187,7 +246,7 @@ async function publishFields(item, { settings = false } = {}) {
   const browse = el("input", { type: "checkbox", checked: s.show_on_browse ? "1" : null });
   const dash = el("input", { type: "checkbox", checked: s.allow_dashboards ? "1" : null });
   const rows = [
-    { label: "Name", control: name }, { label: "Description", control: desc }, { label: "Folder", control: folder },
+    { label: "Name", control: name }, { label: "Description", control: desc }, { label: "Folder / subfolder", control: folder },
     { label: `${REP_KINDS[item.kind] || "Report"} access`, control: aud.node },
     settings ? { label: "Distribution / export", control: el("div", { class: "ws-inline" }, wsTag("Email"), wsTag("Export"), el("span", { class: "ws-caption" }, "on the active report")) } : null,
     settings ? { label: "Report settings", control: el("div", { class: "ws-inline" }, el("label", null, browse, " Show on Browse"), el("label", null, dash, " Add to dashboards")) } : null,
@@ -215,12 +274,12 @@ async function saveItem(item, body, activate, container) {
 
 // ------------------------------------------------------------------ Report Builder
 
-async function reportBuilder(item) {
+async function reportBuilder(item, startPage = null) {
   const vs = await repViews();
   if (!vs.length) { toast("No data views are available to you", "error"); return; }
   const it = item ? { ...item } : { kind: "report", name: "", description: "", folder: "My Reports", access: "Private", user_ids: [], group_ids: [] };
   const def = it.definition ? { ...it.definition } : { view: null, columns: [], filters: [], period: null, group_by: null, chart: null, sort: null };
-  let page = def.view ? "data" : "report";
+  let page = startPage && (def.view || startPage === "report") ? startPage : def.view ? "data" : "report";
   const f = wsPage({ app: "Report Builder", context: it.name || "New report",
     side: [{ key: "report", label: "Report" }, { key: "data", label: "Data" }, { key: "charts", label: "Charts" }, { key: "design", label: "Design" }, { key: "publish", label: "Publish" }],
     active: page, onSide: (k) => go(k), sideLabel: "Report Builder pages",
@@ -231,11 +290,14 @@ async function reportBuilder(item) {
     view: def.view, columns: def.columns.filter((k) => col(k)),
     filters: (def.filters || []).filter((x) => x.column && (["empty", "not_empty"].includes(x.op) || `${x.value ?? ""}`.trim())),
     period: def.period && (def.period.date_from || def.period.date_to) ? def.period : null,
-    group_by: def.group_by || null, chart: def.group_by ? def.chart || null : null, sort: def.sort || null, sort_desc: !!def.sort_desc,
+    group_by: def.group_by || null, chart: def.group_by && def.layout !== "crosstab" ? def.chart || null : null, sort: def.sort || null, sort_desc: !!def.sort_desc,
+    layout: def.layout || "table", cross_column: def.layout === "crosstab" ? def.cross_column || null : null,
+    measure: def.layout === "crosstab" ? def.measure || null : null, section_by: def.section_by || null,
+    analysis: def.analysis || "none", design: def.design || {},
   });
   const preview = async (box, opts = {}) => {
     clear(box); box.append(loadingState("Running…"));
-    try { const res = await API.post("/api/reporting/run", spec()); clear(box); box.append(resultView(res, opts)); }
+    try { const res = await API.post("/api/reporting/run", spec()); clear(box); box.append(resultView(res, { onDrill: drillHandler(spec(), it.name || "Report"), ...opts })); }
     catch (err) { clear(box); box.append(errorState(err)); }
   };
   function go(k) {
@@ -259,7 +321,9 @@ async function reportBuilder(item) {
       if (sel.value !== def.view) Object.assign(def, { view: sel.value || null, columns: [], filters: [], period: null, group_by: null, chart: null, sort: null });
       paint();
     });
-    f.body.append(wsFieldRows([{ label: "View", control: sel }]), fields);
+    const style = wsSelect([{ value: "none", label: "No Drill" }, { value: "drill", label: "Drill" }], def.analysis || "none", { name: "analysis" });
+    style.addEventListener("change", () => { def.analysis = style.value; });
+    f.body.append(wsFieldRows([{ label: "View", control: sel }, { label: "Analysis Style", control: style }]), fields);
     paint();
   }
   function pageData() {
@@ -337,6 +401,36 @@ async function reportBuilder(item) {
     const desc = el("input", { type: "checkbox", checked: def.sort_desc ? "1" : null });
     sort.addEventListener("change", () => { def.sort = sort.value || null; });
     desc.addEventListener("change", () => { def.sort_desc = desc.checked; });
+    // Layout: Table (with optional Sections) or Cross Tab (rows x columns of counts or sums).
+    const dims = v.columns.filter((c) => c.type !== "number").map((c) => ({ value: c.key, label: c.label }));
+    const layoutBox = el("div");
+    const paintLayout = () => {
+      clear(layoutBox);
+      const layout = wsSelect([{ value: "table", label: "Table" }, { value: "crosstab", label: "Cross Tab" }], def.layout || "table", { "aria-label": "Layout" });
+      layout.addEventListener("change", async () => {
+        if (layout.value === "crosstab" && def.chart) {
+          const ok = await confirmDialog({ title: "Change to Cross Tab", text: "The chart on this report is deleted.", confirmLabel: "Change" });
+          if (!ok.ok) { layout.value = "table"; return; }
+          def.chart = null;
+        }
+        def.layout = layout.value;
+        if (def.layout === "crosstab") { def.group_by = def.group_by || (dims[0] && dims[0].value); def.cross_column = def.cross_column || (dims.find((d) => d.value === "status" && d.value !== def.group_by) || dims.find((d) => d.value !== def.group_by) || {}).value; }
+        paintLayout(); preview(out, { compact: true, meta: false });
+      });
+      const rows = [{ label: "Layout", control: layout }];
+      const pick = (key, opts, label) => {
+        const sel = wsSelect(opts, def[key] || "", { "aria-label": label });
+        sel.addEventListener("change", () => { def[key] = sel.value || null; preview(out, { compact: true, meta: false }); });
+        rows.push({ label, control: sel });
+      };
+      if (def.layout === "crosstab") {
+        pick("group_by", dims, "Rows");
+        pick("cross_column", dims, "Columns");
+        pick("measure", [{ value: "", label: "Count of records" }, ...v.columns.filter((c) => c.type === "number").map((c) => ({ value: c.key, label: `Sum of ${c.label}` }))], "Values");
+      } else pick("section_by", [{ value: "", label: "No sections" }, ...dims], "Sections");
+      layoutBox.append(wsFieldRows(rows));
+    };
+    paintLayout();
     f.body.append(el("div", { class: "rep-builder" },
       wsCard("Field list", search, list),
       el("div", null,
@@ -344,6 +438,7 @@ async function reportBuilder(item) {
         wsCard("Filters", filtersBox),
         wsCard("Period", dates.length ? el("div", { class: "ws-inline" }, pcol, pfrom, pto) : el("span", { class: "ws-caption" }, "This View has no dates")),
         wsCard("Sort", el("div", { class: "ws-inline" }, sort, el("label", null, desc, " Descending"))),
+        wsCard("Layout", layoutBox),
         wsCard("Report preview", out))));
     paintList(); paintCols(); paintFilters();
     preview(out, { compact: true, meta: false });
@@ -352,9 +447,10 @@ async function reportBuilder(item) {
     const v = view();
     f.setCrumb(["Report Builder", "Charts"]);
     f.setHead("Visualize the report data");
+    if (def.layout === "crosstab") { f.body.append(wsNote("Cross Tab reports have no chart. Change the layout to Table on the Data page to add one.")); return; }
     const groupable = v.columns.filter((c) => c.type !== "number");
     const type = wsSelect([{ value: "auto", label: "Auto Chart" }, { value: "bar", label: "Bar" }, { value: "pie", label: "Pie" }, { value: "line", label: "Line" }, { value: "", label: "No chart" }],
-      def.group_by ? def.chart || "auto" : "", { "aria-label": "Chart type" });
+      def.group_by ? def.chart || "auto" : "", { "aria-label": "Select Chart Type" });
     const color = wsSelect([{ value: "", label: "Choose a field" }, ...groupable.map((c) => ({ value: c.key, label: c.label }))], def.group_by || "", { "aria-label": "Color (group by)" });
     const out = el("div");
     const apply = () => {
@@ -364,7 +460,7 @@ async function reportBuilder(item) {
     };
     type.addEventListener("change", apply);
     color.addEventListener("change", apply);
-    f.body.append(wsFieldRows([{ label: "Chart type", control: type }, { label: "Color / group by", control: color }, { label: "Size / value", control: el("span", null, "Record count") }]),
+    f.body.append(wsFieldRows([{ label: "Select Chart Type", control: type }, { label: "Color", control: color }, { label: "Size / Value", control: el("span", null, "Record count") }]),
       wsCard("Chart builder", out));
     preview(out, { visualization: "chart", meta: false });
   }
@@ -373,7 +469,17 @@ async function reportBuilder(item) {
     const out = el("div", { class: "rep-design" });
     f.setHead("Review and format", [
       wsAction("Fit to page", () => out.classList.toggle("fit"), { icon: "arrows-angle-contract" }),
-      wsAction("Print", () => window.print(), { icon: "printer" })]);
+      wsAction("Print", () => printReport(def.design), { icon: "printer" })]);
+    def.design = { font: "Default", size: "Medium", borders: "Rows", align: "Left", page_layout: "Portrait", ...(def.design || {}) };
+    const fmt = (key, opts, label) => {
+      const sel = wsSelect(opts, def.design[key], { "aria-label": label, class: "ws-input compact" });
+      sel.addEventListener("change", () => { def.design[key] = sel.value; preview(out); });
+      return el("label", { class: "rep-fmt" }, el("span", null, label), sel);
+    };
+    f.body.append(el("div", { class: "ws-toolbar rep-format", role: "toolbar", "aria-label": "Formatting" },
+      fmt("font", ["Default", "Serif", "Monospace"], "Font"), fmt("size", ["Small", "Medium", "Large"], "Size"),
+      fmt("borders", ["Rows", "Grid", "None"], "Borders"), fmt("align", ["Left", "Center", "Right"], "Alignment"),
+      fmt("page_layout", ["Portrait", "Landscape"], "Page layout")));
     f.body.append(el("div", { class: "ws-slide rep-page" }, el("h3", null, it.name || "Untitled report"),
       it.description ? el("p", { class: "ws-caption" }, it.description) : null, out));
     preview(out);
@@ -415,21 +521,85 @@ async function openReportItem(id, ctx = {}) {
     }]]) : null;
   const edit = it.can_edit ? wsAction("Edit", () => (it.kind === "report" ? reportBuilder(it) : boardBuilder(it))) : null;
   const email = it.status === "Active" ? wsAction("Email", () => emailDialog(it), { icon: "envelope" }) : null;
+  const broadcast = it.can_edit && it.status === "Active" ? wsAction("Broadcast schedule", () => broadcastPage(it), { icon: "calendar-event" }) : null;
+  const exportDeck = it.kind !== "report" && hasPerm("data.export") ? wsMenu("Export", [
+    ["PowerPoint", () => { window.location.href = `${path}/export/pptx`; }], ["PDF", () => { window.location.href = `${path}/export/pdf`; }]]) : null;
   const actions = it.kind === "report" ? [
     hasPerm("data.export") ? wsMenu("Export Download", [["Excel", () => { window.location.href = `${path}/export?format=xlsx`; }], ["CSV", () => { window.location.href = `${path}/export?format=csv`; }]]) : null,
-    email, it.settings.allow_dashboards || it.can_edit ? wsAction("Add to dashboard", () => addToDashboard(it), { icon: "grid-1x2" }) : null, edit, more]
-    : [it.kind === "presentation" ? wsAction("Present", () => presentSlides(it), { primary: true, icon: "play-fill" }) : null, email, edit, more];
+    email, broadcast, it.settings.allow_dashboards || it.can_edit ? wsAction("Add to dashboard", () => addToDashboard(it), { icon: "grid-1x2" }) : null, edit, more]
+    : [it.kind === "presentation" ? wsAction("Present", () => presentSlides(it), { primary: true, icon: "play-fill" }) : null, exportDeck, email, broadcast, edit, more];
   const f = repFrame(it.kind, { crumb: [{ label: `${REP_KINDS[it.kind]}s`, onClick: () => renderReportsApp(it.kind) }, it.name], title: it.name, actions });
   f.body.append(el("div", { class: "ws-inline rep-tags" }, wsTag(it.status, it.status === "Active" ? "ok" : ""), wsTag(it.access), wsTag(it.folder),
     it.owner ? el("span", { class: "ws-caption" }, `Owner: ${it.owner}`) : null));
   if (it.description) f.body.append(el("p", { class: "ws-caption" }, it.description));
-  if (it.kind === "report") { f.body.append(resultView(it.result)); return; }
+  if (it.kind === "report") { f.body.append(resultView(it.result, { onDrill: drillHandler(it.definition, it.name) })); return; }
   if (it.kind === "dashboard") {
     f.body.append(boardView(it.definition.layout, it.tabs, { ctx, onFilter: (c) => openReportItem(id, c) }));
     return;
   }
   f.body.append(el("div", { class: "ws-thumbs" }, ...it.slides.map((s, i) => el("button", { class: "ws-thumb", type: "button", onclick: () => presentSlides(it, i) },
     el("strong", null, `${i + 1}.`), ` ${s.name}`, el("span", { class: "ws-caption", style: "margin-left:auto" }, `${s.widgets.length} item${s.widgets.length === 1 ? "" : "s"}`)))));
+}
+
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+function broadcastWhen(b) {
+  const hour = `${String(b.hour).padStart(2, "0")}:00`;
+  if (b.frequency === "Daily") return `Daily at ${hour}`;
+  if (b.frequency === "Weekly") return `${WEEKDAY_NAMES[b.weekday]}s at ${hour}`;
+  return `Monthly on day ${b.day_of_month} at ${hour}`;
+}
+
+// Broadcast schedule › Set schedule: send the active item on a timer to people it is shared with.
+async function broadcastPage(it, editing = null) {
+  const f = repFrame(it.kind, { crumb: [{ label: `${REP_KINDS[it.kind]}s`, onClick: () => renderReportsApp(it.kind) },
+    { label: it.name, onClick: () => openReportItem(it.id) }, "Broadcast schedule"], title: "Broadcast schedule" });
+  const [rows, staff, groups] = await Promise.all([safeGet(`/api/reporting/items/${it.id}/broadcasts`, []), repStaff(), repGroups()]);
+  if (rows.length) {
+    f.body.append(dataTable(rows, [
+      { key: "when", label: "When", render: (b) => broadcastWhen(b) },
+      { key: "to", label: "Recipients", render: (b) => `${b.user_ids.length} user${b.user_ids.length === 1 ? "" : "s"}${b.group_ids.length ? `, ${b.group_ids.length} group${b.group_ids.length === 1 ? "" : "s"}` : ""}` },
+      { key: "next_run_at", label: "Next run", render: (b) => (b.next_run_at ? fmtDate(b.next_run_at) : "-") },
+      { key: "last_result", label: "Last run", render: (b) => (b.last_run_at ? `${fmtDate(b.last_run_at)} · ${b.last_result}` : b.last_result || "-") },
+      { key: "active", label: "Status", render: (b) => wsTag(b.active ? "On" : "Paused", b.active ? "ok" : "") },
+      { key: "x", label: "", render: (b) => el("span", { class: "ws-inline" },
+        wsAction("Edit", (e) => { e.stopPropagation(); broadcastPage(it, b); }),
+        wsAction("Delete", async (e) => {
+          e.stopPropagation();
+          const ok = await confirmDialog({ title: "Delete schedule", text: broadcastWhen(b), confirmLabel: "Delete", danger: true });
+          if (!ok.ok) return;
+          try { await API.del(`/api/reporting/broadcasts/${b.id}`); broadcastPage(it); } catch (err) { toast(err.message, "error"); }
+        })) },
+    ], { pageSize: 10 }));
+  }
+  const b = editing || { frequency: "Weekly", weekday: 0, day_of_month: 1, hour: 8, user_ids: [], group_ids: [], message: "", active: true };
+  const freq = wsSelect(["Daily", "Weekly", "Monthly"], b.frequency, { name: "frequency" });
+  const wd = wsSelect(WEEKDAY_NAMES.map((n, i) => ({ value: i, label: n })), b.weekday ?? 0, { name: "weekday", "aria-label": "Day of the week" });
+  const dm = wsSelect(Array.from({ length: 28 }, (_, i) => i + 1), b.day_of_month ?? 1, { name: "day_of_month", "aria-label": "Day of the month" });
+  const hr = wsSelect(Array.from({ length: 24 }, (_, i) => ({ value: i, label: `${String(i).padStart(2, "0")}:00` })), b.hour, { name: "hour", "aria-label": "Time" });
+  const sync = () => { wd.hidden = freq.value !== "Weekly"; dm.hidden = freq.value !== "Monthly"; };
+  freq.addEventListener("change", sync);
+  sync();
+  const pick = (list, chosen, label) => el("fieldset", { class: "ws-list-pick" }, el("legend", { class: "ws-caption" }, label),
+    ...list.map((r) => el("label", { class: "check" }, el("input", { type: "checkbox", value: String(r.id), checked: chosen.includes(r.id) ? "1" : null }), ` ${r.name}`)));
+  const users = pick(staff.filter((u) => u.id !== state.user.id), b.user_ids, "Users");
+  const gs = pick(groups, b.group_ids, "Groups");
+  const msg = wsText(b.message, { name: "message", rows: "2", maxlength: "2000" });
+  const on = el("input", { type: "checkbox", checked: b.active ? "1" : null });
+  const ids = (box) => [...box.querySelectorAll("input:checked")].map((x) => Number(x.value));
+  const box = el("div", null, wsFieldRows([
+    { label: "Frequency", control: el("div", { class: "ws-inline" }, freq, wd, dm, hr) },
+    { label: "Recipients", control: el("div", { class: "ws-grid" }, users, gs) },
+    { label: "Message", control: msg }, { label: "Active", control: el("label", { class: "check" }, on, " Send on schedule") }]));
+  box.append(wsToolbar(editing ? wsAction("Cancel", () => broadcastPage(it)) : null, wsAction("Set schedule", async () => {
+    const body = { frequency: freq.value, weekday: freq.value === "Weekly" ? Number(wd.value) : null, day_of_month: freq.value === "Monthly" ? Number(dm.value) : null,
+      hour: Number(hr.value), user_ids: ids(users), group_ids: ids(gs), message: msg.value, active: on.checked };
+    try {
+      if (editing) await API.put(`/api/reporting/broadcasts/${editing.id}`, body); else await API.post(`/api/reporting/items/${it.id}/broadcasts`, body);
+      toast("Schedule saved"); broadcastPage(it);
+    } catch (err) { wsShowErrors(box, err); }
+  }, { primary: true })));
+  f.body.append(wsCard(editing ? "Edit schedule" : "Set schedule", box));
 }
 
 async function emailDialog(it) {
@@ -481,8 +651,14 @@ function widgetBody(w) {
   if (w.type === "text") return el("div", { class: "pre" }, w.text || "");
   if (w.type === "image") return w.image ? el("img", { src: w.image, alt: w.title || "Image" }) : el("span", { class: "ws-caption" }, "No image");
   if (w.type === "filter") return el("span", { class: "ws-caption" }, w.filter === "period" ? "Period filter" : "Project filter");
+  if (w.type === "video") return w.video_id ? el("video", { class: "rep-video", controls: "1", preload: "metadata", src: `/api/reporting/media/${w.video_id}` }) : el("span", { class: "ws-caption" }, "No video");
   if (w.error) return el("p", { class: "ws-caption" }, w.error);
-  if (w.result) return resultView(w.result, { compact: true, visualization: w.visualization, meta: false });
+  if (w.result) {
+    const onDrill = async (pairs) => {
+      try { const r = await API.get(`/api/reporting/items/${w.report_id}`); drillHandler(r.definition, r.name)(pairs); } catch (err) { toast(err.message, "error"); }
+    };
+    return resultView(w.result, { compact: true, visualization: w.visualization, meta: false, onDrill });
+  }
   return loadingState();
 }
 
@@ -579,8 +755,8 @@ function createBoardPage(kind) {
   const theme = wsSelect([{ value: "Default", label: "Select a theme (optional)" }, ...REP_THEMES.filter((t) => t !== "Default").map((t) => ({ value: t, label: t }))], "Default", { name: "theme" });
   const choices = el("div", { class: "ws-grid add-choices" });
   const paintChoices = () => choices.replaceChildren(
-    wsChoiceSel("Dashboard Canvas", "Flexible placement of reports, filters, text and images.", layout === "canvas", () => { layout = "canvas"; paintChoices(); }),
-    wsChoiceSel("Static layout", "Prearranged structure with simpler placement.", layout === "static", () => { layout = "static"; paintChoices(); }));
+    wsChoiceSel("Dashboard Canvas", "Flexible placement of reports, filters, text and images.", layout === "canvas", () => { layout = "canvas"; paintChoices(); }, "Select canvas"),
+    wsChoiceSel("Static layout", "Prearranged structure with simpler placement.", layout === "static", () => { layout = "static"; paintChoices(); }, "Select layout"));
   if (dash) paintChoices();
   const box = el("div", null, wsFieldRows([{ label: dash ? "Dashboard name" : "Presentation name", control: name },
     dash ? { label: "Choose Layout", control: choices } : { label: "Theme", control: theme }]));
@@ -593,8 +769,9 @@ function createBoardPage(kind) {
   f.body.append(box);
 }
 
-function wsChoiceSel(title, text, on, onclick) {
+function wsChoiceSel(title, text, on, onclick, action = null) {
   const b = wsChoice(title, text, onclick);
+  if (action) b.append(el("span", { class: "ws-action", "aria-hidden": "true" }, on ? `✓ ${action}` : action));
   b.classList.add("add-choice");
   if (on) { b.classList.add("on"); b.setAttribute("aria-pressed", "true"); } else b.setAttribute("aria-pressed", "false");
   return b;
@@ -602,7 +779,7 @@ function wsChoiceSel(title, text, on, onclick) {
 
 // ------------------------------------------------------------------ Dashboard Builder / Present Builder
 
-async function boardBuilder(item) {
+async function boardBuilder(item, opts = {}) {
   const dash = item.kind === "dashboard";
   const it = { ...item };
   const def = JSON.parse(JSON.stringify(it.definition));
@@ -611,7 +788,7 @@ async function boardBuilder(item) {
   const layout = dash ? def.layout : "canvas";
   let cur = 0;
   let sel = null;
-  let panel = dash ? "reports" : "slides";
+  let panel = opts.panel || (dash ? "reports" : "slides");
   const undo = []; const redo = [];
   const snap = () => { undo.push(JSON.stringify(pages)); if (undo.length > 50) undo.shift(); redo.length = 0; };
   const restore = (from, to) => {
@@ -625,9 +802,10 @@ async function boardBuilder(item) {
   const results = {};
   const app = dash ? "Dashboard Builder" : "Present Builder";
   const side = [...(dash ? [] : [{ key: "slides", label: "Slides" }]), { key: "reports", label: "Reports" }, ...(dash ? [{ key: "filters", label: "Filters" }] : []),
-    { key: "text", label: "Text" }, { key: "images", label: dash ? "Images" : "Images / Video" }, { key: "properties", label: "Properties" }];
+    { key: "text", label: "Text" }, { key: "images", label: dash ? "Images" : "Images / Video" }, { key: "properties", label: "Properties" },
+    { key: "preview", label: "Preview Mode" }];
   const f = wsPage({ app, context: it.name, side, active: panel, sideLabel: `${app} panels`,
-    onSide: (k) => { panel = k; f.setActive(k); paintPanel(); },
+    onSide: (k) => { if (k === "preview") { previewMode(); return; } panel = k; f.setActive(k); paintPanel(); },
     util: [{ label: "Close", icon: "x-lg", onClick: () => openReportItem(it.id) }] });
   const head = () => f.setHead(null, [
     wsAction("Undo", () => restore(undo, redo), { icon: "arrow-counterclockwise", disabled: !undo.length }),
@@ -683,6 +861,28 @@ async function boardBuilder(item) {
     if (w.type !== "report" || !w.report_id) return;
     if (!results[w.report_id]) results[w.report_id] = (await runWidgets([w]))[0];
   }
+  // Drag the corner to resize: width in columns of the 12-column grid, height in rows. Shift+arrows resize too.
+  function resizeHandle(w, i) {
+    const h = el("span", { class: "ws-resize", role: "separator", "aria-label": "Resize widget", title: "Drag to resize", draggable: "false" });
+    h.addEventListener("mousedown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const r = canvas.getBoundingClientRect();
+      const colW = r.width / 12;
+      const start = { x: e.clientX, y: e.clientY, w: w.w, h: w.h };
+      const node = h.parentElement;
+      node.setAttribute("draggable", "false");
+      snap();
+      const move = (ev) => {
+        w.w = Math.max(1, Math.min(12 - w.x, start.w + Math.round((ev.clientX - start.x) / colW)));
+        w.h = Math.max(1, Math.min(20, start.h + Math.round((ev.clientY - start.y) / 50)));
+        placeWidget(node, w, layout);
+      };
+      const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); sel = i; paint(); };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+    return h;
+  }
   function paintCanvas() {
     clear(canvas);
     canvas.style.gridAutoRows = layout === "static" ? "" : "40px";
@@ -691,13 +891,18 @@ async function boardBuilder(item) {
       const node = el("div", { class: `ws-widget${i === sel ? " sel" : ""}`, tabindex: "0", draggable: "true", "aria-label": `${w.type} widget`,
         onclick: () => { sel = i; panel = "properties"; f.setActive("properties"); paint(); } },
       el("div", { class: "ws-widget-tools" }, iconBtn("x-lg", "Remove widget", (e) => { e.stopPropagation(); snap(); page().widgets.splice(i, 1); sel = null; paint(); })),
+      layout === "static" ? null : resizeHandle(w, i),
       el("b", { class: "ws-card-t" }, w.title || (r && r.title) || (w.type === "filter" ? (w.filter === "period" ? "Period" : "Project") : w.type === "report" ? "Report" : "")),
       r ? widgetBody({ ...w, result: r.result, error: r.error }) : widgetBody(w));
       node.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/widget", String(i)));
       node.addEventListener("keydown", (e) => {
         if (e.target !== node) return;
         const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-        if (moves[e.key]) { e.preventDefault(); snap(); w.x = Math.max(0, Math.min(12 - w.w, w.x + moves[e.key][0])); w.y = Math.max(0, w.y + moves[e.key][1]); sel = i; paint(); node.focus(); }
+        if (moves[e.key] && e.shiftKey && layout !== "static") {
+          e.preventDefault(); snap();
+          w.w = Math.max(1, Math.min(12 - w.x, w.w + moves[e.key][0])); w.h = Math.max(1, Math.min(20, w.h + moves[e.key][1]));
+          sel = i; paint();
+        } else if (moves[e.key]) { e.preventDefault(); snap(); w.x = Math.max(0, Math.min(12 - w.w, w.x + moves[e.key][0])); w.y = Math.max(0, w.y + moves[e.key][1]); sel = i; paint(); node.focus(); }
         if (e.key === "Delete") { snap(); page().widgets.splice(i, 1); sel = null; paint(); }
       });
       placeWidget(node, w, layout);
@@ -738,7 +943,7 @@ async function boardBuilder(item) {
         }))));
       },
       reports: () => {
-        const q = wsInput("", { type: "search", placeholder: "Search reports", "aria-label": "Search reports" });
+        const q = wsInput("", { type: "search", placeholder: dash ? "Search reports" : "Search content", "aria-label": dash ? "Search reports" : "Search content" });
         const list = el("div", { class: "ws-list-pick" });
         const vis = wsSelect([{ value: "both", label: "Table and chart" }, { value: "chart", label: "Chart" }, { value: "table", label: "Table" }], "both", { "aria-label": "Visualization" });
         const fill = () => {
@@ -752,9 +957,17 @@ async function boardBuilder(item) {
         fill();
         pal.append(wsCard("Report widgets", q, vis, list));
       },
-      filters: () => pal.append(wsCard("Filter widget", ...[["project", "Project"], ["period", "Period"]].map(([k, l]) => draggable(
-        wsRow(el("span", null, el("span", { class: "ws-drag", "aria-hidden": "true" }, "⋮⋮ "), l), wsAction("Add", () => addWidget({ type: "filter", filter: k, w: 4 }))),
-        { type: "filter", filter: k, w: 4 })))),
+      filters: () => {
+        const kind = wsSelect([{ value: "project", label: "Project (all projects)" }, { value: "period", label: "Period" }], "project", { "aria-label": "Filter" });
+        pal.append(wsCard("Filter widget", ...[["project", "Project", "All projects ▾"], ["period", "Period", "From – to ▾"]].map(([k, l, hint]) => draggable(
+          wsRow(el("span", null, el("span", { class: "ws-drag", "aria-hidden": "true" }, "⋮⋮ "), el("b", null, l), el("span", { class: "ws-caption" }, hint)), wsAction("Add", () => addWidget({ type: "filter", filter: k, w: 4 }))),
+          { type: "filter", filter: k, w: 4 })),
+        el("div", { class: "ws-inline" }, kind, wsAction("+ Filter", () => addWidget({ type: "filter", filter: kind.value, w: 4 }), { primary: true }))));
+        const t = wsText("", { rows: "3", maxlength: "10000", "aria-label": "Text", placeholder: "Purpose: summarize open findings and assurance progress for the committee." });
+        const drag = el("div", { class: "ws-thumb", draggable: "true" }, el("span", { class: "ws-drag", "aria-hidden": "true" }, "⋮⋮"), "Drag text to canvas");
+        drag.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/new-widget", JSON.stringify({ type: "text", text: t.value })));
+        pal.append(wsCard("Text widget", t, drag));
+      },
       text: () => {
         const t = wsText("", { rows: "5", maxlength: "10000", "aria-label": "Text" });
         const drag = el("div", { class: "ws-thumb", draggable: "true" }, el("span", { class: "ws-drag", "aria-hidden": "true" }, "⋮⋮"), "Drag text to canvas");
@@ -772,6 +985,20 @@ async function boardBuilder(item) {
           rd.readAsDataURL(fl);
         });
         pal.append(wsCard("Image widget", file, el("span", { class: "ws-caption" }, "PNG, JPEG, GIF or WebP, up to 300 KB")));
+        if (!dash) {
+          const vf = el("input", { type: "file", accept: "video/mp4,video/webm", "aria-label": "Video file" });
+          const status = el("span", { class: "ws-caption" }, "MP4 or WebM");
+          vf.addEventListener("change", async () => {
+            const fl = vf.files[0];
+            if (!fl) return;
+            const form = new FormData();
+            form.append("file", fl);
+            status.textContent = "Uploading…";
+            try { const m = await API.upload("/api/reporting/media", form); addWidget({ type: "video", video_id: m.id, title: m.filename.slice(0, 200), w: 8, h: 5 }); status.textContent = "MP4 or WebM"; }
+            catch (err) { status.textContent = "MP4 or WebM"; toast(err.message, "error"); }
+          });
+          pal.append(wsCard("Video widget", vf, status));
+        }
       },
       properties: () => {
         const p = page();
@@ -826,7 +1053,9 @@ async function boardBuilder(item) {
       const ran = await Promise.all(pages.map(async (p) => ({ ...p, widgets: await runWidgets(p.widgets, ctx) })));
       m.replaceChildren(boardView(layout, ran, { ctx, onFilter: (c) => { ctx = c; run(); } }));
     };
-    const dlg = modal({ title: `Preview Mode · ${it.name}`, width: 1150, body: m, footer: wsToolbar(wsAction("Exit", () => dlg.close(), { primary: true })) });
+    const dlg = modal({ title: `Preview Mode · ${it.name}`, width: 1150, body: m, footer: wsToolbar(
+      wsAction("Test filters", () => { const c = m.querySelector(".ws-canvas select, .ws-canvas input"); if (c) c.focus(); else toast("Add a Project or Period filter widget to test filters", "error"); }),
+      wsAction("Exit", () => dlg.close(), { primary: true })) });
     run();
   }
   async function publishPage() {
@@ -843,6 +1072,8 @@ async function boardBuilder(item) {
     pg.body.append(box);
   }
   paint();
+  if (opts.publish) publishPage();
+  else if (opts.preview) previewMode();
 }
 
 // ------------------------------------------------------------------ AI Reporting

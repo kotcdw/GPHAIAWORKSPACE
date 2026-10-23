@@ -1,4 +1,4 @@
-"""Workflow API: the "My work" inbox, record transition history and actions, SLA policies."""
+"""Workflow API: the "Projects" inbox, record transition history and actions, SLA policies."""
 
 from __future__ import annotations
 
@@ -79,6 +79,15 @@ def _my_items(db: DBSession, user: User) -> list[dict]:
                     "audit_title": None, "audit_ref": None, "opened_at": t.created_at.isoformat(),
                     "due_at": t.due_date.isoformat() if t.due_date else None, "sla_state": state,
                     "priority": "normal", "link": {"type": "task", "id": t.id}})
+    from app.platform.collaboration.router import open_mentions
+
+    for m in open_mentions(db, user):
+        out.append({"id": f"m{m['mention_id']}", "source": "mention", "kind": "mention", "label": "Mention",
+                    "group": "respond", "title": f"{m['author']}: {m['body']}", "record_type": m["record_type"],
+                    "record_id": m["record_id"], "audit_id": m["audit_id"], "audit_title": None,
+                    "audit_ref": m["ref"], "opened_at": m["at"].isoformat(), "due_at": None, "sla_state": "none",
+                    "priority": "normal", "link": {"type": m["record_type"], "id": m["record_id"], "comments": True},
+                    "mention_id": m["mention_id"]})
     far = datetime.max.isoformat()
     out.sort(key=lambda i: (i["due_at"] or far, i["opened_at"]))
     return out

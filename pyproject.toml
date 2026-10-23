@@ -1,7 +1,7 @@
 [project]
 name = "gpha-audit-workspace"
 version = "0.1.0"
-description = "GPHA Audit Workspace - enterprise audit management system (FastAPI + MySQL)"
+description = "GPHA INTERNAL AUDIT WORKSPACE - enterprise audit management system (FastAPI + MySQL)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -11,6 +11,7 @@ dependencies = [
     "cryptography>=44",
     "email-validator>=2.3.0",
     "fastapi>=0.143.0",
+    "fpdf2>=2.8",
     "itsdangerous>=2.2.0",
     "ldap3>=2.9.1",
     "openpyxl>=3.1.5",
@@ -19,6 +20,7 @@ dependencies = [
     "pymysql>=1.1.0",
     "python-docx>=1.1",
     "python-multipart>=0.0.32",
+    "python-pptx>=1.0",
     "sqlalchemy>=2.1.4",
     "uvicorn[standard]>=0.54.0",
 ]

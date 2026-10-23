@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
@@ -30,6 +30,7 @@ from app.platform.customfields.router import clean_values
 from app.platform.organizations.models import Organization
 from app.platform.organizations.schemas import (
     DeactivateRequest,
+    DeleteRequest,
     EntityLite,
     OrganizationCreate,
     OrganizationList,
@@ -129,16 +130,48 @@ def _one(db: DBSession, o: Organization) -> OrganizationOut:
     return _out(o, Index(db))
 
 
-def _check_category(category: str | None, current: str | None = None) -> str | None:
+def _check_category(category: str | None, current: str | None = None, *, db: DBSession | None = None,
+                    user: User | None = None) -> str | None:
     if category is None or category.strip() == "":
         return None
     if current is not None and category.strip() == current:
         return current  # a type retired from the list stays valid on records that already use it
     allowed = cfg("organization_categories")
     match = next((c for c in allowed if c.lower() == category.strip().lower()), None)
-    if match is None:
+    if match is not None:
+        return match
+    from app.core.permissions import has_perm
+
+    if db is None or user is None or not has_perm(user, "system.reference"):
         raise field_error("category", f"must be one of the configured entity types: {', '.join(allowed)}")
-    return match
+    return _add_category(db, user, category)
+
+
+def _add_category(db: DBSession, user: User, category: str) -> str:
+    """A type typed into the unit form by someone who manages reference data joins the configured entity types and
+    the Org Structure types (Configuration > Organizations), with the change in the configuration history."""
+    from app.core.appconfig import AppConfig, AppConfigHistory
+    from app.core.appconfig import invalidate as invalidate_config
+
+    name = " ".join(category.split())[:60]
+    if len(name) < 2:
+        raise field_error("category", "type at least 2 characters for a new type")
+    for key in ("organization_categories", "org_structure_categories"):
+        old = list(cfg(key))
+        if any(c.lower() == name.lower() for c in old):
+            continue
+        new = [*old, name]
+        row = db.get(AppConfig, key)
+        if row is None:
+            db.add(AppConfig(key=key, value=json.dumps(new), updated_by=user.id))
+        else:
+            row.value, row.updated_by = json.dumps(new), user.id
+        db.add(AppConfigHistory(key=key, action="update", old_value=json.dumps(old), new_value=json.dumps(new),
+                                reason=f"New type '{name}' added from the unit form", changed_by=user.id,
+                                changed_by_name=user.full_name or user.username))
+    db.flush()
+    invalidate_config()
+    return name
 
 
 def _check_parent(db: DBSession, org_id: int | None, parent_id: int | None) -> int | None:
@@ -247,7 +280,7 @@ def create_organization(
     db: DBSession = Depends(get_db),
     user: User = WriteOrg,
 ) -> OrganizationOut:
-    category = _check_category(payload.category)
+    category = _check_category(payload.category, db=db, user=user)
     parent_id = _check_parent(db, None, payload.parent_id)
     custom = clean_values(db, "organizations", payload.custom_fields)
     org = Organization(
@@ -307,7 +340,7 @@ def update_organization(
         org.contact_email = str(payload.contact_email)
         changes.append("contact_email")
     if "category" in sent:
-        org.category = _check_category(payload.category, org.category)
+        org.category = _check_category(payload.category, org.category, db=db, user=user)
         changes.append("category")
     if "parent_id" in sent and payload.parent_id != org.parent_id:  # forms resend the parent unchanged
         org.parent_id = _check_parent(db, org.id, payload.parent_id)
@@ -346,29 +379,92 @@ def update_organization(
     return _one(db, org)
 
 
+def _delete_check(
+    db: DBSession, org: Organization, idx: Index, with_subunits: bool
+) -> tuple[list[int], list[str], int]:
+    """What deleting ``org`` would remove: the unit ids, what blocks it, and how many process mappings go with it.
+
+    Audits, workplaces, auditable entities and enterprise risk assessments are never removed silently: they block
+    the delete until someone moves or edits them."""
+    from app.domains.assurance.planning.models import EntityUnit
+    from app.domains.assurance.universe.models import EntityOrgUnit, ProcessOrgUnit
+    from app.domains.grc.risk.models import RiskSegmentAssessment
+
+    below = idx.descendants(org.id)
+    ids = [org.id, *below] if with_subunits else [org.id]
+    blockers: list[str] = []
+    if below and not with_subunits:
+        blockers.append(f"{len(below)} unit(s) sit under it: move them, or delete them with it")
+    audits = db.execute(select(func.count()).select_from(Audit).where(
+        Audit.organization_id.in_(ids) | Audit.port_entity_id.in_(ids))).scalar_one()
+    if audits:
+        blockers.append(f"{audits} audit(s) name it: audits are kept as evidence")
+    people = db.execute(select(func.count()).select_from(User).where(User.work_entity_id.in_(ids))).scalar_one()
+    if people:
+        blockers.append(f"{people} person(s) have it as their workplace: move them first")
+    codes = db.execute(select(EntityUnit.code).join(EntityOrgUnit, EntityOrgUnit.entity_id == EntityUnit.id)
+                       .where(EntityOrgUnit.org_id.in_(ids)).distinct()).scalars().all()
+    if codes:
+        shown = ", ".join(sorted(codes)[:5]) + ("…" if len(codes) > 5 else "")
+        blockers.append(f"Auditable entities use it ({shown}): edit those entities first")
+    risks = db.execute(select(func.count()).select_from(RiskSegmentAssessment)
+                       .where(RiskSegmentAssessment.org_id.in_(ids))).scalar_one()
+    if risks:
+        blockers.append(f"{risks} enterprise risk assessment(s) are recorded for it")
+    mapped = db.execute(select(func.count()).select_from(ProcessOrgUnit)
+                        .where(ProcessOrgUnit.org_id.in_(ids))).scalar_one()
+    return ids, blockers, mapped
+
+
 @router.delete("/{org_id}", response_model=MessageOut)
 def delete_organization(
     org_id: int,
     request: Request,
+    payload: DeleteRequest | None = Body(default=None),
     db: DBSession = Depends(get_db),
     user: User = AdminOrg,
 ) -> MessageOut:
+    from app.core import permissions as perms
+    from app.core.security import verify_password
+    from app.domains.assurance.universe.models import UniverseReview
+
     org = _get_or_404(db, org_id)
-    ensure_deletable(db, "organization", org, allowed_statuses=("Pending",))
-    if db.execute(select(func.count()).select_from(Audit).where(Audit.organization_id == org.id)).scalar_one():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Organization is referenced by audits")
-    if db.execute(select(func.count()).select_from(Organization).where(Organization.parent_id == org.id)).scalar_one():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail="Move or delete the entities under this one first")
-    if db.execute(select(func.count()).select_from(User).where(User.work_entity_id == org.id)).scalar_one():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                            detail="People have this unit as their workplace: move them first, or deactivate the unit")
-    ref = org.org_ref
-    db.delete(org)
-    log_record_history(db, record_type="organization", record_id=org_id, user_id=user.id, action=f"DELETED {ref}")
-    log_action(db, user_id=user.id, action=f"ORG_DELETE id={org_id} ref={ref}", request=request)
+    payload = payload or DeleteRequest()
+    superadmin = perms.has_perm(user, "system.superadmin")
+    if not superadmin:
+        # Administrators: an empty pending unit only; anything approved or e-signed is kept for the audit trail.
+        ensure_deletable(db, "organization", org, allowed_statuses=("Pending",))
+        if payload.with_subunits:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="Only a Super Administrator deletes a unit together with its sub-units")
+    ids, blockers, mapped = _delete_check(db, org, Index(db), payload.with_subunits and superadmin)
+    if blockers:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="; ".join(blockers))
+    if superadmin and len(payload.reason.strip()) < 5:
+        raise field_error("reason", "say why the unit is deleted (at least 5 characters)")
+    if superadmin and not verify_password(payload.password, user.password_hash):
+        db.rollback()
+        log_action(db, user_id=user.id, request=request, commit=True,
+                   action=f"ORG_DELETE_FAILED wrong_password id={org.id}", entity_type="organization",
+                   entity_id=org.id)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password verification failed")
+    rows = sorted((db.get(Organization, i) for i in ids), key=lambda o: o.id != org.id)
+    refs = [o.org_ref for o in rows]
+    reason = f" reason={payload.reason.strip()!r}" if superadmin else ""
+    for o in reversed(rows):  # sub-units first, the unit last
+        db.execute(UniverseReview.__table__.delete().where(UniverseReview.object_type == "unit",
+                                                           UniverseReview.object_id == o.id))
+        oid, ref, status_was = o.id, o.org_ref, o.status.value
+        db.delete(o)
+        db.flush()
+        log_record_history(db, record_type="organization", record_id=oid, user_id=user.id,
+                           action=f"DELETED {ref} (was {status_was}){reason}")
+    extra = f" sub-units={','.join(refs[1:])}" if len(refs) > 1 else ""
+    log_action(db, user_id=user.id, action=f"ORG_DELETE id={org_id} ref={refs[0]}{extra} "
+                                           f"process_mappings={mapped}{reason}", request=request)
     db.commit()
-    return MessageOut(message=f"Organization {ref} deleted")
+    more = f" and {len(refs) - 1} sub-unit(s)" if len(refs) > 1 else ""
+    return MessageOut(message=f"Organization {refs[0]}{more} deleted")
 
 
 @router.post("/{org_id}/copy", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
@@ -569,6 +665,9 @@ def organization_overview(org_id: int, db: DBSession = Depends(get_db), user: Us
         User.id.in_({h.user_id for h in hist if h.user_id} | ({org.deactivated_by} if org.deactivated_by else set()))
     )).scalars()} if hist or org.deactivated_by else {}
     reference = perms.has_perm(user, "system.reference")
+    superadmin = perms.has_perm(user, "system.superadmin")
+    check = _delete_check(db, org, idx, False) if superadmin else None
+    check_all = _delete_check(db, org, idx, True) if superadmin else None
     return {
         "unit": _out(org, idx).model_dump(mode="json"),
         "path": path,
@@ -589,5 +688,8 @@ def organization_overview(org_id: int, db: DBSession = Depends(get_db), user: Us
             "approve": user.role == Role.Admin and org.status == OrganizationStatus.Pending and org.is_active,
             "delete": user.role == Role.Admin and org.status == OrganizationStatus.Pending and not people
                       and audit_total == 0 and not kids,
+            "superdelete": superadmin,
         },
+        "delete_check": {"blockers": check[1], "with_subunits_blockers": check_all[1], "subunits": len(subtree) - 1,
+                         "process_mappings": check_all[2]} if superadmin else None,
     }

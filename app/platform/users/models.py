@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -47,6 +47,10 @@ class User(Base):
     work_entity_id: Mapped[int | None] = mapped_column(
         ForeignKey("organizations.id", ondelete="SET NULL", use_alter=True, name="fk_users_work_entity"), nullable=True
     )
+    # Preferred language for the person's own screens (empty = the workspace language).
+    locale: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # The person's own home pad: screen keys in order, as JSON (empty = the organisation's default).
+    home_pad: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
@@ -59,3 +63,19 @@ class User(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<User id={self.id} username={self.username!r} role={self.role.value}>"
+
+
+class UserInvitation(Base):
+    """An e-mailed invitation to activate an account. Only the SHA-256 of the link token is stored; a link works
+    once, until it expires, and is replaced when the invitation is sent again."""
+
+    __tablename__ = "user_invitations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -1,4 +1,4 @@
-// My work: one inbox of everything waiting for the signed-in person, across every audit.
+// Projects: one inbox of everything waiting for the signed-in person, across every audit.
 // Items come from the workflow engine (prepare, review, respond, validate...) plus the person's to-dos.
 
 const MYWORK_TABS = [
@@ -30,6 +30,8 @@ function slaChip(item) {
 
 function openWorkItem(item) {
   const l = item.link || {};
+  // A mention opens the record with its comments.
+  if (l.comments) return Promise.resolve(openLink(l.type, l.id)).then(() => openComments(l.type, l.id));
   if (l.type === "audit" && l.id) return openAudit(l.id, l.tab || null);
   if (l.type === "task") return navigate("tasks");
   return openLink(l.type, l.id);
@@ -51,7 +53,7 @@ async function renderMyWork() {
   const msg = el("div");
   const refresh = el("button", { class: "btn small secondary", type: "button", onclick: () => renderMyWork() },
     el("i", { class: "bi bi-arrow-clockwise" }), " Refresh");
-  viewRoot.append(viewHeader("My work", refresh), msg);
+  viewRoot.append(viewHeader("Projects", refresh), msg);
   viewRoot.append(loadingState("Loading your work…"));
   let data;
   try { data = await API.get("/api/my-work"); }
@@ -60,12 +62,6 @@ async function renderMyWork() {
   refreshMyWorkCount();
   const all = data.items;
   const c = data.counts;
-
-  viewRoot.append(el("div", { class: "stats" },
-    stat(c.total, "Open", "waiting for you"),
-    stat(c.overdue, "Overdue", c.overdue ? "past their due date" : "nothing late", c.overdue ? "danger" : "ok"),
-    stat(c.due_soon, "Due soon", "inside the warning window", c.due_soon ? "warn" : ""),
-    stat(c.due_week, "Due in 7 days", "including overdue")));
 
   const audits = [...new Map(all.filter((i) => i.audit_id).map((i) => [i.audit_id, i])).values()]
     .sort((a, b) => (a.audit_ref || "").localeCompare(b.audit_ref || ""));
@@ -84,7 +80,7 @@ async function renderMyWork() {
     ...[["", "Any due date"], ["overdue", "Overdue"], ["week", "Due in 7 days"]].map(([v, l]) =>
       el("option", { value: v, selected: f.due === v ? "1" : null }, l)));
   dueSel.addEventListener("change", () => { f.due = dueSel.value; paint(); });
-  const search = el("input", { type: "search", class: "compact", placeholder: "Search", "aria-label": "Search my work", value: f.q });
+  const search = el("input", { type: "search", class: "compact", placeholder: "Search", "aria-label": "Search projects", value: f.q });
   search.addEventListener("input", () => { f.q = search.value; paint(); });
   viewRoot.append(tabs, el("div", { class: "toolbar mywork-toolbar" }, auditSel, dueSel, search));
 
@@ -109,7 +105,7 @@ async function renderMyWork() {
         ? el("span", null, el("span", { class: "ref" }, i.audit_ref), " ", el("span", { class: "muted small" }, (i.audit_title || "").slice(0, 40)))
         : el("span", { class: "muted" }, "-")) },
       { key: "opened_at", label: "Waiting since", render: (i) => fmtDate(i.opened_at).split(",")[0] },
-    ], { onRow: openWorkItem, pageSize: 25, exportName: "my-work.csv",
+    ], { onRow: openWorkItem, pageSize: 25, exportName: "projects.csv",
       emptyText: all.length ? "Nothing matches these filters." : "Nothing is waiting for you. New work appears here as soon as it is assigned or handed to you." }));
   }
   paint();
@@ -132,7 +128,7 @@ const MYWORK_ICONS = {
   prepare: "pencil-square", review: "check2-circle", review_paper: "file-earmark-check", answer_note: "chat-left-text",
   clear_note: "chat-left-dots", provide_evidence: "upload", accept_evidence: "inbox", review_report: "file-earmark-text",
   approve_report: "patch-check", respond_finding: "reply", implement_action: "tools", validate_action: "shield-check",
-  task: "check2-square",
+  task: "check2-square", mention: "at",
 };
 
 // ------------------------------------------------------------------ Configuration > SLA time limits

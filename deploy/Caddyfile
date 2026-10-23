@@ -1,4 +1,4 @@
-# HTTPS front door for the GPHA Internal Audit Workspace (Caddy 2).
+# HTTPS front door for the GPHA INTERNAL AUDIT WORKSPACE (Caddy 2).
 # Caddy terminates TLS and forwards to the app on the same server.
 #
 # 1. Install Caddy (single executable, Windows or Linux): https://caddyserver.com

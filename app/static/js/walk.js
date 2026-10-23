@@ -81,6 +81,8 @@ function wsFrame({ app, context = null, util = [], side = [], active = null, onS
   const work = el("main", { class: "ws-work" }, crumbs, head);
   const body = el("div", { class: "ws-body" });
   work.append(body);
+  const wt = typeof WT_APPS !== "undefined" ? WT_APPS[app] : null;
+  if (wt) util = [...util, { label: "Walkthrough", icon: "signpost-split", onClick: () => openWalkthrough(WT.key && WT.panel ? WT.key : wt, WT.key === wt && WT.panel ? WT.step : 0) }];
   const top = el("div", { class: "ws-top" },
     el("div", { class: "ws-top-l" }, el("span", { class: "ws-app" }, app), context ? el("span", { class: "ws-ctx" }, context) : null),
     el("div", { class: "ws-top-r" }, ...util.filter(Boolean).map((u) => el("button", { class: "ws-util", type: "button", onclick: u.onClick },
@@ -89,7 +91,7 @@ function wsFrame({ app, context = null, util = [], side = [], active = null, onS
   let current = active;
   function paintNav() {
     clear(nav);
-    side.forEach((s) => nav.append(el("button", { type: "button", class: `ws-nav${s.key === current ? " on" : ""}`, "aria-current": s.key === current ? "page" : null,
+    side.forEach((s) => nav.append(el("button", { type: "button", class: `ws-nav${s.key === current ? " on" : ""}${s.link ? " ws-nav-link" : ""}${s.first ? " ws-nav-first" : ""}`, "aria-current": s.key === current ? "page" : null,
       onclick: () => { if (onSide) onSide(s.key); } }, s.label, s.count ? el("span", { class: "count-pill" }, String(s.count)) : null)));
   }
   function setCrumb(parts) {
@@ -121,6 +123,15 @@ function wsPage(opts) {
     side = hostTabsAllowed(g).map(([v, label]) => ({ key: v, label }));
     onSide = (k) => navigate(k);
     active = state.view;
+  } else if (side && g && opts.hubLinks) {
+    // An app home with its own sections: the hub's other apps follow them as links.
+    const have = new Set(side.map((s) => s.label.toLowerCase()));
+    const links = hostTabsAllowed(g).filter(([v, label]) => v !== state.view && !have.has(label.toLowerCase()));
+    if (links.length) {
+      const own = onSide;
+      side = [...side, ...links.map(([v, label], i) => ({ key: `@${v}`, label, link: true, first: i === 0 }))];
+      onSide = (k) => (String(k).startsWith("@") ? navigate(k.slice(1)) : own && own(k));
+    }
   }
   const f = wsFrame({ ...opts, side: side || [], onSide, active });
   viewRoot.append(f.root);

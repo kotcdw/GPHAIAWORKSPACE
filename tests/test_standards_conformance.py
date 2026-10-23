@@ -223,7 +223,7 @@ def test_every_member_declares_and_rotation_and_cooling_off_are_flagged(client, 
 # ------------------------------------------------------------------ 5. risk acceptance escalation
 
 
-def test_high_risk_acceptance_goes_to_the_committee(client, client2, db):
+def test_high_risk_acceptance_is_decided_by_the_gm_audit(client, client2, db):
     raiser = _u(db, "sc_ra_aud", job="auditor")
     proposer = _u(db, "sc_ra_mgr", job="manager")
     cae = _u(db, "sc_ra_cae", job="manager", level=ReviewLevel.CAE)
@@ -245,25 +245,14 @@ def test_high_risk_acceptance_goes_to_the_committee(client, client2, db):
     with TestClient(app) as c3:
         ch = csrf_headers(login(c3, cae.username))
         agreed = c3.post(f"/api/capa/{cid}/risk-acceptance/decision", json=decision, headers=ch).json()
-        assert agreed["risk_acceptance_status"] == "Committee" and agreed["status"] != "Closed"
-        queue = c3.get("/api/committee/for-decision").json()
-        assert any(q["id"] == cid and any("Risk acceptance" in r for r in q["reasons"]) for q in queue)
-        m = c3.post("/api/committee/meetings", json={"meeting_date": utcnow().isoformat(), "meeting_type": "Ordinary"},
-                    headers=ch)
-        assert m.status_code == 201, m.text
-        mid = m.json()["id"]
-        held = c3.patch(f"/api/committee/meetings/{mid}", json={"status": "Held", "attendees": "Members"}, headers=ch)
-        assert held.status_code == 200, held.text
-        closed = c3.post(f"/api/committee/meetings/{mid}/decisions", json={
-            "subject_type": "capa", "subject_id": cid, "decision": "Accept risk", "notes": "Accepted until 2028."},
-            headers=ch)
-        assert closed.status_code == 201, closed.text
+        # The GM Audit's agreement closes the action (no Audit Committee referral).
+        assert agreed["risk_acceptance_status"] == "Accepted" and agreed["status"] == "Closed"
     db.rollback()
     capa = db.get(Capa, cid)
     assert capa.status.value == "Closed" and capa.implementation_status == "Risk Accepted"
     assert capa.risk_acceptance_status == "Accepted"
     kinds = [e["kind"] for e in client.get(f"/api/capa/{cid}/timeline").json()]
-    assert kinds.count("risk_proposed") == 2 and kinds[-1] == "risk_accepted"
+    assert kinds.count("risk_proposed") == 1 and kinds[-1] == "risk_accepted"
 
 
 def test_staff_directory_is_for_audit_staff(client, client2, db):

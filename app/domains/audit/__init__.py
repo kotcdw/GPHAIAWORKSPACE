@@ -20,6 +20,7 @@ MODULES = {
     "proficiency": "Independence and ethics declarations, CPD and certifications",
     "fieldwork": "Workplan procedures, walkthroughs and testing rounds (HighBond project workflows)",
     "frameworks": "Frameworks and the standard controls library used to build control matrices",
+    "topical": "IIA Topical Requirements: applicability per engagement, checklists and conformance",
 }
 
 
@@ -44,10 +45,11 @@ def routers() -> list:
     from app.domains.audit.reports.distribution import router as report_distribution
     from app.domains.audit.reports.router import router as reports
     from app.domains.audit.service_feedback.router import router as service_feedback
+    from app.domains.audit.topical.router import router as topical
 
     # report_distribution before reports: /api/reports/register must win over /api/reports/{id}.
     # issue_tracker before findings: /api/findings/register must win over /api/findings/{id}.
     # fieldwork_extras before audits: /api/audits/status-tracker must win over /api/audits/{id}.
     return [fieldwork_extras, signoffs, audits, issue_tracker, findings, working_papers, service_feedback, rcm,
             rcm_copying, fieldwork, report_distribution,
-            reports, lifecycle, memos, capacity, methodology, programs, evidence, proficiency, frameworks]
+            reports, lifecycle, memos, capacity, methodology, programs, evidence, proficiency, frameworks, topical]

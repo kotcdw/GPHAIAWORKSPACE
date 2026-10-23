@@ -1,4 +1,4 @@
-# GPHA Internal Audit Workspace - step 3: run the app as a Windows service (starts with the server,
+# GPHA INTERNAL AUDIT WORKSPACE - step 3: run the app as a Windows service (starts with the server,
 # restarts itself after a failure). Uses NSSM (https://nssm.cc - a single nssm.exe).
 #
 # Run in an ADMINISTRATOR PowerShell:
@@ -29,8 +29,8 @@ New-Item -ItemType Directory -Force -Path "$app\logs" | Out-Null
 
 & $Nssm install $ServiceName $uv "run --no-dev uvicorn app.main:app --host 127.0.0.1 --port $Port --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header"
 & $Nssm set $ServiceName AppDirectory $app
-& $Nssm set $ServiceName DisplayName "GPHA Internal Audit Workspace"
-& $Nssm set $ServiceName Description "GPHA Internal Audit Workspace (FastAPI on 127.0.0.1:$Port)"
+& $Nssm set $ServiceName DisplayName "GPHA INTERNAL AUDIT WORKSPACE"
+& $Nssm set $ServiceName Description "GPHA INTERNAL AUDIT WORKSPACE (FastAPI on 127.0.0.1:$Port)"
 & $Nssm set $ServiceName Start SERVICE_AUTO_START
 & $Nssm set $ServiceName AppStdout "$app\logs\service.log"
 & $Nssm set $ServiceName AppStderr "$app\logs\service.log"

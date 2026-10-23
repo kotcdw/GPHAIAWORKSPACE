@@ -1,4 +1,4 @@
-// GPHA Internal Audit Workspace - reporting, follow-up, notifications and two-step verification.
+// GPHA INTERNAL AUDIT WORKSPACE - reporting, follow-up, notifications and two-step verification.
 //
 // Loaded after planning.js and before app.js; uses helpers from api.js, forms.js
 // and app.js (el, badge, modal, toast, openForm, eSignModal, viewHeader ...) at call time.
@@ -219,7 +219,7 @@ function renderCapaFollowup(panel, c, refresh) {
       el("dt", null, "Target date"), el("dd", null, fmtDate(c.due_date).split(",")[0],
         extended ? el("span", { class: "muted small" }, ` (originally ${fmtDate(c.original_due_date).split(",")[0]}; revised ${c.extension_count} time${c.extension_count === 1 ? "" : "s"})`) : null)));
   }
-  const RISK_STEP = { Proposed: "Risk acceptance proposed - awaiting the GM Audit. ", Committee: "Risk acceptance agreed by the GM Audit - awaiting the Audit Committee. ",
+  const RISK_STEP = { Proposed: "Risk acceptance proposed - awaiting the GM Audit. ",
     Accepted: "Closed - risk accepted. " };
   if (c.risk_acceptance && RISK_STEP[c.risk_acceptance_status]) {
     card.append(el("div", { class: "callout warn" }, el("i", { class: "bi bi-shield-exclamation" }),
@@ -267,7 +267,7 @@ function capaManageActions(card, c, refresh) {
   if (c.status !== "Closed" && c.due_date) {
     btns.append(el("button", { class: "btn small secondary", onclick: () => capaReviseDateForm(c, refresh) }, el("i", { class: "bi bi-calendar-plus" }), " Revise target date"));
   }
-  if (c.status !== "Closed" && c.created_by !== state.user.id && !["Proposed", "Committee"].includes(c.risk_acceptance_status)) {
+  if (c.status !== "Closed" && c.created_by !== state.user.id && c.risk_acceptance_status !== "Proposed") {
     btns.append(el("button", { class: "btn small secondary", onclick: () => capaRiskProposalForm(c, refresh) }, el("i", { class: "bi bi-shield-exclamation" }), " Propose risk acceptance"));
   }
   if (c.status === "Closed") {
@@ -539,7 +539,6 @@ async function openLink(type, id) {
     if (type === "audit_report") { const r = await API.get(`/api/reports/${id}`); return openAudit(r.audit_id, "report"); }
     if (type === "finding") { const f = await API.get(`/api/findings/${id}`); return openAudit(f.audit_id, "findings"); }
     if (type === "capa") return openRecord("capa", id);
-    if (type === "report_item") return openReportItem(id);
     if (type === "assurance_plan") return openPlan(id);
     if (type === "task") return navigate("tasks");
     if (type === "erm_risk") return openRisk(id);
@@ -711,7 +710,7 @@ const CONFIG_EXTRA = [
 ];
 
 const CONFIG_WORKFLOW = [
-  { key: "@sla", name: "SLA time limits", icon: "stopwatch", desc: "Working days allowed per task in My work", render: (c) => renderSlaPoliciesCard(c) },
+  { key: "@sla", name: "SLA time limits", icon: "stopwatch", desc: "Working days allowed per task in Projects", render: (c) => renderSlaPoliciesCard(c) },
 ];
 
 const cfgSummary = (r, v) => {
@@ -801,6 +800,9 @@ async function renderConfiguration(focusKey = null) {
   }).filter((c) => c.sections.length);
   categories.push({ name: "Workflow", sections: CONFIG_WORKFLOW });
   sections.push(...CONFIG_WORKFLOW);
+  const method = [{ key: "@topical", name: "Topical requirements", icon: "journal-check", desc: "IIA Topical Requirements and their checklists", render: (c) => renderTopicalCatalogueCard(c) }];
+  categories.push({ name: "Methodology", sections: method });
+  sections.push(...method);
   categories.push({ name: "Custom fields", sections: CONFIG_EXTRA });
   sections.push(...CONFIG_EXTRA);
   if (hasPerm("system.technical", "system.config")) {
@@ -1106,89 +1108,6 @@ async function renderClosureCard(container, audit, canClose) {
     el("div", null, el("span", null, c.label), !c.required && !c.ok ? el("span", { class: "muted small" }, " (not required by configuration)") : null,
       c.detail ? el("div", { class: "muted small" }, c.detail) : null)))));
   if (!res.ready && canClose) card.append(null);
-}
-
-// ==================================================================== Audit Committee pack
-
-async function renderCommittee(year = null, tab = state.committeeTab || "pack") {
-  state.committeeTab = tab;
-  const committeeTabs = () => tabBar([{ key: "pack", label: "Reporting pack" }, { key: "meetings", label: "Meetings & decisions" }], tab,
-    (k) => renderCommittee(year, k));
-  if (tab === "meetings") {
-    clear(viewRoot);
-    viewRoot.append(viewHeader("Audit Committee", null), committeeTabs());
-    const b = el("div");
-    viewRoot.append(b);
-    renderCommitteeMeetings(b);
-    return;
-  }
-  clear(viewRoot);
-  const msg = el("div");
-  let s;
-  try { s = await API.get(`/api/committee/summary${year ? `?fiscal_year=${year}` : ""}`); }
-  catch (err) { viewRoot.append(viewHeader("Audit Committee pack"), msg); notify(msg, err.message, "error"); return; }
-  const yearSel = el("select", { class: "compact", "aria-label": "Fiscal year" },
-    ...(s.fiscal_years.length ? s.fiscal_years : [s.plan.fiscal_year]).map((y) => el("option", { value: y, selected: y === s.plan.fiscal_year ? "1" : null }, `FY${y}`)));
-  yearSel.addEventListener("change", () => renderCommittee(Number(yearSel.value)));
-  viewRoot.append(viewHeader("Audit Committee pack", [yearSel,
-    el("a", { class: "btn small", href: `/api/committee/pack.docx?fiscal_year=${s.plan.fiscal_year}` }, el("i", { class: "bi bi-file-earmark-word" }), " Download Word pack")],
-  { sub: `Prepared ${fmtDate(s.generated_at)}` }), committeeTabs(), msg);
-
-  const p = s.plan;
-  const a = s.actions;
-  const openTotal = Object.values(s.open_findings_by_rating).reduce((x, y) => x + y, 0);
-  viewRoot.append(el("div", { class: "stats" },
-    stat(`${p.completed_pct}%`, "Plan completed", p.plan_ref ? `${p.engagements} engagements in ${p.plan_ref}` : "no plan this year", p.completed_pct >= 75 ? "ok" : ""),
-    stat(s.reports_issued.length, "Reports issued", Object.entries(s.ratings).map(([k, v]) => `${v} ${k}`).join(" · ") || "none yet"),
-    stat(openTotal, "Open findings", `${s.open_findings_by_rating.High || 0} high risk`, (s.open_findings_by_rating.High || 0) ? "danger" : ""),
-    stat(a.overdue, "Overdue actions", `${a.with_cae} with the CAE · ${a.for_committee || 0} for this Committee`, a.overdue ? "danger" : "ok")));
-  viewRoot.append(el("div", { class: `callout ${p.committee_meeting_date ? "ok" : "warn"}` }, el("i", { class: "bi bi-patch-check" }),
-    el("div", null, p.committee_meeting_date
-      ? `The FY${p.fiscal_year} plan was approved by the Audit Committee on ${fmtDate(p.committee_meeting_date).split(",")[0]} (ref ${p.committee_reference}).`
-      : `Audit Committee approval of the FY${p.fiscal_year} plan is not yet recorded (open the Assurance Plan to record it).`)));
-
-  const bars = (obj, tone = () => "") => {
-    const max = Math.max(1, ...Object.values(obj));
-    return el("div", { class: "hbars" }, ...Object.entries(obj).map(([k, v]) => el("div", { class: "hbar" },
-      el("span", { class: "hbar-label" }, k),
-      el("span", { class: "hbar-track" }, el("span", { class: `hbar-fill ${tone(k)}`.trim(), style: `width:${Math.round((v / max) * 100)}%` })),
-      el("span", { class: "hbar-val" }, String(v)))));
-  };
-  const riskTone = (k) => ({ High: "danger", Medium: "warn", Low: "ok" }[k] || "");
-  const ageTone = (k) => (k.startsWith("Over") ? "danger" : (k.startsWith("91") ? "warn" : ""));
-  const two = el("div", { class: "two-cols" });
-  viewRoot.append(two);
-  two.append(panel("Plan delivery by stage", Object.keys(p.by_stage).length ? bars(p.by_stage) : el("div", { class: "empty" }, "No engagements.")),
-    panel("Agreed actions", el("dl", { class: "kv" },
-      el("dt", null, "Open"), el("dd", null, String(a.open)),
-      el("dt", null, "Overdue"), el("dd", null, String(a.overdue)),
-      el("dt", null, "Awaiting validation"), el("dd", null, String(a.awaiting_validation)),
-      el("dt", null, "Reopened after validation"), el("dd", null, String(a.reopened)),
-      el("dt", null, "Closed"), el("dd", null, String(a.closed)))));
-  const two2 = el("div", { class: "two-cols" });
-  viewRoot.append(two2);
-  two2.append(panel("Open findings by risk", bars(s.open_findings_by_rating, riskTone)),
-    panel("Open findings by age", bars(s.open_findings_by_age, ageTone)));
-
-  viewRoot.append(panel("Reports issued", dataTable(s.reports_issued, [
-    { key: "report_ref", label: "Report", render: (r) => el("span", { class: "ref" }, r.report_ref) },
-    { key: "title", label: "Title" },
-    { key: "rating", label: "Overall rating", render: (r) => (r.rating ? el("span", { class: `rating rating-${r.rating.toLowerCase().replace(/\s+/g, "-")}` }, r.rating) : "-") },
-    { key: "issued_at", label: "Issued", render: (r) => fmtDate(r.issued_at).split(",")[0] },
-  ], { onRow: (r) => openAudit(r.audit_id, "report"), exportName: `reports-issued-FY${p.fiscal_year}.csv`, emptyText: "No reports issued yet." })));
-  viewRoot.append(panel("Most overdue actions", dataTable(s.top_overdue, [
-    { key: "capa_ref", label: "Action", render: (r) => el("span", { class: "ref" }, r.capa_ref) },
-    { key: "title", label: "Description" },
-    { key: "owner", label: "Owner", render: (r) => r.owner || "-" },
-    { key: "days_overdue", label: "Days overdue", num: true },
-    { key: "escalated_to", label: "Escalated to", render: (r) => badge(r.escalated_to) },
-  ], { onRow: (r) => openRecord("capa", r.id), exportName: `overdue-actions-FY${p.fiscal_year}.csv`, emptyText: "No overdue actions." })));
-  viewRoot.append(panel("Changes to the approved plan", dataTable(s.plan_changes || [], [
-    { key: "date", label: "Date" },
-    { key: "type", label: "Change", render: (c) => badge(c.type) },
-    { key: "description", label: "What changed" },
-    { key: "reason", label: "Reason" },
-  ], { exportName: `plan-changes-FY${p.fiscal_year}.csv`, emptyText: "No changes since the plan was approved." })));
 }
 
 // ==================================================================== exit meeting (GIAS 15.1)

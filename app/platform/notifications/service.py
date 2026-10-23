@@ -77,6 +77,13 @@ def notify_many(db: DBSession, user_ids: Iterable[int | None], title: str, body:
     return sent
 
 
+def queue_email(db: DBSession, to: str, subject: str, text: str) -> None:
+    """Send one e-mail after the caller's transaction commits (skipped when e-mail is not set up)."""
+    if email_enabled() and to:
+        footer = f"- {settings.app_name} (automatic message, do not reply)"
+        db.info.setdefault(_PENDING, []).append((to, subject, f"{text}\n\n{footer}"))
+
+
 def user_ids_with_level(db: DBSession, *levels: ReviewLevel) -> list[int]:
     return list(
         db.execute(

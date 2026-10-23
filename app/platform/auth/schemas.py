@@ -63,6 +63,8 @@ class ProfileUpdate(BaseModel):
     full_name: str | None = Field(default=None, max_length=255)
     # Where the user is based (an entity, normally a port); send null to clear.
     work_entity_id: int | None = None
+    # Preferred language (one of the workspace languages); empty = the workspace language.
+    locale: str | None = Field(default=None, max_length=20)
 
 
 class PasswordChange(BaseModel):

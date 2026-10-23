@@ -1,6 +1,5 @@
-// GPHA Audit Workspace - roles & responsibilities: permission-aware navigation, the Roles & permissions
-// matrix (Platform Administrator), audit programmes (Audit Administrator), evidence requests (auditors and
-// auditees), the governance portal (Audit Committee) and the port portfolio (PIA / GM Audit).
+// GPHA INTERNAL AUDIT WORKSPACE - roles & responsibilities: permission-aware navigation, the Roles & permissions
+// matrix (Platform Administrator), audit programmes (Audit Administrator), evidence requests (auditors and auditees).
 // Loaded after entities.js and before app.js.
 
 function hasPerm(...perms) {
@@ -10,8 +9,8 @@ function hasPerm(...perms) {
 function isCommittee() { return state.user && state.user.role === "Committee"; }
 
 // Views a Committee (read-only governance) account may open.
-const COMMITTEE_VIEWS = ["portal", "dashboard", "governance", "portfolio", "committee", "analytics", "qaip", "profile"];
-const CONFIG_PERMS = ["system.config", "system.workflow", "system.reference", "method.reporting", "method.audit_types", "method.plan_config", "grc.manage", "governance.charter"];
+const COMMITTEE_VIEWS = ["portal", "dashboard", "analytics", "qaip", "profile"];
+const CONFIG_PERMS = ["system.config", "system.workflow", "system.reference", "method.reporting", "method.audit_types", "method.plan_config", "method.library", "grc.manage", "governance.charter"];
 
 const GRC_VIEW_PERMS = ["grc.view", "grc.manage", "grc.risk", "grc.compliance", "grc.policy", "grc.policy_approve", "grc.assets"];
 
@@ -21,15 +20,13 @@ function viewAllowed(view) {
   const rules = {
     roles: ["system.roles", "system.users"],
     configuration: CONFIG_PERMS,
-    governance: ["governance.view", "oversight.reporting", "oversight.portfolio"],
-    portfolio: ["oversight.port", "oversight.portfolio", "governance.view"],
     programs: null,
     platform: ["system.technical", "system.config"],
     automations: ["system.automation"],
     apps: ["system.superadmin"],
     risk: GRC_VIEW_PERMS, compliance: GRC_VIEW_PERMS, policies: GRC_VIEW_PERMS, assets: GRC_VIEW_PERMS,
   };
-  if (["programs", "practice", "library", "scheduler", "issues", "activity", "reports", "orgstructure", "processes", "riskassess", "statustracker", "results", "robots", "audittypes", "universe", "universe_units", "universe_processes", "universe_entities", "universe_assurance"].includes(view)) return state.user.role !== "Auditee";
+  if (["programs", "practice", "library", "scheduler", "issues", "orgstructure", "processes", "riskassess", "statustracker", "results", "robots", "audittypes", "universe", "universe_units", "universe_processes", "universe_entities", "universe_assurance"].includes(view)) return state.user.role !== "Auditee";
   if (view === "logs" || view === "backups") return hasPerm("system.technical");
   if (view === "imports") return hasPerm("system.users", "system.reference", "method.library", "followup.manage", "grc.risk");
   if (view === "users") return hasPerm("system.users");
@@ -54,6 +51,7 @@ function applyNavPermissions() {
 // ==================================================================== Roles & permissions
 
 async function renderRolesPage(tab = state.rolesTab || "matrix") {
+  if (!["matrix", "modules"].includes(tab)) tab = "matrix";
   state.rolesTab = tab;
   clear(viewRoot);
   const msg = el("div");
@@ -62,18 +60,7 @@ async function renderRolesPage(tab = state.rolesTab || "matrix") {
   const canEdit = cat.can_edit;
   viewRoot.append(viewHeader("Roles & permissions"), msg);
 
-  // Compact role tiles: name, people and permissions; the full description is on hover.
-  viewRoot.append(el("div", { class: "role-tiles" }, ...cat.roles.map((r) => el("div", { class: `role-tile role-${r.code}`, title: r.description },
-    el("span", { class: "role-icon" }, el("i", { class: `bi bi-${r.icon}` })),
-    el("div", { class: "role-tile-text" },
-      el("strong", null, r.name, r.locked ? el("i", { class: "bi bi-lock-fill role-lock", title: "Fixed: always every permission" }) : null),
-      el("span", { class: "muted small role-counts" },
-        el("span", { title: `${r.users} active user${r.users === 1 ? "" : "s"}` }, el("i", { class: "bi bi-person", "aria-hidden": "true" }), ` ${r.users}`),
-        el("span", { title: `${r.permissions.length} permissions` }, el("i", { class: "bi bi-key", "aria-hidden": "true" }), ` ${r.permissions.length}`))),
-    r.customised ? el("span", { class: "cfg-dot", title: "Changed from the standard permissions" }) : null))));
-
-  viewRoot.append(tabBar([{ key: "matrix", label: "Permission matrix" }, { key: "modules", label: "Access by module" }, { key: "people", label: "People by role" }], tab, (k) => renderRolesPage(k)));
-  if (tab === "people") return rolesPeople(cat);
+  viewRoot.append(tabBar([{ key: "matrix", label: "Permission matrix" }, { key: "modules", label: "Access by module" }], tab, (k) => renderRolesPage(k)));
   if (tab === "modules") return renderAccessMatrix();
 
   const work = Object.fromEntries(cat.roles.map((r) => [r.code, new Set(r.permissions)]));
@@ -120,23 +107,10 @@ async function renderRolesPage(tab = state.rolesTab || "matrix") {
       body, el("tfoot", null, saveRow)))));
 }
 
-function rolesPeople(cat) {
-  const wrap = el("div", { class: "two-cols" });
-  cat.roles.forEach((r) => {
-    const list = el("div", { class: "member-list" });
-    if (!r.members.length) list.append(el("p", { class: "muted small" }, "Nobody has this role."));
-    r.members.forEach((m) => list.append(el("div", { class: `member-row ${m.active ? "" : "inactive"}` },
-      el("div", { class: "pi-main" }, el("strong", null, m.name), el("div", { class: "muted small" }, [m.username, m.approval_level ? approvalLabel(m.approval_level) : null, m.active ? null : "inactive"].filter(Boolean).join(" · "))),
-      cat.can_assign && m.id !== state.user.id ? el("div", { class: "member-actions" }, roleAssignControls({ id: m.id, username: m.username, job_role: r.code, review_level: m.approval_level }, cat, () => renderRolesPage("people"))) : null)));
-    wrap.append(panel(`${r.name} (${r.members.length})`, list));
-  });
-  viewRoot.append(wrap);
-}
-
 const APPROVAL_LEVELS = [["Unit Head", "Unit Head"], ["Manager", "Audit Manager"], ["PIA", "PIA"], ["CAE", "GM Audit (CAE)"]];
 function approvalLabel(v) { const f = APPROVAL_LEVELS.find(([k]) => k === v); return f ? f[1] : v; }
 
-// Role and approval-level controls for one user (used on Roles & permissions and in user management).
+// Role and approval-level controls for one user (Users & access).
 function roleAssignControls(u, cat, onChanged) {
   const options = cat.roles.map((r) => ({ code: r.code, name: r.name, assignable: cat.can_appoint_admins || !["super_admin", "admin"].includes(r.code) }));
   const blocked = !cat.can_appoint_admins && ["super_admin", "admin"].includes(u.job_role);
@@ -369,77 +343,6 @@ function evidenceDetail(r, onDone) {
   m = modal({ title: `${r.request_ref} · ${r.title}`, body, footer, width: 720 });
 }
 
-// ==================================================================== Governance portal
-
-async function renderGovernance() {
-  clear(viewRoot);
-  const msg = el("div");
-  viewRoot.append(viewHeader("Governance portal", null), msg);
-  let g;
-  try { g = await API.get("/api/governance/overview"); } catch (err) { notify(msg, err.message, "error"); return; }
-  const k = g.kpis;
-  viewRoot.append(el("div", { class: "stats" },
-    stat(`${k.plan_completion_pct}%`, "Current plan completed"),
-    stat(k.reports_issued, "Reports issued"),
-    stat(k.open_findings, "Open findings", `${k.open_high_findings} high / critical`, k.open_high_findings ? "warn" : ""),
-    stat(k.open_actions, "Open remediation actions"),
-    stat(k.overdue_actions, "Overdue actions", null, k.overdue_actions ? "danger" : ""),
-    stat(`${k.actions_closed_on_time_pct}%`, "Actions closed on time")));
-  viewRoot.append(panel("Approved Assurance Plans", g.plans.length ? el("div", null, ...g.plans.map((p) => el("details", { class: "table-toggle", open: p === g.plans[0] ? "1" : null },
-    el("summary", null, el("strong", null, `FY${p.fiscal_year} · ${p.title}`), " ", badge(p.status),
-      el("span", { class: "muted small" }, ` · ${p.completed}/${p.total} completed${p.committee_reference ? ` · Committee approval ${p.committee_reference}` : ""}`)),
-    dataTable(p.engagements, [
-      { key: "title", label: "Engagement" }, { key: "planned_quarter", label: "Quarter" },
-      { key: "budget_hours", label: "Budget (h)", num: true }, { key: "status", label: "Status", render: (e) => badge(e.status) }],
-    { pageSize: 50 }))))
-    : el("div", { class: "empty" }, "No approved plan yet.")));
-  viewRoot.append(panel("Issued audit reports", dataTable(g.reports, [
-    { key: "report_ref", label: "Ref", render: (r) => el("span", { class: "ref" }, r.report_ref) },
-    { key: "title", label: "Report" },
-    { key: "rating", label: "Opinion", render: (r) => (r.rating ? badge(r.rating) : "-") },
-    { key: "issued_at", label: "Issued", render: (r) => fmtDate(r.issued_at) },
-    { key: "findings", label: "Findings", render: (r) => Object.entries(r.findings).map(([x, n]) => `${n} ${x}`).join(" · ") || "-" },
-    { key: "id", label: "", render: (r) => el("div", { class: "actions end" },
-      el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/export.docx` }, el("i", { class: "bi bi-file-earmark-word" }), " Word"),
-      el("a", { class: "btn small secondary", href: `/api/reports/${r.id}/print`, target: "_blank", rel: "noopener" }, el("i", { class: "bi bi-printer" }), " Print")) },
-  ], { exportName: "issued-reports.csv", emptyText: "No reports issued yet." })));
-}
-
-// ==================================================================== Port portfolio
-
-async function renderPortfolio() {
-  clear(viewRoot);
-  const msg = el("div");
-  viewRoot.append(viewHeader("Port portfolio", null), msg);
-  let rows;
-  try { rows = await API.get("/api/portfolio/ports"); } catch (err) { notify(msg, err.message, "error"); return; }
-  const detail = el("div");
-  viewRoot.append(el("div", { class: "card" }, dataTable(rows, [
-    { key: "port_name", label: "Port" },
-    { key: "audits", label: "Audits", num: true },
-    { key: "audits_by_status", label: "By status", render: (r) => Object.entries(r.audits_by_status).map(([s, n]) => `${n} ${s}`).join(" · ") || "-" },
-    { key: "open_findings", label: "Open findings", num: true },
-    { key: "open_high_findings", label: "High / critical", num: true },
-    { key: "open_actions", label: "Open actions", num: true },
-    { key: "overdue_actions", label: "Overdue", num: true, render: (r) => el("span", { class: r.overdue_actions ? "text-danger" : null }, String(r.overdue_actions)) },
-    { key: "reports_issued", label: "Reports issued", num: true },
-  ], { onRow: (r) => (r.port_id ? showPort(r.port_id, detail) : null), exportName: "port-portfolio.csv", emptyText: "No ports configured - mark an entity type as a port in Configuration." })), detail);
-  if (rows.length === 1 && rows[0].port_id) showPort(rows[0].port_id, detail);
-}
-
-async function showPort(portId, holder) {
-  clear(holder);
-  let p;
-  try { p = await API.get(`/api/portfolio/ports/${portId}`); } catch (err) { toast(err.message, "error"); return; }
-  holder.append(panel(`${p.port_name}: audits`, dataTable(p.audits_list, [
-    { key: "id", label: "Ref", render: (a) => el("span", { class: "ref" }, `AUD-${String(a.id).padStart(4, "0")}`) },
-    { key: "title", label: "Audit" }, { key: "audit_type", label: "Type", render: (a) => a.audit_type || "-" },
-    { key: "status", label: "Status", render: (a) => badge(a.status) }, { key: "open_findings", label: "Open findings", num: true },
-  ], { onRow: isCommittee() ? null : (a) => openAudit(a.id), emptyText: "No audits for this port yet." })));
-  holder.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-
 // Access by module: who may view, create, edit, approve, export and configure each part of the workspace.
 async function renderAccessMatrix() {
   const host = el("div", { class: "card" });
@@ -448,28 +351,55 @@ async function renderAccessMatrix() {
   let m;
   try { m = await API.get("/api/roles/matrix"); } catch (err) { clear(host); host.append(errorState(err, () => renderRolesPage("modules"))); return; }
   clear(host);
-  const ACT = { view: "View", create: "Create", edit: "Edit", approve: "Approve / sign", export: "Export", configure: "Configure" };
+  const ACT = { view: "View", create: "Create", edit: "Edit", approve: "Approve / sign", export: "Export", configure: "Configure", delete: "Delete" };
+  // The Super Administrator changes a role's access cell by cell; the Super Administrator's own column is fixed.
+  const canEdit = hasPerm("system.superadmin");
   let role = state.matrixRole && m.roles.some((r) => r.code === state.matrixRole) ? state.matrixRole : m.roles[0].code;
   const sel = el("select", { class: "compact", "aria-label": "Role" }, ...m.roles.map((r) => el("option", { value: r.code, selected: r.code === role ? "1" : null }, r.name)));
   const table = el("div");
+  const hint = el("p", { class: "muted small am-hint" });
   host.append(el("div", { class: "card-head" }, el("h3", null, "Access by module"), el("label", { class: "inline-row" }, el("span", { class: "muted small" }, "Role "), sel)),
-    table);
+    hint, table);
+  const roleCode = (code) => (code === "manager_cae" ? "manager" : code);  // the GM Audit level is the Manager role
+  const ACT_NAME = (a) => ACT[a].toLowerCase();
+  const toggle = async (r, a, allow) => {
+    const body = { module: r.module, action: a, allowed: allow };
+    let pv;
+    try { pv = await API.put(`/api/roles/${roleCode(role)}/access`, { ...body, preview: true }); } catch (err) { toast(err.message, "error"); return; }
+    if (pv.changes.length) {
+      const also = pv.changes.map((c) => `${c.module}: ${ACT_NAME(c.action)} ${c.allowed ? "allowed" : "removed"}`);
+      const ok = await confirmDialog({ title: `${allow ? "Allow" : "Remove"} ${ACT_NAME(a)} on ${r.module}?`, confirmLabel: allow ? "Allow" : "Remove",
+        danger: !allow, text: `The same permission also controls: ${also.join("; ")}.` });
+      if (!ok.ok) return;
+    }
+    try {
+      const res = await API.put(`/api/roles/${roleCode(role)}/access`, body);
+      m = res.matrix;
+      toast(`${ACT[a]} on ${r.module} ${allow ? "allowed" : "removed"}`);
+      paint();
+    } catch (err) { toast(err.message, "error"); }
+  };
   const paint = () => {
     clear(table);
+    const editable = canEdit && role !== "super_admin";
+    hint.textContent = editable ? "Click a cell to allow or remove that action for this role. People in the role get the change at their next request."
+      : role === "super_admin" ? "The Super Administrator always has every right, so the workspace can never be locked out." : "";
     table.append(el("div", { class: "table-wrap" }, el("table", { class: "access-matrix" },
-      el("thead", null, el("tr", null, el("th", null, "Module"), ...m.actions.map((a) => el("th", { class: "center" }, ACT[a])), el("th", null, "Delete"))),
+      el("thead", null, el("tr", null, el("th", null, "Module"), ...m.actions.map((a) => el("th", { class: "center" }, ACT[a])))),
       el("tbody", null, ...m.rows.map((r) => el("tr", { class: "no-click" },
         el("th", { scope: "row" }, r.module),
         ...m.actions.map((a) => {
           const c = r.cells[a];
           if (!c.permissions.length) return el("td", { class: "center muted", title: "Not applicable" }, "–");
           const yes = c.roles.includes(role);
-          const why = c.permissions.map((p) => (p === "tier:staff" ? "every internal audit account" : p === "tier:all" ? "every account" : (m.labels[p] || p))).join("; ");
-          return el("td", { class: `center ${yes ? "am-yes" : "am-no"}`, title: `Granted by: ${why}` },
-            el("i", { class: `bi ${yes ? "bi-check-circle-fill" : "bi-x-circle"}`, "aria-hidden": "true" }),
-            el("span", { class: "sr-only" }, yes ? "Allowed" : "Not allowed"));
-        }),
-        el("td", { class: "center" }, el("i", { class: "bi bi-info-circle am-info", title: r.delete, "aria-label": r.delete, tabindex: "0" }))))))));
+          const why = (a === "delete" ? `${r.delete}. Follows: ` : "") + c.permissions.map((p) => (p === "tier:staff" ? "every internal audit account" : p === "tier:all" ? "every account" : (m.labels[p] || p))).join("; ");
+          const icon = el("i", { class: `bi ${yes ? "bi-check-circle-fill" : "bi-x-circle"}`, "aria-hidden": "true" });
+          const label = `${r.module}: ${ACT[a]} ${yes ? "allowed" : "not allowed"}`;
+          if (!editable) return el("td", { class: `center ${yes ? "am-yes" : "am-no"}`, title: `Granted by: ${why}` }, icon, el("span", { class: "sr-only" }, yes ? "Allowed" : "Not allowed"));
+          return el("td", { class: `center ${yes ? "am-yes" : "am-no"}` },
+            el("button", { class: "am-cell", type: "button", title: `${yes ? "Remove" : "Allow"} · granted by: ${why}`, "aria-label": `${label}. ${yes ? "Remove" : "Allow"}`,
+              "aria-pressed": yes ? "true" : "false", onclick: () => toggle(r, a, !yes) }, icon));
+        })))))));
   };
   sel.addEventListener("change", () => { role = sel.value; state.matrixRole = role; paint(); });
   paint();

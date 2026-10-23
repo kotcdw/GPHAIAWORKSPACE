@@ -1,1 +1,1 @@
-"""Results, Storyboards and Robots (Diligent One analytics apps, on GIAW data)."""
+"""Results, Storyboards and Robots (GPHA INTERNAL AUDIT WORKSPACE analytics apps, on workspace data)."""

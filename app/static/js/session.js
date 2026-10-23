@@ -41,7 +41,7 @@ function restoreRoute() {
 }
 
 // Small bits of screen state (selected section, tab, filters) survive a refresh in this browser tab.
-const UI_STATE_KEYS = ["configSection", "myWork", "remTab", "committeeTab", "lastAuditTab"];
+const UI_STATE_KEYS = ["configSection", "myWork", "remTab", "lastAuditTab"];
 function loadUiState() {
   try {
     const saved = JSON.parse(sessionStorage.getItem("gpha_ui") || "{}");

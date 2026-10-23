@@ -67,7 +67,7 @@ PERMISSIONS: dict[str, tuple[str, str]] = {
     # auditee / governance
     "auditee.respond": ("Auditee & governance", "Respond to evidence requests, findings and actions"),
     "governance.view": ("Auditee & governance", "View approved plans, issued reports and dashboards"),
-    "committee.record": ("Auditee & governance", "Record Audit Committee meetings, minutes and decisions"),
+    "committee.record": ("Auditee & governance", "Record Audit Committee approvals (internal audit charter)"),
     "followup.report": ("Follow-up", "Quarterly follow-up reports and the annual implementation statement"),
     "governance.charter": ("Planning & oversight", "Internal audit charter and external quality assessments"),
     "proficiency.manage": ("Planning & oversight", "Review independence declarations and staff CPD"),
@@ -140,9 +140,11 @@ JOB_ROLES: list[JobRole] = [
                 "governance.charter", "proficiency.manage", "grc.view", "grc.risk", "data.export"}),
             icon="person-badge-fill"),
     JobRole("auditor", "Auditor", Role.Auditor, None,
-            "Senior Auditors, Auditors and Audit Clerks: plan and perform assigned engagements, test controls, "
-            "file working papers and evidence, raise findings and validate remediation.",
-            frozenset(_FIELD | _REVIEW | {"audit.create", "followup.validate", "grc.view", "data.export"}),
+            "Senior Auditors, Auditors and Audit Clerks (least privilege): work only on the engagements they are "
+            "assigned to: plan and perform fieldwork, file working papers and evidence, raise findings, draft and "
+            "edit the report while it is in Draft and validate remediation. Work a reviewer has signed off is "
+            "read-only to them; allocating teams, reviewing, approving and exporting belong to other roles.",
+            frozenset(_FIELD | {"followup.validate", "grc.view"}),
             icon="clipboard-check-fill"),
     JobRole("read_only", "Read-only User", Role.Auditor, None,
             "Sees audit work in their scope (plans, audits, findings, reports, follow-up and registers) but cannot "

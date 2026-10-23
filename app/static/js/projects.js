@@ -1,5 +1,5 @@
 // Projects (audits) - Project Execution walkthrough:
-//   Fieldwork › objective list (Add Objective, Import Objective, My work status, Go To ▾), objective Overview with
+//   Fieldwork › objective list (Add Objective, Import Objective, Projects status, Go To ▾), objective Overview with
 //   Clone Objective, Import Objective, Project settings (workflow), Results (project results, fieldwork reports,
 //   Reports app) and the Issues side panel (+ Add Issue) from the title bar.
 // Loaded after fieldwork.js / planning.js / walk.js.
@@ -24,7 +24,7 @@ async function renderObjectiveList(body, ctx, fw) {
   body.append(wsToolbar(
     open ? wsAction("Add Objective", () => objectiveForm(audit.id, null, reload), { primary: !rows.length, focus: !rows.length }) : null,
     open ? wsAction("Import Objective", () => goFieldwork(audit.id, "objimport")) : null,
-    wsAction("My work status", () => navigate("mywork"))));
+    wsAction("Projects status", () => navigate("mywork"))));
   if (!rows.length) {
     body.append(emptyState({ icon: "bullseye", title: "No objectives yet", text: "Add an objective, or import objectives from another project or a framework." }));
     return;
@@ -82,6 +82,11 @@ async function renderObjectiveOverview(body, ctx, objectiveId) {
       catch (err) { toast(err.message, "error"); }
     }, { primary: true })));
   body.append(card);
+  // Sign-offs: the preparer and reviewers sign the objective's risk and control matrix; Set and Notify Reviewer.
+  const so = wsCard("Sign-offs");
+  so.classList.add("obj-signoffs");
+  body.append(so);
+  signoffSection("rcm", o.id, audit.id, reload).then((n) => so.append(n)).catch((err) => so.append(errorState(err)));
 }
 
 async function renderObjectiveImport(body, ctx) {
@@ -165,13 +170,110 @@ function resultsCards(audit, goTab) {
 
 async function issuesSidePanel(audit, canWrite) {
   const body = el("div", null, loadingState());
+  const open = canWrite && audit.status !== "Closed";
+  const formBox = el("div");
+  // + Add Issue: issue title, condition, owner, severity / status, and the fieldwork item it came from.
+  const addForm = async () => {
+    const rcm = await safeGet(`/api/audits/${audit.id}/rcm`, { objectives: [] });
+    const controls = rcm.objectives.flatMap((o) => o.controls.map((c) => ({ value: c.id, label: `${c.ref} ${c.title}` })));
+    const title = wsInput("", { name: "title", maxlength: "255", placeholder: "Describe the finding" });
+    const cond = wsText("", { name: "condition", rows: "3", maxlength: "20000", placeholder: "What did the testing identify?" });
+    const owner = wsInput("", { name: "assigned_owner_email", type: "email", maxlength: "255", placeholder: "Issue owner's e-mail" });
+    const sev = wsSelect(RISK_RATINGS, "Medium", { name: "risk_rating", "aria-label": "Severity" });
+    const st = wsSelect(FINDING_STATUSES, "Open", { name: "status", "aria-label": "Status" });
+    const ctl = wsSelect([{ value: "", label: "Not linked to fieldwork" }, ...controls], "", { name: "control_id", "aria-label": "Fieldwork item" });
+    clear(formBox);
+    formBox.append(wsCard("New issue", wsFieldRows([
+      { label: "Issue title", control: title }, { label: "Condition / details", control: cond }, { label: "Owner", control: owner },
+      { label: "Severity / status", control: el("div", { class: "ws-inline" }, sev, el("span", null, "/"), st) },
+      { label: "Fieldwork item", control: ctl },
+    ]), wsToolbar(wsAction("Cancel", () => clear(formBox)), wsAction("Save", async () => {
+      try {
+        await API.post(`/api/audits/${audit.id}/findings`, { title: title.value.trim(), condition: cond.value, assigned_owner_email: owner.value.trim() || null,
+          risk_rating: sev.value, status: st.value, control_id: ctl.value ? Number(ctl.value) : null });
+        toast("Issue recorded"); clear(formBox); reloadList();
+      } catch (err) { wsShowErrors(formBox, err); }
+    }, { primary: true }))));
+    title.focus();
+  };
   const reloadList = async () => {
     const rows = await safeGet(`/api/audits/${audit.id}/findings`, []);
     clear(body);
     body.append(wsCard("Issues", ...(rows.length ? rows.map((f) => wsRow(el("button", { class: "ws-crumb-link", type: "button", onclick: () => { p.close(); openIssue(f.id); } }, f.title),
       wsTag(f.status, f.status === "Closed" ? "ok" : ""))) : [el("p", { class: "muted small" }, "No issues yet.")]),
-    canWrite && audit.status !== "Closed" ? wsAction("+ Add Issue", () => { p.close(); issueForm(null, audit.id, true, () => openAudit(audit.id, "findings")); }, { primary: true, focus: true }) : null));
+    open ? wsToolbar(wsAction("+ Add Issue", addForm, { primary: true, focus: true })) : null), formBox);
   };
-  const p = detailPanel({ title: "Issues", body, width: 460 });
+  const p = detailPanel({ title: "Issues", body, width: 520 });
   reloadList();
+}
+
+// ------------------------------------------------------------------ Perform a test (Projects walkthrough › Execute / test)
+// Fieldwork › Testing › Update Test: the control, the testing round and the test, then sample size, testing results
+// and conclusion, supporting files (working papers cross-referenced to the test) and the test's sign-offs.
+async function renderTestPage(body, ctx, testId) {
+  const { audit, open, reload } = ctx;
+  body.append(loadingState());
+  let t; let fw; let papers;
+  try {
+    [t, fw, papers] = await Promise.all([API.get(`/api/control-tests/${testId}`), API.get(`/api/audits/${audit.id}/fieldwork`),
+      safeGet(`/api/audits/${audit.id}/working-papers`, [])]);
+  } catch (err) { clear(body); body.append(errorState(err, reload)); return; }
+  const rd = await safeGet(`/api/audits/${audit.id}/testing/${t.round_no || 1}`, { rows: [] });
+  const row = rd.rows.find((r) => r.control_id === t.control_id) || { control: t.ref, control_ref: "" };
+  clear(body);
+  const locked = !open || t.status === "Reviewed";
+  const labels = fw.round_labels || ["Testing"];
+  const round = wsSelect(labels.map((l, i) => ({ value: i + 1, label: l })), t.round_no || 1, { "aria-label": "Testing round" });
+  round.addEventListener("change", async () => {
+    const other = await safeGet(`/api/audits/${audit.id}/testing/${round.value}`, { rows: [] });
+    const r = other.rows.find((x) => x.control_id === t.control_id);
+    if (r && r.test) goFieldwork(audit.id, `testview:${r.test.id}`);
+    else { toast(`No ${labels[round.value - 1]} test for this control yet: prepare the round on the Testing page`, "error"); round.value = String(t.round_no || 1); }
+  });
+  const sample = wsInput(t.sample_size ?? "", { name: "sample_size", type: "number", min: "0", max: "1000000", placeholder: "Enter sample count", disabled: "1" });
+  const results = wsText(t.results || "", { name: "results", rows: "4", maxlength: "20000", placeholder: "Document evidence and results…", disabled: "1" });
+  const conclusion = wsSelect([{ value: "Not Tested", label: "Select conclusion" }, "Effective", "Ineffective"], t.conclusion, { name: "conclusion", disabled: "1" });
+  const exceptions = wsInput(String(t.exceptions_found || 0), { name: "exceptions_found", type: "number", min: "0", disabled: "1" });
+  const edit = [sample, results, conclusion, exceptions];
+  const save = wsAction("Save", async () => {
+    const v = { sample_size: sample.value === "" ? null : Number(sample.value), results: results.value, conclusion: conclusion.value,
+      exceptions_found: Number(exceptions.value || 0), status: conclusion.value === "Not Tested" ? "In Progress" : "Completed" };
+    try { await API.patch(`/api/control-tests/${t.id}`, v); toast("Test saved"); goFieldwork(audit.id, `testview:${t.id}`); } catch (err) { wsShowErrors(box, err); }
+  }, { primary: true, disabled: true });
+  const update = wsAction("Update Test", () => { edit.forEach((c) => c.removeAttribute("disabled")); save.removeAttribute("disabled"); sample.focus(); },
+    { primary: true, focus: true, disabled: locked, title: locked ? (t.status === "Reviewed" ? "Reviewed tests are read-only" : "The project is closed") : null });
+  const file = el("input", { type: "file", hidden: "1" });
+  file.addEventListener("change", async () => {
+    const fl = file.files[0];
+    if (!fl) return;
+    const form = new FormData();
+    form.append("title", `${t.ref} ${fl.name}`.slice(0, 255));
+    form.append("file", fl);
+    try {
+      const wp = await API.upload(`/api/audits/${audit.id}/working-papers`, form);
+      await API.patch(`/api/working-papers/${wp.id}/xref`, { test_id: t.id });
+      toast("Supporting file added"); goFieldwork(audit.id, `testview:${t.id}`);
+    } catch (err) { toast(err.message, "error"); }
+  });
+  const files = papers.filter((p) => p.test_id === t.id);
+  const box = el("div");
+  body.append(wsToolbar(wsAction("Back to testing", () => goFieldwork(audit.id, "test"))),
+    el("h3", { class: "ws-h" }, `Perform a test (${fw.workflow} workflow)`),
+    wsCard(null, wsFieldRows([
+      { label: "Control", control: el("span", null, `${row.control_ref} ${row.control}`.trim()) },
+      { label: "Testing round", control: round },
+      { label: "Test", control: el("div", { class: "ws-inline" }, el("span", null, `${t.ref} · ${t.test_type}`), wsTag(t.status), update) },
+    ])), box);
+  box.append(wsFieldRows([
+    { label: "Sample size", control: sample, help: t.population_size ? `Population ${t.population_size}${t.sample_items ? ` · items ${t.sample_items}` : ""}` : null },
+    { label: "Exceptions found", control: exceptions },
+    { label: "Testing results", control: results },
+    { label: "Conclusion", control: conclusion },
+  ]), wsToolbar(open ? wsAction("Add supporting files", () => file.click(), { icon: "paperclip" }) : null, file,
+    wsAction("All test fields", () => openControlTest(audit.id, { control_id: t.control_id, control_ref: row.control_ref }, t.id, open, reload)), save));
+  body.append(wsCard("Supporting files", ...(files.length ? files.map((p) => wsRow(el("a", { href: `/api/working-papers/${p.id}/download` }, p.title), el("span", { class: "ws-caption" }, fmtDate(p.uploaded_at))))
+    : [el("span", { class: "ws-caption" }, "No supporting files yet")])));
+  const so = wsCard("Sign-offs");
+  body.append(so);
+  signoffSection("test", t.id, audit.id, () => goFieldwork(audit.id, `testview:${t.id}`)).then((n) => so.append(n));
 }

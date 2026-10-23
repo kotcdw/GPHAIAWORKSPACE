@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - configurable entities (Organizations): entity types, ports and hierarchy,
+// GPHA INTERNAL AUDIT WORKSPACE - configurable entities (Organizations): entity types, ports and hierarchy,
 // admin-defined custom fields, and "where I work". Loaded after insight.js and before app.js.
 
 const EntityCache = { at: 0, types: null, entities: [], defs: [] };

@@ -226,7 +226,7 @@ def test_record_page_tabs_sit_under_the_title(browser, base_url):
     page.evaluate(f"openAudit({audit_id})")
     page.wait_for_selector(".rec-tabs [role=tab].active")
     box = page.locator(".rec-tabs").bounding_box()
-    assert box["y"] < 220, box  # tabs are visible without scrolling
+    assert box["y"] < 320, box  # tabs are visible without scrolling (title, actions and phase tracker above them)
     assert page.inner_text(".rec-tabs [role=tab].active") == "Overview"
     side_titles = page.locator(".rec-side .card h3").all_inner_texts()
     assert "Engagement" in side_titles and "Engagement team" in side_titles
@@ -290,13 +290,14 @@ def test_form_panel_stays_open_and_survives_refresh(browser, base_url):
     page.reload()
     page.wait_for_selector(".form-panel", timeout=15000)
     _wait_for(page, f"document.querySelector('.form-panel input[name=full_name]').value === 'Panel User {tag}'")
-    page.fill(".form-panel input[name=username]", f"panel{tag}")
     page.fill(".form-panel input[name=email]", f"panel{tag}@example.com")
-    page.fill(".form-panel input[type=password]", "Panel-Pass-2026")
     page.click(".form-panel .actions .btn:not(.secondary)")
     page.wait_for_selector(".form-panel .form-banner.ok")
     assert "Saved" in page.inner_text(".form-panel .form-banner")
     assert page.is_disabled(".form-panel input[name=full_name]")
+    # No e-mail server in tests: the one-time activation link is shown to pass on.
+    page.wait_for_selector("text=Invitation ready")
+    page.click("button:has-text('Done')")
     page.click(".form-panel .modal-close")
     assert page.locator(".form-panel").count() == 0
     page.reload()
@@ -351,14 +352,14 @@ def test_workplan_execute_and_issue_tracker(browser, base_url):
     _wait_for(page, "document.querySelector('table.dense tbody') && "
                     "document.querySelector('table.dense tbody').innerText.includes('Prepared')")
     _shot(page, "desktop-execute-procedures")
-    page.evaluate("state.issueTab = 'list'; navigate('issues')")
-    page.wait_for_selector(".ws .register thead th")
+    page.evaluate("navigate('issues')")
+    page.wait_for_selector(".chart-row .chart-card")
+    page.wait_for_selector(".register thead th")
+    captions = page.locator(".chart-card figcaption").all_inner_texts()
+    assert "By Issue Type" in captions and "By Severity" in captions
     headers = page.locator(".register thead th").all_inner_texts()
-    for col in ("Issue", "Project", "Owner", "Remediation status", "Deadline", "Status"):
+    for col in ("Issue", "Status", "Severity", "Owner", "Remediation deadline", "Issue type", "Published", "Sign-offs"):
         assert any(h.strip().startswith(col) for h in headers), (col, headers)
-    page.click(".ws-action:has-text('KPIs')")
-    page.wait_for_selector(".hbars")
-    assert "Issue count by severity" in page.inner_text(".ws-body")
     _shot(page, "desktop-issue-tracker")
     assert not watch.take()
     ctx.close()
@@ -380,7 +381,7 @@ def test_internal_control_steps_and_rcm_matrix(browser, base_url):
     }""")
     page.evaluate(f"state.fwSub = {{{audit_id}: 'rcm'}}; openAudit({audit_id}, 'fieldwork')")
     page.wait_for_selector(".rcm-matrix")
-    assert page.locator(".fw-step").count() == 6  # Objective list + the five GIAS steps
+    assert page.locator(".fw-step").count() == 5
     assert page.locator(".phase-track .phase.current").inner_text().startswith("1")
     matrix = page.inner_text(".rcm-matrix")
     assert "Daily call reconciliation" in matrix and "No mitigating control" in matrix
@@ -413,26 +414,25 @@ def test_assurance_plan_overview_and_add_to_plan(browser, base_url):
     page.wait_for_selector(".kpi-row")
     assert page.locator(".plan-track .phase.current").inner_text().startswith("1")
     assert page.locator(".rec-pane .stats").count() == 0
-    page.click(".ws-action:has-text('+ Add to plan')")
-    page.wait_for_selector(".add-choices .ws-choice")
-    assert page.locator(".add-choices .ws-choice").count() == 3
-    page.click(".ws-choice:has-text('Create a new project')")
-    page.wait_for_selector(".ws input[name=title]")
-    page.fill(".ws input[name=title]", "UI planned project")
-    page.fill(".ws input[name=budget_hours]", "120")
-    for _ in range(3):  # Basic information -> Objectives -> Entities -> Review
-        page.click(".ws-action.primary:has-text('Continue')")
-    page.click(".ws-action:has-text('Create project')")
-    page.wait_for_selector(".kpi-row")
     page.click(".rec-tabs [role=tab]:has-text('Projects')")
+    page.click("button:has-text('+ Add to plan')")
+    page.wait_for_selector(".add-choice")
+    assert page.locator(".add-choice").count() == 3
+    page.click(".add-choice:has-text('Create a new project')")
+    page.wait_for_selector(".form-panel input[name=title]")
+    page.fill(".form-panel input[name=title]", "UI planned project")
+    page.fill(".form-panel input[name=budget_hours]", "120")
+    page.click(".form-panel .actions .btn:not(.secondary)")
+    page.wait_for_selector(".form-panel .form-banner.ok")
+    page.click(".form-panel .modal-close")
     _wait_for(page, "document.querySelector('.rec-pane') && "
                     "document.querySelector('.rec-pane').innerText.includes('UI planned project')")
     page.click(".rec-tabs [role=tab]:has-text('Coverage')")
-    page.select_option("select[aria-label='Coverage view']", "categories")
+    page.click(".subnav-item:has-text('Categories')")
     page.wait_for_selector(".cov-grid, .state-empty")
-    page.click(".rec-tabs [role=tab]:has-text('Plan overview')")
+    page.click(".rec-tabs [role=tab]:has-text('Overview')")
     page.wait_for_selector(".kpi-row")
-    assert "120 hrs" in page.inner_text(".kpi-row")
+    assert "120h" in page.inner_text(".kpi-row")
     _shot(page, "desktop-assurance-plan")
     assert not watch.take()
     ctx.close()
@@ -489,40 +489,87 @@ def test_org_structure_define_universe_and_risk_assessment(browser, base_url):
     ctx.close()
 
 
-def test_reports_browse_builder_dashboard_and_present(browser, base_url):
-    """Reports app: Browse › Templates › Make a copy, Report Builder pages and Publish, a dashboard and a Present."""
+def test_admin_dropdowns_org_delete_topical_home_pad_and_comments(browser, base_url):
+    """Administration areas open their pages from a drop-down; the Super Administrator deletes org units from the
+    row drop-down; audits carry the IIA Topical Requirements tab, comments and the data-flow strip; the home pad is
+    customised."""
     ctx, page, watch = _signed_in(browser, base_url)
-    page.evaluate("navigate('reports')")
-    page.wait_for_selector(".ws-nav.on:has-text('Browse')")
-    page.click(".ws-row:has-text('Templates')")
-    page.wait_for_selector(".ws-card .ws-menu")
-    page.locator(".ws-card .ws-menu .ws-action").first.click()
-    page.locator(".ws-card .ws-menu-item:has-text('Make a copy')").first.click()
-    page.wait_for_selector(".ws-app:has-text('Report Builder')")
-    for nav in ("Data", "Charts", "Design", "Publish"):
-        page.click(f".ws-nav:has-text('{nav}')")
-        page.wait_for_selector(f".ws-nav.on:has-text('{nav}')")
-    page.wait_for_selector("input[name=name]")
-    page.click(".ws-action:has-text('Save → Activate')")
-    page.wait_for_selector(".ws-tag:has-text('Active')")
-    page.wait_for_selector(".ws-action:has-text('Add to dashboard')")
-    page.evaluate("createBoardPage('dashboard')")
-    page.fill("input[name=name]", "UI committee dashboard")
-    page.click(".ws-action.primary:has-text('Create')")
-    page.wait_for_selector(".ws-app:has-text('Dashboard Builder')")
-    page.locator(".rep-palette .ws-row .ws-action:has-text('Add')").first.click()
-    page.wait_for_selector(".ws-canvas .ws-widget .rep-result")
-    page.click(".ws-action:has-text('Publish')")
-    page.click(".ws-action:has-text('Save → Activate')")
-    page.wait_for_selector(".ws-tag:has-text('Active')")
-    page.evaluate("createBoardPage('presentation')")
-    page.fill("input[name=name]", "UI quarterly review")
-    page.click(".ws-action.primary:has-text('Create')")
-    page.wait_for_selector(".ws-app:has-text('Present Builder')")
-    page.click(".ws-nav:has-text('Reports')")
-    page.locator(".rep-palette .ws-row .ws-action:has-text('Add')").first.click()
-    page.click(".ws-action:has-text('Preview')")
-    page.wait_for_selector(".rep-stage .ws-slide")
-    _shot(page, "desktop-present")
+    page.evaluate("""async () => {
+        const d = await API.get('/api/org-structure');
+        if (!d.items.length) await API.post('/api/organizations', {name: 'UI test - Head Office',
+            category: d.types[0]});
+    }""")
+    page.evaluate("navigate('admin')")
+    page.wait_for_selector(".admin-area")
+    area = page.locator(".admin-area", has=page.locator("h3:has-text('Organisational structure')"))
+    area.locator(".dd-btn").click()
+    page.locator(".dd-list:visible .dd-item:has-text('Org structure')").click()
+    page.wait_for_selector(".org-table tbody tr")
+    page.locator(".org-table .row-actions .dd-btn").first.click()
+    page.locator(".dd-list:visible .dd-item:has-text('Delete')").click()
+    page.wait_for_selector(".form-panel input[name=password]")
+    assert "Delete permanently" in page.inner_text(".form-panel")
+    page.evaluate("closeFormPanels()")
+    # Type and parent unit accept typing (search, or a new type for those who manage reference data).
+    page.evaluate("orgUnitForm(null)")
+    page.wait_for_selector(".form-panel input[name=category][list]")
+    page.fill(".form-panel input[name=parent_id]", "no such unit")
+    page.click(".form-panel .actions .btn:not(.secondary)")
+    page.wait_for_selector("text=choose one from the list")
+    page.evaluate("closeFormPanels()")
+
+    audit_id = _ensure_audit(page)
+    page.evaluate(f"openAudit({audit_id}, 'topical')")
+    page.wait_for_selector(".topical-card")
+    page.wait_for_selector(".lineage")
+    page.click(".rec-util button:has-text('Comments')")
+    page.wait_for_selector(".cm-input")
+    page.keyboard.press("Escape")
+    page.wait_for_selector(".side-panel-wrap", state="detached")
+
+    # The Super Administrator edits Access by module for a role, cell by cell.
+    page.evaluate("state.matrixRole = 'auditor'; navigate('roles'); setTimeout(() => renderRolesPage('modules'), 200)")
+    page.wait_for_selector(".access-matrix .am-cell")
+    assert "Click a cell" in page.inner_text(".am-hint")
+
+    page.evaluate("navigate('dashboard')")
+    page.wait_for_selector(".ws-tile")
+    assert page.locator(".home-today").count() == 0
+    page.click("button:has-text('Customize')")
+    page.wait_for_selector(".pad-chosen li")
+    page.keyboard.press("Escape")
+    assert not watch.take()
+    ctx.close()
+
+
+def test_projects_inbox_and_no_audit_committee_app(browser, base_url):
+    ctx, page, watch = _signed_in(browser, base_url)
+    assert page.locator("#sidebarNav button[data-view=committee]").count() == 0
+    assert page.evaluate("HOST_GROUPS.some(g => g.host === 'committee')") is False
+    assert "Projects" in page.inner_text("#sidebarNav button[data-view=mywork]")
+    page.evaluate("navigate('mywork')")
+    page.wait_for_selector(".mywork-tabs")
+    heading = page.evaluate("document.querySelector('#viewRoot h1, #viewRoot h2').innerText")
+    assert heading.strip().startswith("Projects")
+    assert page.locator("#viewRoot .stats").count() == 0
+    page.evaluate("navigate('committee')")
+    page.wait_for_timeout(300)
+    assert page.locator("text=Committee pack").count() == 0
+    assert not watch.take()
+    ctx.close()
+
+
+def test_topical_requirements_catalogue_in_configuration(browser, base_url):
+    ctx, page, watch = _signed_in(browser, base_url)
+    page.evaluate("state.configSection = '@topical'; navigate('configuration')")
+    page.wait_for_selector(".topical-catalogue tbody tr")
+    text = page.inner_text(".topical-catalogue")
+    assert "Third-Party" in text and "Organizational Behavior" in text
+    row = page.locator(".topical-catalogue tr", has=page.locator("text=Third-Party"))
+    row.locator(".dd-btn").click()
+    page.locator(".dd-list:visible .dd-item:has-text('Checklist')").click()
+    page.wait_for_selector(".modal .topical-table")
+    assert "Control processes" in page.inner_text(".modal")
+    page.keyboard.press("Escape")
     assert not watch.take()
     ctx.close()

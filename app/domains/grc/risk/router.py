@@ -151,7 +151,8 @@ def _kri_out(db: DBSession, k: KeyRiskIndicator, history: bool = False) -> dict:
     last = _latest(db, k.id)
     out = {"id": k.id, "risk_id": k.risk_id, "name": k.name, "unit": k.unit, "higher_is_worse": k.higher_is_worse,
            "amber_at": k.amber_at, "red_at": k.red_at, "frequency": k.frequency, "owner_id": k.owner_id,
-           "owner": name_of(db, k.owner_id), "active": k.active,
+           "owner": name_of(db, k.owner_id), "active": k.active, "drives": k.drives,
+           "amber_step": k.amber_step, "red_step": k.red_step,
            "latest": {"period_date": last.period_date, "value": last.value} if last else None,
            "rag": k.rag(last.value if last else None)}
     if history:
@@ -191,6 +192,7 @@ def _risk_out(db: DBSession, r: EnterpriseRisk, full: bool = False) -> dict:
                                "inherent_likelihood": a.inherent_likelihood, "inherent_impact": a.inherent_impact,
                                "residual_likelihood": a.residual_likelihood, "residual_impact": a.residual_impact,
                                "control_effectiveness": a.control_effectiveness, "comment": a.comment,
+                               "origin": a.origin,
                                "by": name_of(db, a.assessed_by), "at": a.assessed_at} for a in rows]
         out["kris"] = [_kri_out(db, k, history=True) for k in db.execute(
             select(KeyRiskIndicator).where(KeyRiskIndicator.risk_id == r.id).order_by(KeyRiskIndicator.name))
@@ -491,6 +493,23 @@ def assess_risk(risk_id: int, payload: AssessIn, request: Request, db: DBSession
     return _risk_out(db, r, full=True)
 
 
+class StateIn(BaseModel):
+    treatment: str = Field(default="", max_length=40)
+
+
+@router.patch("/risks/{risk_id}/state")
+def move_risk_state(risk_id: int, payload: StateIn, request: Request, db: DBSession = Depends(get_db),
+                    user: User = RiskEditor) -> dict:
+    """Move a risk to another mitigation state on the Risk Profile (its treatment response)."""
+    r = _risk(db, risk_id)
+    before = r.treatment or "Not set"
+    r.treatment = in_list(payload.treatment, "erm_treatments", "Treatment")
+    log_action(db, user_id=user.id, request=request,
+               action=f"ERM_RISK_STATE {r.ref} {before} -> {r.treatment or 'Not set'}")
+    db.commit()
+    return _risk_out(db, r)
+
+
 @router.delete("/risks/{risk_id}")
 def delete_risk(risk_id: int, request: Request, db: DBSession = Depends(get_db), user: User = RiskEditor) -> dict:
     r = _risk(db, risk_id)
@@ -566,6 +585,9 @@ def add_reading(kri_id: int, payload: ReadingIn, request: Request, db: DBSession
                     f"KRI breached: {k.name}", f"{payload.value:g} {k.unit} is past the red threshold "
                     f"({k.red_at:g}) for risk {r.ref if r else ''}.", link_type="erm_risk", link_id=k.risk_id)
     log_action(db, user_id=user.id, action=f"KRI_READING {k.id} {payload.value:g}", request=request)
+    from app.domains.grc.risk.drivers import on_reading
+
+    on_reading(db, k, user.id)
     db.commit()
     return _kri_out(db, k, history=True)
 

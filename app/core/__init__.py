@@ -1,1 +1,1 @@
-"""Core infrastructure for the GPHA Audit Workspace."""
+"""Core infrastructure for the GPHA INTERNAL AUDIT WORKSPACE."""

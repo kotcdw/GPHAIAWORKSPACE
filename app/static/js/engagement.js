@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - engagement-level screens on the audit page:
+// GPHA INTERNAL AUDIT WORKSPACE - engagement-level screens on the audit page:
 // planning memo, time & budget, quality review (QAIP) and the post-audit survey.
 // Loaded after workflow.js and before app.js; uses helpers from api.js/forms.js/app.js at call time.
 
@@ -249,4 +249,186 @@ async function renderSurveyTab(panelEl, audit) {
     try { await API.post(`/api/audits/${audit.id}/survey`, { scores: picks, comments: comments.value }); toast("Thank you for your feedback"); clear(panelEl); renderSurveyTab(panelEl, audit); }
     catch (err) { toast(err.message, "error"); }
   } }, "Send feedback")));
+}
+
+// ==================================================================== IIA Topical Requirements (e.g. Cybersecurity)
+// For each requirement the team records whether its topic is in scope and why; when it is, every requirement is
+// assessed (conclusion, work done, issue raised) or excluded with a rationale. Mandatory for assurance engagements.
+async function renderTopicalTab(pane, audit, canWrite) {
+  clear(pane);
+  pane.append(loadingState());
+  let d;
+  try { d = await API.get(`/api/audits/${audit.id}/topical`); } catch (err) { clear(pane); pane.append(errorState(err, () => renderTopicalTab(pane, audit, canWrite))); return; }
+  clear(pane);
+  const canPlan = canWrite && !d.closed && hasPerm("audit.plan");
+  const canAssess = canWrite && !d.closed && hasPerm("audit.fieldwork");
+  const reload = (view) => { if (view) { d = view; } renderTopicalTab(pane, audit, canWrite); };
+  pane.append(el("div", { class: `callout ${d.open_points.length ? "warn" : "ok"}` },
+    el("i", { class: `bi bi-${d.open_points.length ? "exclamation-circle" : "check-circle"}`, "aria-hidden": "true" }),
+    el("div", null, el("strong", null, `${d.nature} engagement: ${d.mandatory ? "mandatory" : "recommended"}`),
+      d.open_points.length ? el("ul", { class: "small" }, ...d.open_points.map((p) => el("li", null, p))) : el("div", { class: "small" }, "Every topical requirement is decided and assessed."))));
+  d.requirements.forEach((r) => pane.append(topicalCard(audit, d, r, canPlan, canAssess, reload)));
+}
+
+function topicalCard(audit, d, r, canPlan, canAssess, reload) {
+  const card = el("section", { class: "card topical-card" });
+  const dec = r.decision;
+  card.append(el("div", { class: "card-head" },
+    el("div", null, el("h3", null, r.title), el("div", { class: "muted small" }, `IIA Topical Requirement ${r.version}${r.effective_on ? ` · in force ${fmtDay(r.effective_on)}` : ""}`)),
+    r.source_url ? el("a", { class: "btn small secondary", href: r.source_url, target: "_blank", rel: "noopener noreferrer" }, "IIA text") : null));
+  const decide = (inScope) => openForm({
+    title: `${r.title}: ${inScope ? "in scope" : "not in scope"}`, key: `topical:${audit.id}:${r.id}`, draftable: false, width: 560,
+    fields: inScope
+      ? [{ name: "trigger", label: "How it came into scope", type: "select", required: true, options: d.triggers.map((t) => ({ value: t, label: t })) },
+        { name: "rationale", label: "Notes", type: "textarea", maxLength: 5000, full: true }]
+      : [{ name: "rationale", label: "Why it is not in scope", type: "textarea", required: true, minLength: 10, maxLength: 5000, full: true }],
+    initial: dec ? { trigger: dec.trigger || d.triggers[0], rationale: dec.rationale } : { trigger: d.triggers[0] },
+    submitLabel: "Save",
+    onSubmit: (v) => API.put(`/api/audits/${audit.id}/topical/${r.id}`, { in_scope: inScope, trigger: v.trigger || null, rationale: v.rationale || "" }),
+    onDone: (view) => { closeFormPanel(); toast("Decision recorded"); reload(view); },
+  });
+  if (!dec) {
+    card.append(el("p", null, "Is this topic in scope of the engagement?"),
+      canPlan ? el("div", { class: "actions" }, el("button", { class: "btn", type: "button", onclick: () => decide(true) }, "In scope"),
+        el("button", { class: "btn secondary", type: "button", onclick: () => decide(false) }, "Not in scope")) : el("p", { class: "muted small" }, "Not decided yet."));
+    return card;
+  }
+  card.append(el("div", { class: "adm-row" },
+    el("div", null, el("strong", null, dec.in_scope ? `In scope · ${dec.trigger}` : "Not in scope"),
+      dec.rationale ? el("div", { class: "muted small" }, dec.rationale) : null,
+      el("div", { class: "muted small" }, `${dec.decided_by || "-"} · ${fmtDate(dec.decided_at)}`)),
+    canPlan ? el("button", { class: "btn small secondary", type: "button", onclick: () => decide(!dec.in_scope) }, dec.in_scope ? "Mark not in scope" : "Mark in scope") : null));
+  if (!dec.in_scope) return card;
+  const p = r.progress;
+  card.append(el("div", { class: "topical-progress" },
+    el("progress", { max: String(p.total), value: String(p.done), "aria-label": "Requirements done" }),
+    el("span", { class: "small" }, `${p.done} of ${p.total} done · ${p.assessed} assessed · ${p.excluded} excluded · ${p.exceptions} with exceptions`)));
+  const assess = (it) => openForm({
+    title: `${it.ref} · ${r.title}`, key: `topical:${audit.id}:${r.id}:${it.item_id}`, draftable: false, width: 620,
+    intro: it.text,
+    fields: [
+      { name: "outcome", label: "Outcome", type: "select", required: true, options: [{ value: "Assessed", label: "Assessed" }, { value: "Excluded", label: "Excluded (give the rationale)" }] },
+      { name: "conclusion", label: "Conclusion (when assessed)", type: "select", options: d.conclusions.map((c) => ({ value: c, label: c })) },
+      { name: "finding_id", label: "Issue raised", type: "select", emptyLabel: "- none -", options: d.findings.map((f) => ({ value: f.id, label: `#${f.id} ${f.title}` })) },
+      { name: "notes", label: "Work done / rationale", type: "textarea", rows: 4, maxLength: 10000, full: true },
+    ],
+    initial: { outcome: it.outcome || "Assessed", conclusion: it.conclusion || "", finding_id: it.finding_id || "", notes: it.notes || "" },
+    submitLabel: "Save",
+    onSubmit: (v) => API.put(`/api/audits/${audit.id}/topical/${r.id}/items/${it.item_id}`,
+      { outcome: v.outcome, conclusion: v.outcome === "Assessed" ? v.conclusion : null, finding_id: v.outcome === "Assessed" && v.finding_id ? Number(v.finding_id) : null, notes: v.notes || "" }),
+    onDone: (view) => { closeFormPanel(); toast("Requirement saved"); reload(view); },
+  });
+  const areas = [...new Set(r.items.map((i) => i.area))];
+  card.append(el("div", { class: "table-wrap" }, el("table", { class: "compact-table topical-table" },
+    el("thead", null, el("tr", null, ...["Ref", "Requirement", "Outcome", "Conclusion / rationale", ""].map((h) => el("th", null, h)))),
+    el("tbody", null, ...areas.flatMap((a) => [
+      el("tr", { class: "no-click group-row" }, el("th", { colspan: "5" }, a)),
+      ...r.items.filter((i) => i.area === a).map((it) => el("tr", { class: "no-click" },
+        el("td", null, it.ref), el("td", null, it.text),
+        el("td", null, it.outcome ? badge(it.outcome) : el("span", { class: "muted" }, "Open")),
+        el("td", { class: "small" }, it.conclusion || "", it.finding_id ? el("div", null, `Issue #${it.finding_id}`) : null,
+          it.notes ? el("div", { class: "muted" }, clip(it.notes, 140)) : null),
+        el("td", null, canAssess ? el("button", { class: "btn small secondary", type: "button", onclick: () => assess(it) }, it.outcome ? "Edit" : "Assess") : null)))])))));
+  return card;
+}
+
+// ------------------------------------------------------------------ Configuration > Topical requirements
+// The IIA Topical Requirements catalogue: holders of "Audit object library" add requirements, edit their checklist
+// until an engagement uses it, and publish changes as a new version.
+async function renderTopicalCatalogueCard(container) {
+  const card = el("div", { class: "card" });
+  container.append(card);
+  const canEdit = hasPerm("method.library");
+  const reload = () => { card.remove(); renderTopicalCatalogueCard(container); };
+  card.append(el("div", { class: "card-head" }, el("h3", null, el("i", { class: "bi bi-journal-check" }), " Topical requirements"),
+    canEdit ? el("button", { class: "btn small", type: "button", onclick: () => topicalReqForm(null, reload) }, el("i", { class: "bi bi-plus-lg" }), " New requirement") : null));
+  let rows;
+  try { rows = await API.get("/api/topical-requirements?include_inactive=true"); } catch (err) { card.append(el("div", { class: "muted" }, err.message)); return; }
+  const stateOf = (r) => (!r.is_active ? ["Inactive", "muted-chip"] : r.in_force ? ["In force", "ok-chip"] : ["Not yet in force", "warn-chip"]);
+  card.append(el("div", { class: "table-wrap" }, el("table", { class: "compact-table topical-catalogue" },
+    el("thead", null, el("tr", null, ...["Requirement", "Version", "In force from", "Status", "Checklist", "Used on", ""].map((h) => el("th", null, h)))),
+    el("tbody", null, ...rows.map((r) => {
+      const [label, cls] = stateOf(r);
+      return el("tr", { class: "no-click" },
+        el("td", null, el("strong", null, r.title)), el("td", null, r.version || "-"),
+        el("td", null, r.effective_on ? fmtDay(r.effective_on) : "-"),
+        el("td", null, el("span", { class: `chip-mini ${cls}` }, label)),
+        el("td", { class: "num" }, String(r.items.length)), el("td", { class: "num" }, String(r.used_on)),
+        el("td", { class: "row-actions" }, dropMenu("Actions", [
+          ["Checklist", () => topicalItemsPanel(r, canEdit, reload)],
+          canEdit ? ["Edit", () => topicalReqForm(r, reload)] : null,
+          canEdit ? ["New version", () => topicalVersionForm(r, reload)] : null,
+          canEdit ? [r.is_active ? "Deactivate" : "Activate", async () => {
+            try { await API.patch(`/api/topical-requirements/${r.id}`, { is_active: !r.is_active }); toast(r.is_active ? "Deactivated" : "Activated"); reload(); }
+            catch (err) { toast(err.message, "error"); }
+          }, r.is_active] : null,
+        ])));
+    })))));
+}
+
+function topicalReqForm(r, done) {
+  return openForm({
+    title: r ? `Edit ${r.title}` : "New topical requirement", key: `topreq:${r ? r.id : "new"}`, draftable: false, width: 620,
+    fields: [
+      { name: "title", label: "Title", required: true, minLength: 3, maxLength: 200, singleLine: true, full: true },
+      { name: "version", label: "Version", maxLength: 40, singleLine: true },
+      { name: "effective_on", label: "In force from", type: "date" },
+      { name: "source_url", label: "IIA page (https://)", maxLength: 500, singleLine: true, full: true },
+      { name: "description", label: "Applicability", type: "textarea", rows: 3, maxLength: 5000, full: true },
+    ],
+    initial: r ? { title: r.title, version: r.version, effective_on: r.effective_on, source_url: r.source_url, description: r.description } : {},
+    submitLabel: r ? "Save" : "Create",
+    onSubmit: (v) => {
+      const b = { title: v.title, version: v.version || "", effective_on: v.effective_on || null, source_url: v.source_url || "", description: v.description || "" };
+      return r ? API.patch(`/api/topical-requirements/${r.id}`, b) : API.post("/api/topical-requirements", { ...b, is_active: false });
+    },
+    onDone: (x) => { toast(r ? "Saved" : "Created (inactive until you activate it)"); done(); if (!r) topicalItemsPanel(x, true, done); },
+  });
+}
+
+function topicalVersionForm(r, done) {
+  return openForm({
+    title: `New version of ${r.title}`, key: `topver:${r.id}`, draftable: false, width: 520,
+    fields: [{ name: "version", label: "Version", required: true, maxLength: 40, singleLine: true },
+      { name: "effective_on", label: "In force from", type: "date" }],
+    initial: { effective_on: r.effective_on },
+    submitLabel: "Create version",
+    onSubmit: (v) => API.post(`/api/topical-requirements/${r.id}/new-version`, { version: v.version, effective_on: v.effective_on || null }),
+    onDone: (x) => { toast("New version created (inactive)"); done(); topicalItemsPanel(x, true, done); },
+  });
+}
+
+function topicalItemsPanel(r, canEdit, done) {
+  const locked = r.used_on > 0;
+  const body = el("div");
+  let dlg;
+  const refresh = (x) => { dlg.close(); done(); topicalItemsPanel(x, canEdit, done); };
+  const itemForm = (it) => openForm({
+    title: it ? `Edit ${it.ref}` : `Add to ${r.title}`, key: `topitem:${r.id}:${it ? it.id : "new"}`, draftable: false, width: 600,
+    fields: [
+      { name: "area", label: "Area", type: "select", required: true, options: ["Governance", "Risk management", "Control processes"] },
+      { name: "ref", label: "Ref", required: true, maxLength: 10, singleLine: true },
+      { name: "text", label: "Requirement", type: "textarea", rows: 3, required: true, minLength: 10, maxLength: 2000, full: true },
+    ],
+    initial: it ? { area: it.area, ref: it.ref, text: it.text } : { area: "Governance" },
+    submitLabel: "Save",
+    onSubmit: (v) => (it ? API.put(`/api/topical-requirement-items/${it.id}`, v) : API.post(`/api/topical-requirements/${r.id}/items`, v)),
+    onDone: (x) => { closeFormPanel(); toast("Checklist saved"); refresh(x); },
+  });
+  const del = async (it) => {
+    const ok = await confirmDialog({ title: `Remove ${it.ref}`, text: it.text, confirmLabel: "Remove", danger: true });
+    if (!ok.ok) return;
+    try { refresh(await API.del(`/api/topical-requirement-items/${it.id}`)); toast("Removed"); } catch (err) { toast(err.message, "error"); }
+  };
+  const edit = canEdit && !locked;
+  if (locked && canEdit) body.append(el("p", { class: "muted small" }, `Used on ${r.used_on} engagement(s): the checklist is fixed. Use New version to change it.`));
+  const areas = ["Governance", "Risk management", "Control processes"].filter((a) => r.items.some((i) => i.area === a));
+  body.append(r.items.length ? el("div", { class: "table-wrap" }, el("table", { class: "compact-table topical-table" },
+    el("tbody", null, ...areas.flatMap((a) => [
+      el("tr", { class: "no-click group-row" }, el("th", { colspan: edit ? "3" : "2" }, a)),
+      ...r.items.filter((i) => i.area === a).map((it) => el("tr", { class: "no-click" }, el("td", null, it.ref), el("td", null, it.text),
+        edit ? el("td", { class: "row-actions" }, dropMenu("Actions", [["Edit", () => itemForm(it)], ["Remove", () => del(it), true]])) : null))]))))
+    : el("p", { class: "muted" }, "No requirements yet."));
+  dlg = modal({ title: `${r.title} ${r.version || ""}`.trim(), body, width: 820,
+    footer: edit ? el("div", { class: "actions" }, el("button", { class: "btn", type: "button", onclick: () => itemForm(null) }, el("i", { class: "bi bi-plus-lg" }), " Add requirement")) : null });
 }

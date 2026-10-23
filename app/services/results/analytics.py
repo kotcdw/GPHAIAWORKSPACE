@@ -1,4 +1,5 @@
-"""The analytics a robot task can run. Each one is a fixed, read-only query over GIAW data with a few numeric
+"""The analytics a robot task can run. Each one is a fixed, read-only query over GPHA INTERNAL AUDIT WORKSPACE data
+with a few numeric
 parameters, so robots never execute free-form scripts on the server.
 
 An analytic returns rows of (record_key, data, priority). ``record_key`` is stable across runs, so a later run

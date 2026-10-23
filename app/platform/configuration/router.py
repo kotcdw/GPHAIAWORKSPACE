@@ -18,6 +18,12 @@ from app.core.deps import require_active_user
 from app.core.errors import FieldValidationError
 from app.platform.users.models import User
 
+
+def regional_values() -> dict:
+    """The regional settings plus the languages a person may choose for their own screens."""
+    return {**{key: cfg(key) for key in REGIONAL}, "languages": list(RULES_BY_KEY["language"].options)}
+
+
 router = APIRouter(prefix="/api/config", tags=["configuration"])
 
 # Who may change which group of rules (job-role permissions, see app.core.permissions).
@@ -32,6 +38,7 @@ GROUP_PERMS = {
     "Regional": "system.config",
     "Data & attachments": "system.config",
     "Backups": "system.technical",
+    "Users & licenses": "system.users",
 }
 
 # Regional settings every signed-in screen needs to show dates and times (nothing secret).
@@ -118,7 +125,7 @@ def get_config(db: DBSession = Depends(get_db), user: User = Admin) -> list[Rule
 @router.get("/regional")
 def regional(_: User = Depends(require_active_user)) -> dict:
     """Time zone, date and time format, fiscal year and working days: every screen formats dates with these."""
-    return {key: cfg(key) for key in REGIONAL}
+    return regional_values()
 
 
 @router.get("/history")

@@ -214,3 +214,63 @@ def test_review_fixes_scope_copy_audit_unit_and_role_signout(client, client2, db
     r = client2.patch(f"/api/users/{person.id}/job-role", json={"job_role": "read_only"}, headers=h)
     assert r.status_code == 200 and r.json()["sessions_ended"] >= 1
     assert client.get("/api/auth/me").status_code == 401
+
+
+def test_super_administrator_deletes_approved_units_and_sub_units(client, client2, db):
+    from tests.conftest import DEFAULT_PASSWORD
+
+    sa = _u(db, "os_sa", Role.Admin, job="super_admin")
+    admin = _u(db, "os_adm9", Role.Admin, job="admin")
+    h = csrf_headers(login(client, sa.username))
+    dept = _unit(client, h, "Marine")
+    sub = _unit(client, h, "Pilotage", "Unit", dept["id"])
+    ah = csrf_headers(login(client2, admin.username))
+    client2.post(f"/api/organizations/{dept['id']}/approve", json={"password": DEFAULT_PASSWORD}, headers=ah)
+
+    # An administrator cannot delete an approved unit; the Super Administrator sees what it would take.
+    assert client2.delete(f"/api/organizations/{dept['id']}", headers=ah).status_code == 409
+    ov = client.get(f"/api/organizations/{dept['id']}/overview").json()
+    assert ov["can"]["superdelete"] and ov["delete_check"]["subunits"] == 1
+    assert ov["delete_check"]["blockers"] and not ov["delete_check"]["with_subunits_blockers"]
+
+    url = f"/api/organizations/{dept['id']}"
+    body = {"reason": "Merged into Marine Services", "password": DEFAULT_PASSWORD}
+    assert client.request("DELETE", url, json=body, headers=h).status_code == 409  # the sub-unit
+    assert client.request("DELETE", url, json={**body, "reason": "x", "with_subunits": True},
+                          headers=h).status_code == 422
+    assert client.request("DELETE", url, json={**body, "with_subunits": True, "password": "wrong"},
+                          headers=h).status_code == 400
+    # Someone working in the sub-unit blocks it until they are moved.
+    staff = _u(db, "os_wk")
+    staff.work_entity_id = sub["id"]
+    db.commit()
+    r = client.request("DELETE", url, json={**body, "with_subunits": True}, headers=h)
+    assert r.status_code == 409 and "workplace" in r.json()["detail"]
+    staff.work_entity_id = None
+    db.commit()
+    r = client.request("DELETE", url, json={**body, "with_subunits": True}, headers=h)
+    assert r.status_code == 200, r.text
+    assert client.get(url).status_code == 404 and client.get(f"/api/organizations/{sub['id']}").status_code == 404
+
+
+def test_new_type_typed_in_the_unit_form_joins_the_configured_types(client, client2, db):
+    from app.core.appconfig import cfg
+
+    admin = _u(db, "os_typ", Role.Admin, job="admin")
+    h = csrf_headers(login(client, admin.username))
+    name = f"Terminal {uuid.uuid4().hex[:4]}"
+    try:
+        r = client.post("/api/organizations", json={"name": f"GJT {uuid.uuid4().hex[:4]}", "category": f"  {name} "},
+                        headers=h)
+        assert r.status_code == 201, r.text
+        assert r.json()["category"] == name
+        assert name in cfg("organization_categories") and name in cfg("org_structure_categories")
+        assert name in client.get("/api/org-structure").json()["types"]
+        # Someone without reference-data rights picks from the list only.
+        staff = _u(db, "os_typ2")
+        sh = csrf_headers(login(client2, staff.username))
+        bad = client2.post("/api/organizations", json={"name": "X unit", "category": "Made-up type"}, headers=sh)
+        assert bad.status_code == 422 and bad.json()["errors"][0]["field"] == "category"
+    finally:
+        client.post("/api/config/organization_categories/reset", headers=h)
+        client.post("/api/config/org_structure_categories/reset", headers=h)

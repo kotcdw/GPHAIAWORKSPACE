@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GIAW - install or update on a Linux VPS (Ubuntu/Debian, e.g. a Hostinger KVM VPS).
+# GPHA INTERNAL AUDIT WORKSPACE - install or update on a Linux VPS (Ubuntu/Debian, e.g. a Hostinger KVM VPS).
 #
 #   sudo bash deploy/vps/install.sh                         (asks for the domain and e-mail)
 #   sudo bash deploy/vps/install.sh giaworkspace.com you@example.com
@@ -8,7 +8,7 @@
 #   1. installs Docker if it is missing;
 #   2. on the first run, creates .env.production with random passwords and keys (shown ONCE);
 #   3. opens only SSH, HTTP and HTTPS in the firewall (ufw), if you agree;
-#   4. builds and starts MySQL + GIAW with automatic HTTPS: through the Traefik that Hostinger's
+#   4. builds and starts MySQL + GPHA INTERNAL AUDIT WORKSPACE with automatic HTTPS: through the Traefik that Hostinger's
 #      Docker Manager installs, if it is running, otherwise through its own Caddy.
 # Run it again after "git pull" to update: data, passwords and certificates are kept.
 set -euo pipefail
@@ -23,7 +23,7 @@ warn() { printf '\033[1;33m%s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" -eq 0 ] || die "Run with sudo:  sudo bash deploy/vps/install.sh"
-[ -f "$ROOT/Dockerfile" ] || die "Run this from the GIAW repository (Dockerfile not found in $ROOT)."
+[ -f "$ROOT/Dockerfile" ] || die "Run this from the GPHA INTERNAL AUDIT WORKSPACE repository (Dockerfile not found in $ROOT)."
 
 # --------------------------------------------------------------------------- 1. Docker
 if ! command -v docker >/dev/null 2>&1; then
@@ -40,7 +40,7 @@ fernet_key() { openssl rand -base64 32 | tr '+/' '-_'; }
 if [ ! -f "$ENV_FILE" ]; then
   DOMAIN="${1:-}"
   EMAIL="${2:-}"
-  [ -n "$DOMAIN" ] || read -rp "Domain name for GIAW (for example giaworkspace.com): " DOMAIN
+  [ -n "$DOMAIN" ] || read -rp "Domain name for GPHA INTERNAL AUDIT WORKSPACE (for example giaworkspace.com): " DOMAIN
   [ -n "$EMAIL" ] || read -rp "Your e-mail (certificate notices and the first admin account): " EMAIL
   DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN#www.}"; DOMAIN="${DOMAIN%%/*}"
   [[ "$DOMAIN" == *.* ]] || die "\"$DOMAIN\" does not look like a domain name."
@@ -49,7 +49,7 @@ if [ ! -f "$ENV_FILE" ]; then
   ADMIN_PASSWORD="Giaw-$(rand_hex 8)"
   umask 077
   cat > "$ENV_FILE" <<ENV
-# GIAW production settings - created by deploy/vps/install.sh on $(date -u +%Y-%m-%d).
+# GPHA INTERNAL AUDIT WORKSPACE production settings - created by deploy/vps/install.sh on $(date -u +%Y-%m-%d).
 # KEEP THIS FILE SECRET. Never e-mail it, paste it in chat or commit it.
 # Losing GPHA_ENCRYPTION_KEY makes every uploaded file and backup unreadable:
 # keep a copy of this file offline (for example on an encrypted USB key in a safe).
@@ -72,7 +72,7 @@ GPHA_MYSQL_ROOT_PASSWORD=$(rand_hex 24)
 GPHA_ADMIN_USERNAME=admin
 GPHA_ADMIN_PASSWORD=$ADMIN_PASSWORD
 GPHA_ADMIN_EMAIL=$EMAIL
-GPHA_ADMIN_FULL_NAME=GIAW Administrator
+GPHA_ADMIN_FULL_NAME=GPHA INTERNAL AUDIT WORKSPACE Administrator
 ENV
   chmod 600 "$ENV_FILE"
   FIRST_RUN=1
@@ -95,7 +95,7 @@ fi
 # but it runs with the published development passwords. Offer to remove it.
 if docker ps -a --format '{{.Names}}' | grep -qx 'gpha-mysql'; then
   warn "Found the old test container 'gpha-mysql' (development passwords, not used by this installation)."
-  read -rp "Stop and remove it? It holds no GIAW data from this installation. [y/N] " ans
+  read -rp "Stop and remove it? It holds no GPHA INTERNAL AUDIT WORKSPACE data from this installation. [y/N] " ans
   if [[ "${ans:-n}" =~ ^[Yy]$ ]]; then docker rm -f gpha-mysql >/dev/null && echo "Removed gpha-mysql."; fi
 fi
 
@@ -114,10 +114,10 @@ fi
 
 # --------------------------------------------------------------------------- 4. HTTPS front door
 # Hostinger's Docker Manager runs Traefik on ports 80/443 (often on the host network). If a Traefik
-# container is running, GIAW is handed to it; otherwise GIAW starts its own Caddy on 80/443.
+# container is running, GPHA INTERNAL AUDIT WORKSPACE is handed to it; otherwise GPHA INTERNAL AUDIT WORKSPACE starts its own Caddy on 80/443.
 TRAEFIK="$(docker ps --format '{{.Names}} {{.Image}}' | awk 'tolower($2) ~ /traefik/ {print $1; exit}')"
 if [ -n "$TRAEFIK" ]; then
-  say "Traefik is running ($TRAEFIK) - GIAW will use it for HTTPS"
+  say "Traefik is running ($TRAEFIK) - GPHA INTERNAL AUDIT WORKSPACE will use it for HTTPS"
   COMPOSE+=(-f "$ROOT/deploy/vps/docker-compose.traefik.yml")
   if [ "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$TRAEFIK")" != "host" ] \
      && docker network inspect traefik-proxy >/dev/null 2>&1; then
@@ -137,20 +137,20 @@ Stop it, or run it behind Traefik, then run this again."
 fi
 
 # --------------------------------------------------------------------------- 5. Build and start
-say "Building and starting GIAW (the first build takes a few minutes)"
+say "Building and starting GPHA INTERNAL AUDIT WORKSPACE (the first build takes a few minutes)"
 "${COMPOSE[@]}" up -d --build --remove-orphans
 
-say "Waiting for GIAW to answer"
+say "Waiting for GPHA INTERNAL AUDIT WORKSPACE to answer"
 for _ in $(seq 1 60); do
   state="$( ("${COMPOSE[@]}" ps --format '{{.Service}} {{.Health}}' 2>/dev/null || true) | awk '$1=="app"{print $2}')"
   [ "$state" = "healthy" ] && break
   sleep 5
 done
 "${COMPOSE[@]}" ps
-[ "${state:-}" = "healthy" ] || { warn "GIAW is not healthy yet. Look at:  docker logs giaw-app-1"; exit 1; }
+[ "${state:-}" = "healthy" ] || { warn "GPHA INTERNAL AUDIT WORKSPACE is not healthy yet. Look at:  docker logs giaw-app-1"; exit 1; }
 
 echo
-printf '\033[1;32m%s\033[0m\n' "GIAW is running:  https://$DOMAIN"
+printf '\033[1;32m%s\033[0m\n' "GPHA INTERNAL AUDIT WORKSPACE is running:  https://$DOMAIN"
 if [ "$FIRST_RUN" = 1 ]; then
   echo
   warn "First administrator - write this down now (it is also in .env.production as GPHA_ADMIN_PASSWORD):"

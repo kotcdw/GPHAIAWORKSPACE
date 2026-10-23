@@ -60,10 +60,6 @@ def test_finding_cannot_be_closed_by_editing_while_remediation_is_unverified(cli
     assert val.status_code == 200, val.text
     ah = csrf_headers(login(client2, admin.username))
     closed = client2.post(f"/api/capa/{capa['id']}/close", json={"password": DEFAULT_PASSWORD}, headers=ah)
-    if closed.status_code == 409 and "Committee" in closed.text:  # committee closes internal recommendations
-        client2.put("/api/config", json={"values": {"committee_closes_recommendations": False}}, headers=ah)
-        closed = client2.post(f"/api/capa/{capa['id']}/close", json={"password": DEFAULT_PASSWORD}, headers=ah)
-        client2.post("/api/config/committee_closes_recommendations/reset", headers=ah)
     assert closed.status_code == 200, closed.text
     after = client.get(f"/api/findings/{f['id']}").json()
     assert after["status"] == "Closed" and after["remediation"]["state"] == "Closed - verified"

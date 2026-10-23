@@ -1,6 +1,7 @@
 """Workflow definitions: the states of each record type and the moves between them.
 
-The shipped definitions reproduce GIAW's behaviour before the workflow engine existed, so nothing changes for
+The shipped definitions reproduce GPHA INTERNAL AUDIT WORKSPACE's behaviour before the workflow engine existed, so
+nothing changes for
 users until an administrator edits one. A definition is plain data (JSON-compatible):
 
     {"label": ..., "initial": <state>, "states": [...], "final": [...],

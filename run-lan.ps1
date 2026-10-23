@@ -1,4 +1,4 @@
-# GPHA Internal Audit Workspace - team test on the office network.
+# GPHA INTERNAL AUDIT WORKSPACE - team test on the office network.
 # Usage:  .\run-lan.ps1            (port 8001)
 #         .\run-lan.ps1 -Port 8080
 #

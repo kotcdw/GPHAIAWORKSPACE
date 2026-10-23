@@ -1,4 +1,4 @@
-# GPHA Internal Audit Workspace - step 2: install dependencies, create the (empty) schema and the first
+# GPHA INTERNAL AUDIT WORKSPACE - step 2: install dependencies, create the (empty) schema and the first
 # administrator, then run the production readiness check.
 #
 #   powershell -ExecutionPolicy Bypass -File deploy\windows\2-install.ps1

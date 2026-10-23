@@ -100,3 +100,12 @@ class EntityLite(BaseModel):
     plan_destination: bool = False
     destination_label: str | None = None
     is_active: bool = True
+
+
+class DeleteRequest(BaseModel):
+    """Deleting a unit. A Super Administrator may delete any unit (approved or deactivated, and its sub-units) with
+    a reason and their password; an administrator deletes only an empty pending unit and sends no body."""
+
+    password: str = Field(default="", max_length=200)
+    reason: str = Field(default="", max_length=500)
+    with_subunits: bool = False

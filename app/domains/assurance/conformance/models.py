@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 from app.core.enums import utcnow
+from app.domains.assurance.committee import models as _committee  # noqa: F401 - charters keep their meeting link
 
 CHARTER_STATUSES = ("Draft", "Submitted", "Approved", "Superseded")
 EQA_TYPES = ("Full external assessment", "Self-assessment with independent validation")

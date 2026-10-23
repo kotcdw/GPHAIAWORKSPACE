@@ -30,8 +30,10 @@ MODULES = {
     "automations": "Admin-defined automation rules: reminders, routing and escalation",
     "portal": "Task Tracker priorities: one page of everything waiting for a person",
     "admin": "Administration landing page with verified summaries",
-    "workflow": "Workflow engine, the My work inbox and SLA time limits",
+    "workflow": "Workflow engine, the Projects inbox and SLA time limits",
     "groups": "User groups: named sets of people used as a sharing audience and for access reviews",
+    "home": "Role home pages: the queue and the figures each role needs first",
+    "collaboration": "Comments and @mentions on records, and each record's place in the data flow (lineage)",
     "apps": "Apps & customization: the Super Administrator switches apps on and off, renames them and sets branding",
 }
 
@@ -44,6 +46,7 @@ def routers() -> list:
     from app.platform.auth.router import router as auth
     from app.platform.automations.router import router as automations
     from app.platform.backups.router import router as backups
+    from app.platform.collaboration.router import router as collaboration
     from app.platform.configuration.router import router as configuration
     from app.platform.customfields.router import router as customfields
     from app.platform.dataio.bulk import router as dataio_bulk
@@ -52,6 +55,7 @@ def routers() -> list:
     from app.platform.groups.router import router as groups
     from app.platform.history.router import records_router
     from app.platform.history.router import router as history
+    from app.platform.home.router import router as home
     from app.platform.notifications.router import router as notifications
     from app.platform.organizations.router import router as organizations
     from app.platform.portal.router import router as portal
@@ -64,4 +68,4 @@ def routers() -> list:
 
     return [auth, users, history, records_router, organizations, stakeholders, tasks, approvals, backups,
             drafts, notifications, configuration, dataio, dataio_bulk, views, customfields, roles, architecture,
-            automations, portal, apps, workflow, admin, groups]
+            automations, portal, apps, workflow, admin, groups, collaboration, home]

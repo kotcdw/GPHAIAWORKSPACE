@@ -83,6 +83,8 @@ class RiskAssessment(Base):
     residual_impact: Mapped[int] = mapped_column(Integer, nullable=False)
     control_effectiveness: Mapped[str] = mapped_column(String(30), nullable=False, default="")
     comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # manual (a person scored it), kri (driven by key risk indicators) or segments (roll-up of segment scores)
+    origin: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
     assessed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     assessed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
@@ -102,6 +104,10 @@ class KeyRiskIndicator(Base):
     frequency: Mapped[str] = mapped_column(String(20), nullable=False, default="Monthly")
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Assessment driver: an Amber or Red reading raises the risk's residual likelihood or impact by these steps.
+    drives: Mapped[str] = mapped_column(String(20), nullable=False, default="")  # "" | likelihood | impact
+    amber_step: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    red_step: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
     def rag(self, value: float | None) -> str:
@@ -144,3 +150,23 @@ class RiskTreatment(Base):
     note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
+
+
+class RiskSegmentAssessment(Base):
+    """A dated assessment of one enterprise risk for one segment of the organisation (a port, division or
+    department). The latest assessment per segment rolls up to the risk (worst or average, a setting)."""
+
+    __tablename__ = "risk_segment_assessments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    risk_id: Mapped[int] = mapped_column(ForeignKey("enterprise_risks.id", ondelete="CASCADE"), nullable=False,
+                                         index=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False,
+                                        index=True)
+    inherent_likelihood: Mapped[int] = mapped_column(Integer, nullable=False)
+    inherent_impact: Mapped[int] = mapped_column(Integer, nullable=False)
+    residual_likelihood: Mapped[int] = mapped_column(Integer, nullable=False)
+    residual_impact: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    assessed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    assessed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

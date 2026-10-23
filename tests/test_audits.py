@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.core.enums import Role
-from tests.conftest import csrf_headers, login, make_user
+from tests.conftest import csrf_headers, decide_topicals, login, make_user
 
 
 def _auditor(client, db, name="auditor1"):
@@ -41,6 +41,7 @@ def test_audit_lifecycle(client, client2, db):
     assert submitted.status_code == 200
     assert submitted.json()["approval_status"] == "In Approval"
 
+    decide_topicals(client, audit_id, csrf_headers(csrf))
     closed = client2.post(
         f"/api/audits/{audit_id}/close", json={"password": "Passw0rd!"}, headers=csrf_headers(admin)
     )

@@ -1,4 +1,5 @@
-"""Assurance plan projects (Diligent: Assurance Plans > Add to plan, plan overview, coverage, risks, resources).
+"""Assurance plan projects (GPHA INTERNAL AUDIT WORKSPACE: Assurance Plans > Add to plan, plan overview, coverage,
+risks, resources).
 
 * What a planned engagement brings into its audit: audit type, an audit programme, or (roll forward) the risk &
   control structure of an earlier audit. When none is chosen, the auditable entity's linked risks and controls are

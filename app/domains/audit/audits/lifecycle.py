@@ -93,7 +93,13 @@ def closure_checks(db: DBSession, audit: Audit) -> list[Check]:
                         detail="Optional for an advisory engagement" if advisory and no_action
                         else f"No action for {', '.join(no_action)}" if no_action else ""))
     from app.domains.audit.methodology.router import open_notes
+    from app.domains.audit.topical.service import open_points
 
+    topical = open_points(db, audit)
+    checks.append(Check(key="topical", label="IIA topical requirements decided and assessed", ok=not topical,
+                        required=bool(cfg("topical_requirements_to_close")) and not advisory,
+                        detail="Recommended for an advisory engagement" if advisory and topical
+                        else "; ".join(topical)))
     pending_notes = open_notes(db, audit.id)
     checks.append(Check(key="review_notes", label="All review notes cleared", ok=not pending_notes, required=True,
                         detail=f"{pending_notes} open review note(s)" if pending_notes else ""))

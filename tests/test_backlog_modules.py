@@ -11,7 +11,7 @@ from openpyxl import Workbook, load_workbook
 from app.core import appconfig
 from app.core.enums import ReviewLevel, Role, utcnow
 from app.platform.notifications.models import Notification
-from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
+from tests.conftest import DEFAULT_PASSWORD, csrf_headers, decide_topicals, login, make_user
 
 
 def _u(db, prefix: str, role: Role, level: ReviewLevel | None = None):
@@ -225,6 +225,7 @@ def test_quality_review_and_survey(client, client2, db):
     eh = csrf_headers(login(client, auditee.username))
     assert client.get(f"/api/audits/{aid}/survey").json()["can_respond"] is False
     ah = csrf_headers(login(client2, admin.username))
+    decide_topicals(client2, aid, ah)
     assert client2.post(f"/api/audits/{aid}/close", json={"password": DEFAULT_PASSWORD}, headers=ah).status_code == 200
     db.rollback()
     assert any("Tell us how the audit went" in n.title for n in db.query(Notification).filter_by(user_id=auditee.id))

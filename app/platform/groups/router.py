@@ -35,6 +35,10 @@ class GroupUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class GroupRoleIn(BaseModel):
+    job_role: str = Field(min_length=2, max_length=40)
+
+
 class MembersIn(BaseModel):
     user_ids: list[int] = Field(default_factory=list, max_length=2000)
 
@@ -152,6 +156,45 @@ def set_members(group_id: int, payload: MembersIn, request: Request, db: DBSessi
                action=f"GROUP_MEMBERS id={g.id} added={sorted(added)} removed={sorted(removed)}")
     db.commit()
     return _out(db, g, members=True)
+
+
+@router.post("/{group_id}/role")
+def give_members_role(group_id: int, payload: GroupRoleIn, request: Request, db: DBSession = Depends(get_db),
+                      user: User = Manage) -> dict:
+    """Give every member of a group the same role in one step. A group never holds a permission itself: this
+    changes each member's own role, with the same checks as changing it one person at a time (administrators,
+    the last administrator, licensed seats); your own account is never changed this way."""
+    from app.core import permissions as perms
+    from app.platform.auth.service import revoke_sessions
+    from app.platform.roles import service as role_service
+    from app.platform.users.licenses import check_seat
+
+    g = _group(db, group_id)
+    code = role_service.normalise(payload.job_role)
+    if code is None:
+        raise HTTPException(status_code=422, detail="Unknown role")
+    role_service.check_can_manage(user, None, code)
+    members = db.execute(select(User).join(UserGroupMember, UserGroupMember.user_id == User.id)
+                         .where(UserGroupMember.group_id == g.id)).scalars().all()
+    changed, skipped = [], []
+    for m in members:
+        if m.id == user.id or perms.job_role_of(m) == code:
+            skipped.append(m.username)
+            continue
+        role_service.check_can_manage(user, m, code)
+        role_service.guard_last_super_admin(db, m, code)
+        if m.is_active:
+            check_seat(db, code, exclude_user_id=m.id)
+        tier_before = m.role
+        role_service.apply_role(m, code)
+        if m.role != tier_before:
+            revoke_sessions(db, m.id)
+        db.flush()
+        changed.append(m.username)
+    log_action(db, user_id=user.id, request=request,
+               action=f"USER_GROUP_ROLE group={g.id} job_role={code} changed={len(changed)}"[:490])
+    db.commit()
+    return {"changed": changed, "unchanged": skipped}
 
 
 @router.delete("/{group_id}")

@@ -71,7 +71,7 @@ def reset(username: str, password: str) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Reset a GPHA Internal Audit Workspace password.")
+    parser = argparse.ArgumentParser(description="Reset a GPHA INTERNAL AUDIT WORKSPACE password.")
     parser.add_argument("--list", action="store_true", help="list user accounts and exit")
     args = parser.parse_args()
 

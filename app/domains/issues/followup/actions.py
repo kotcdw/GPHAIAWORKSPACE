@@ -232,8 +232,7 @@ def reopen(capa_id: int, payload: ReasonIn, request: Request, db: DBSession = De
 def accept_risk(capa_id: int, payload: RiskAcceptIn, request: Request, db: DBSession = Depends(get_db),
                 user: User = Depends(require_perm("followup.manage"))) -> Capa:
     """Propose closing the action because management accepts the residual risk instead of implementing it
-    (IIA GIAS 11.5). The GM Audit decides; acceptances of the configured severities then go to the Audit
-    Committee. The action stays open until the acceptance is agreed."""
+    (IIA GIAS 11.5). The GM Audit decides. The action stays open until the acceptance is agreed."""
     capa = _load(db, capa_id, user)
     if capa.status == CapaStatus.Closed:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The action is already closed")
@@ -267,13 +266,6 @@ class RiskDecisionIn(BaseModel):
     decision: str = Field(pattern="^(Agree|Disagree)$")
     comment: str = Field(min_length=10, max_length=5000,
                          description="The discussion with senior management and the conclusion reached")
-
-
-def needs_committee(capa: Capa) -> bool:
-    from app.core.appconfig import cfg
-
-    wanted = {s.lower() for s in (cfg("risk_acceptance_committee_severities") or [])}
-    return getattr(capa.severity, "value", str(capa.severity)).lower() in wanted
 
 
 def close_risk_accepted(db: DBSession, capa: Capa, user_id: int, note: str, request: Request | None) -> None:
@@ -318,14 +310,15 @@ def reject_risk_acceptance(db: DBSession, capa: Capa, user_id: int, note: str, r
 def decide_risk_acceptance(capa_id: int, payload: RiskDecisionIn, request: Request, db: DBSession = Depends(get_db),
                            user: User = Depends(require_active_user)) -> Capa:
     """The GM Audit, after discussing it with senior management, agrees or disagrees with the proposed risk
-    acceptance. Agreed acceptances of the configured severities go to the Audit Committee; the rest close."""
+    acceptance. An agreed acceptance closes the action (IIA GIAS 11.5); acceptances referred to the Audit Committee
+    before its register was retired are decided here too."""
     from app.core.permissions import is_cae
 
     capa = _load(db, capa_id, user)
     if not is_cae(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the GM Audit decides a risk "
                                                                           "acceptance (IIA GIAS 11.5)")
-    if capa.risk_acceptance_status != "Proposed" or capa.status == CapaStatus.Closed:
+    if capa.risk_acceptance_status not in ("Proposed", "Committee") or capa.status == CapaStatus.Closed:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No risk acceptance is awaiting your decision")
     if user.id in (capa.risk_proposed_by, capa.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
@@ -334,18 +327,6 @@ def decide_risk_acceptance(capa_id: int, payload: RiskDecisionIn, request: Reque
     comment = payload.comment.strip()
     if payload.decision == "Disagree":
         reject_risk_acceptance(db, capa, user.id, f"GM Audit: {comment}", request)
-    elif needs_committee(capa):
-        capa.risk_acceptance_status = "Committee"
-        add_event(db, capa, "risk_proposed", user_id=user.id, request=request,
-                  text=f"GM Audit agrees; referred to the Audit Committee. {comment}")
-        log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id, request=request,
-                           action="RISK ACCEPTANCE referred to the Audit Committee")
-        from app.core.permissions import has_perm
-
-        secretaries = [u.id for u in db.execute(select(User).where(User.is_active.is_(True))).scalars()
-                       if has_perm(u, "committee.record") and u.id != user.id]
-        notify_many(db, secretaries, f"Risk acceptance for the Audit Committee: {capa.capa_ref}",
-                    capa.risk_acceptance or "", link_type="capa", link_id=capa.id)
     else:
         close_risk_accepted(db, capa, user.id, f"Agreed by the GM Audit. {comment}", request)
     log_action(db, user_id=user.id, request=request,

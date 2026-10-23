@@ -5,13 +5,12 @@ from __future__ import annotations
 NAME = "Assurance Domain Module"
 DESCRIPTION = (
     "Audit universe and annual assurance plan, planning cycle, plan changes and versions, controlled "
-    "distribution, Audit Committee, governance and QAIP."
+    "distribution, charter and QAIP."
 )
 MODULES = {
     "planning": "Audit universe, assurance map, risk assessment and the annual assurance plan",
     "plancycle": "Planning cycle, statuses, versions, change requests, IAA submission, distribution",
-    "committee": "Audit Committee packs, meetings register, minutes and decisions on recommendations",
-    "governance": "Governance portal and charter",
+    "committee": "Audit Committee meeting records kept from earlier use (no screens or routes)",
     "qaip": "Quality assurance and improvement programme",
     "scheduler": "Timeline of engagements and auditor bookings with double-booking warnings",
     "conformance": "Internal audit charter, external quality assessments, conformance statement, retention review",
@@ -19,10 +18,7 @@ MODULES = {
 
 
 def routers() -> list:
-    from app.domains.assurance.committee.meetings import router as committee_meetings
-    from app.domains.assurance.committee.router import router as committee
     from app.domains.assurance.conformance.router import router as conformance
-    from app.domains.assurance.governance.router import router as governance
     from app.domains.assurance.plancycle.changes import router as plan_changes
     from app.domains.assurance.plancycle.router import router as plancycle
     from app.domains.assurance.planning.coverage import router as plan_coverage
@@ -37,6 +33,5 @@ def routers() -> list:
     from app.domains.assurance.universe.workspace import router as universe_workspace
 
     # plan_signals first: its fixed path must win over /api/assurance-plans/{plan_id}.
-    return [plan_signals, planning, plan_coverage, plan_timeline, plan_projects, committee, committee_meetings, qaip,
-            governance, plancycle, plan_changes,
+    return [plan_signals, planning, plan_coverage, plan_timeline, plan_projects, qaip, plancycle, plan_changes,
             conformance, scheduler, universe, universe_workspace, assurance_map]

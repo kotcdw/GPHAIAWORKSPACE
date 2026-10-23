@@ -77,7 +77,7 @@ def get_current_user(
     from app.core.audit import client_ip
     from app.platform.workflow.engine import set_actor
 
-    set_actor(db, user.id, client_ip(request))
+    set_actor(db, user.id, client_ip(request))  # also read by the least-privilege checks (core/least_privilege.py)
     return user
 
 

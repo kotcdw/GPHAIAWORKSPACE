@@ -1,1 +1,1 @@
-"""GPHA Audit Workspace - application package."""
+"""GPHA INTERNAL AUDIT WORKSPACE - application package."""

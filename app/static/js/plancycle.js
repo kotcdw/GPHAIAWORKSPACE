@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - annual planning cycle on the Assurance Plan page:
+// GPHA INTERNAL AUDIT WORKSPACE - annual planning cycle on the Assurance Plan page:
 // preparation -> universe review -> managers' meeting -> draft -> internal review -> submission
 // -> Audit Committee decision -> approved version -> GM Audit distribution -> PIA / Manager execution.
 

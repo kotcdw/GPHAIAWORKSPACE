@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - CAE insight and productivity screens:
+// GPHA INTERNAL AUDIT WORKSPACE - CAE insight and productivity screens:
 // Analytics, Quality (QAIP), Capacity & time sheets, global search, in-app help,
 // Excel import dialogs, Excel export and saved list views.
 // Loaded after engagement.js and before app.js.
@@ -106,6 +106,22 @@ async function renderQaipPage(fy = currentFiscalYear()) {
     stat(q.survey_average === null ? "-" : q.survey_average.toFixed(2), "Satisfaction (out of 5)", null, q.survey_average !== null && q.survey_average < 3.5 ? "warn" : "")));
   const grid = el("div", { class: "dash-grid" });
   viewRoot.append(grid);
+  // IIA Topical Requirements: conformance is evaluated in quality assessments.
+  const topical = el("div", null, loadingState());
+  grid.append(panel("Topical requirements", topical));
+  API.get("/api/topical-requirements/conformance").then((c) => {
+    clear(topical);
+    const rows = c.engagements.filter((e) => e.nature === "Assurance");
+    topical.append(el("p", { class: "small" }, c.gaps ? `${c.gaps} assurance engagement decision(s) or checklist(s) still open` : "No open decisions or checklists"),
+      rows.length ? dataTable(rows.slice(0, 25), [
+        { key: "title", label: "Audit", render: (e) => el("button", { class: "link-btn", type: "button", onclick: () => openAudit(e.audit_id, "topical") }, e.title) },
+        { key: "status", label: "Status" },
+        ...c.requirements.map((r, i) => ({ key: r.code, label: r.title, render: (e) => {
+          const q = e.requirements[i];
+          return q.state === "In progress" ? `${q.done}/${q.total}` : q.state;
+        } })),
+      ]) : el("div", { class: "empty" }, "No assurance engagements yet."));
+  }).catch(() => { clear(topical); topical.append(el("div", { class: "empty" }, "Not available for your role.")); });
   grid.append(panel("Weakest checklist areas", q.weakest_items.length ? el("div", { class: "bars" }, ...q.weakest_items.map((w) =>
     el("div", { class: "bar-row" }, el("span", { class: "bar-label" }, el("span", { class: "chip-mini" }, w.standard), ` ${w.question}`),
       el("span", { class: "bar-track", role: "img", "aria-label": `${w.conformance_pct}% conformance` },
@@ -411,7 +427,7 @@ const HELP = {
     "Managers cover Unit Heads, Audit Managers, PIAs and the GM Audit: give each Manager its approval level. Working papers and reports are signed off Unit Head, then Audit Manager, then PIA; only the GM Audit (CAE) approves and distributes the plan and approves reports.",
     "The levels each document passes through are set under Configuration > Audit workflow (review chains).",
     "Only a Super Administrator changes the matrix (tick, untick, Save; Reset returns a role to the standard permissions) and appoints administrators.",
-    "Change someone's role on the 'People by role' tab or under Profile & Users.",
+    "Change someone's role in Users & access: open the person and choose the role.",
   ] },
   programs: { title: "Project Library", items: [
     "Reusable work programmes maintained by the Audit Administrator: objectives, risks, controls and test steps.",
@@ -420,12 +436,6 @@ const HELP = {
   evidence: { title: "Requests", items: [
     "Auditors request documents from the auditees assigned to an audit, with a due date.",
     "Auditees upload files and submit; the auditor accepts (optionally filing them as working papers) or returns them with a comment.",
-  ] },
-  governance: { title: "Governance portal", items: [
-    "Read-only view for the Audit Committee and executive reviewers: approved plans, issued reports (Word / print) and headline KPIs.",
-  ] },
-  portfolio: { title: "Port portfolio", items: [
-    "Audits, open findings and remediation by port. A PIA sees their own port (set 'Where I work' on the profile); the GM Audit sees every port.",
   ] },
   workspace: { title: "All apps", items: ["Every app in one place, grouped by solution like the sidebar (Audit, Resource, Risk and Compliance management; Analytics & reporting; Platform settings), with live counts. Quick actions start the most common work."] },
   plans: { title: "Assurance Plans", items: [
@@ -463,7 +473,6 @@ const HELP = {
     "Laws, regulations, GPHA policies and standards that findings are measured against (the 'what should be').",
     "Pick a criterion in a finding's form to fill its Criteria box; the library counts where each one is used. Retire criteria that no longer apply.",
   ] },
-  committee: { title: "Committee pack", items: ["Summary for the Audit Committee; download the Word pack for the meeting."] },
   configuration: { title: "Configuration", items: ["Business rules, SLAs, escalation, KPI targets and security settings. Every change is logged."] },
 };
 

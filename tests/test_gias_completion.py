@@ -12,7 +12,7 @@ from app.core.enums import ReviewLevel, Role, utcnow
 from app.domains.issues.capa.models import Capa
 from app.domains.issues.followup.service import due_level, run_escalations
 from app.platform.notifications.models import Notification
-from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user, walk_plan_to_review
+from tests.conftest import DEFAULT_PASSWORD, csrf_headers, decide_topicals, login, make_user, walk_plan_to_review
 
 _YEARS = iter(range(2030, 2023, -1))
 
@@ -107,11 +107,6 @@ def test_committee_approval_and_documented_plan_changes(client, client2, db):
     log = client.get(f"/api/assurance-plans/{plan['id']}/changes").json()
     assert [c["change_type"] for c in log][-1] == "Committee"
     assert sorted(c["change_type"] for c in log[:-1]) == ["Added", "Cancelled", "Changed"]
-    summary = client.get(f"/api/committee/summary?fiscal_year={fy}").json()
-    assert summary["plan"]["committee_reference"] == "AC/2026/04" and len(summary["plan_changes"]) == 3
-    pack = client.get(f"/api/committee/pack.docx?fiscal_year={fy}")
-    text = _docx_text(pack.content)
-    assert "Changes to the approved plan" in text and "AC/2026/04" in text
 
 
 def test_criteria_library_and_finding_link(client, db):
@@ -168,6 +163,7 @@ def test_review_notes_workpaper_xref_and_closure_gate(client, client2, db):
 
     client.patch(f"/api/audits/{aid}", json={"status": "In Progress"}, headers=h)
     client.patch(f"/api/audits/{aid}", json={"status": "Review"}, headers=h)
+    decide_topicals(client, aid, h)
     check = {c["key"]: c for c in client.get(f"/api/audits/{aid}/closure-check").json()["checks"]}
     assert check["review_notes"]["ok"] is False and check["review_notes"]["required"]
     ah = csrf_headers(login(client2, admin.username))

@@ -536,7 +536,7 @@ def internal_assessment_report(request: Request, fiscal_year: int | None = None,
     doc.add_heading("2. Scope and approach", level=1)
     doc.add_paragraph("Each completed engagement was reviewed against a 12-point checklist mapped to the Standards "
                       "by a reviewer independent of the engagement team. Results are combined with performance "
-                      "indicators and auditee feedback collected in the GPHA Internal Audit Workspace.")
+                      "indicators and auditee feedback collected in the GPHA INTERNAL AUDIT WORKSPACE.")
     doc.add_heading("3. Conformance by area", level=1)
     weights = {"Conforms": 1.0, "Partially conforms": 0.5, "Does not conform": 0.0}
     per_item: dict[str, list[float]] = {}

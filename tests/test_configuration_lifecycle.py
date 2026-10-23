@@ -10,7 +10,7 @@ from datetime import timedelta
 from app.core import appconfig
 from app.core.enums import Role, utcnow
 from app.platform.notifications.models import Notification
-from tests.conftest import DEFAULT_PASSWORD, csrf_headers, login, make_user
+from tests.conftest import DEFAULT_PASSWORD, csrf_headers, decide_topicals, login, make_user
 
 
 def _u(db, prefix: str, role: Role):
@@ -78,6 +78,7 @@ def test_closure_gates_fieldwork_notice_and_engagement_letter(client, client2, d
 
     client.post(f"/api/audits/{aid}/findings", json={"title": "Stock not counted", "risk_rating": "High"}, headers=h)
     client.patch(f"/api/audits/{aid}", json={"status": "Review"}, headers=h)
+    decide_topicals(client, aid, h)
     try:
         client2.put("/api/config", json={"values": {"require_report_to_close": True,
                                                     "require_findings_actioned_to_close": True}}, headers=adm)
@@ -96,20 +97,3 @@ def test_closure_gates_fieldwork_notice_and_engagement_letter(client, client2, d
         assert closed.status_code == 200, closed.text
     finally:
         _reset(client2, adm, "require_report_to_close", "require_findings_actioned_to_close")
-
-
-def test_committee_pack(client, client2, db):
-    auditor = _u(db, "acaud", Role.Auditor)
-    auditee = _u(db, "acee", Role.Auditee)
-    login(client, auditor.username)
-    summary = client.get("/api/committee/summary")
-    assert summary.status_code == 200, summary.text
-    body = summary.json()
-    assert set(body["open_findings_by_age"]) == {"0-30 days", "31-90 days", "91-180 days", "Over 180 days"}
-    assert {"open", "overdue", "awaiting_validation", "closed"} <= set(body["actions"])
-    pack = client.get("/api/committee/pack.docx")
-    assert pack.status_code == 200 and pack.headers["content-disposition"].startswith("attachment")
-    with zipfile.ZipFile(io.BytesIO(pack.content)) as zf:
-        assert "Audit Committee" in zf.read("word/document.xml").decode()
-    login(client2, auditee.username)
-    assert client2.get("/api/committee/summary").status_code == 403

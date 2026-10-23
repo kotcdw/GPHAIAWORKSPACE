@@ -29,7 +29,8 @@ def routers() -> list:
     from app.domains.grc.links import router as links
     from app.domains.grc.policies.router import router as policies
     from app.domains.grc.risk.assurance import router as risk_assurance
+    from app.domains.grc.risk.drivers import router as risk_drivers
     from app.domains.grc.risk.library import router as risk_library
     from app.domains.grc.risk.router import router as risk
 
-    return [risk, risk_assurance, risk_library, compliance, policies, assets, links, people_router]
+    return [risk, risk_assurance, risk_drivers, risk_library, compliance, policies, assets, links, people_router]

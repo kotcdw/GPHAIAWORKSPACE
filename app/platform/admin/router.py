@@ -205,6 +205,7 @@ def policies_data() -> dict:
     from app.core import upload_policy
     from app.core.appconfig import cfg
     from app.platform.dataio.router import import_max_bytes, import_max_rows
+    from app.platform.history.router import EXPORT_MAX_ROWS
 
     return {
         "attachments": {"max_upload_mb": upload_policy.max_mb(), "server_max_mb": settings.max_upload_mb,
@@ -219,6 +220,7 @@ def policies_data() -> dict:
                      "max_failed_sign_ins": int(cfg("login_max_attempts")),
                      "lockout_minutes": int(cfg("login_lockout_minutes")),
                      "password_min_length": int(cfg("password_min_length"))},
+        "activity_log": {"max_download_rows": EXPORT_MAX_ROWS},
     }
 
 
@@ -256,7 +258,7 @@ def storage_data() -> dict:
 def overview(db: DBSession = Depends(get_db), user: User = Depends(require_admin_area)) -> dict:
     now = utcnow()
     areas = allowed_areas(user)
-    out: dict = {"areas": sorted(areas), "generated_at": now.isoformat()}
+    out: dict = {"areas": sorted(areas), "generated_at": now.isoformat(), "address": settings.app_base_url}
     if "users" in areas:
         out["users"] = _users(db, now)
     if "org" in areas:
@@ -287,3 +289,53 @@ def policies(user: User = Depends(require_admin_area)) -> dict:
     if "policies" not in allowed_areas(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to data policies")
     return policies_data()
+
+
+@router.get("/closeout")
+def closeout(db: DBSession = Depends(get_db), user: User = Depends(require_admin_area)) -> dict:
+    """Year-end closeout and next-cycle readiness: what is still open in this fiscal year and what the next one
+    needs (plan, fiscal year end, people, seats, units). Every figure is counted from the records."""
+    from datetime import date
+
+    from app.core.appconfig import cfg
+    from app.core.enums import AuditStatus, CapaStatus, FindingStatus
+    from app.domains.assurance.planning.models import AssurancePlan
+    from app.domains.audit.audits.models import Audit, Finding
+    from app.domains.issues.capa.models import Capa
+    from app.platform.organizations.models import Organization
+    from app.platform.users import licenses as lic
+
+    now = utcnow()
+    start_month = int(cfg("fiscal_year_start_month"))
+    fy = now.year if now.month >= start_month else now.year - 1
+    end = (date(fy + 1, start_month, 1) if start_month > 1 else date(fy + 1, 1, 1)) - timedelta(days=1)
+
+    def plan(year: int) -> dict | None:
+        p = db.execute(select(AssurancePlan).where(AssurancePlan.fiscal_year == year)).scalar_one_or_none()
+        return {"id": p.id, "title": p.title, "status": p.status.value, "ref": p.plan_ref} if p else None
+
+    count = lambda stmt: db.execute(select(func.count()).select_from(stmt.subquery())).scalar_one()  # noqa: E731
+    open_findings = select(Finding.id).where(Finding.status != FindingStatus.Closed)
+    no_owner = or_(Finding.assigned_owner_email.is_(None), Finding.assigned_owner_email == "")
+    open_capa = select(Capa.id).where(Capa.status != CapaStatus.Closed)
+    seats = [r for r in lic.licenses(db) if r["seats"] is not None]
+    out = {
+        "fiscal_year": fy, "fiscal_year_end": end.isoformat(), "fiscal_year_start_month": start_month,
+        "days_to_year_end": (end - now.date()).days,
+        "plan": plan(fy), "next_plan": plan(fy + 1),
+        "audits": {"open": count(select(Audit.id).where(Audit.status != AuditStatus.Closed)),
+                   "in_review": count(select(Audit.id).where(Audit.status == AuditStatus.Review))},
+        "issues": {"open": count(open_findings), "no_owner": count(open_findings.where(no_owner)),
+                   "no_due_date": count(open_findings.where(Finding.target_date.is_(None)))},
+        "actions": {"open": count(open_capa),
+                    "no_owner": count(open_capa.where(or_(Capa.owner_email.is_(None), Capa.owner_email == ""))),
+                    "no_due_date": count(open_capa.where(Capa.due_date.is_(None)))},
+        "people": {"active": count(select(User.id).where(User.is_active.is_(True))),
+                   "invited": len(lic.open_invitation_user_ids(db)),
+                   "full_roles": [r["name"] for r in seats if r["available"] == 0]},
+        "units": count(select(Organization.id).where(Organization.is_active.is_(True))),
+        "areas": sorted(allowed_areas(user)),
+    }
+    if "backups" in out["areas"]:
+        out["backups"] = _backups(db, now)
+    return out

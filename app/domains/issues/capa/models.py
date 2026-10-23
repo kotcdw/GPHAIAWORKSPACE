@@ -68,8 +68,8 @@ class Capa(Base):
     original_due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     extension_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # Management accepts the residual risk instead of implementing (IIA GIAS 11.5): proposed by the follow-up
-    # manager, decided by the GM Audit and, for the configured severities, by the Audit Committee.
-    # risk_acceptance_status: Proposed | Committee | Accepted | Rejected.
+    # manager, decided by the GM Audit.
+    # risk_acceptance_status: Proposed | Accepted | Rejected (Committee: referred before the register was retired).
     risk_acceptance_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     risk_proposed_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
     risk_proposed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

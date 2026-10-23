@@ -25,6 +25,8 @@ class AppSetting(BaseModel):
 class CustomizationIn(BaseModel):
     apps: dict[str, AppSetting] = Field(default_factory=dict)
     branding: dict[str, str] = Field(default_factory=dict)
+    # The organisation's default home pad (screen keys in order); omit to keep it, [] to go back to built-in.
+    home: list[str] | None = Field(default=None, max_length=60)
 
 
 @router.get("")
@@ -37,7 +39,8 @@ def save_apps(payload: CustomizationIn, request: Request, db: DBSession = Depend
               user: User = Depends(require_perm("system.superadmin"))) -> dict:
     before = {a["key"]: a["enabled"] for a in registry.catalogue()["apps"]}
     registry.save(db, {k: v.model_dump() for k, v in payload.apps.items()},
-                  {k: v for k, v in payload.branding.items() if k in registry.DEFAULT_BRANDING}, user.id)
+                  {k: v for k, v in payload.branding.items() if k in registry.DEFAULT_BRANDING}, user.id,
+                  home=False if "home" not in payload.model_fields_set else payload.home)
     db.commit()
     appconfig.invalidate()
     after = registry.catalogue()

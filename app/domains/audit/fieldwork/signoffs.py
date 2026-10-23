@@ -336,6 +336,12 @@ def remove_signoff(target_type: str, target_id: int, level: int, request: Reques
     if signed[level].user_id != user.id and not is_manager(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Only the person who signed, or an Audit Manager, can remove this sign-off")
+    from app.core.least_privilege import is_field_auditor
+
+    if is_field_auditor(user) and any(lv > level and s.user_id not in (None, user.id) for lv, s in signed.items()):
+        # Least privilege: an Auditor cannot undo a reviewer's sign-off by removing their own earlier one.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="A reviewer has signed after you; only an Audit Manager can reopen this work")
     was_complete = max(signed) == len(levels())
     db.execute(delete(Signoff).where(Signoff.target_type == target_type, Signoff.target_id == target_id,
                                      Signoff.level >= level))

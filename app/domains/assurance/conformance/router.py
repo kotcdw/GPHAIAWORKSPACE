@@ -64,7 +64,6 @@ class CharterIn(BaseModel):
 class ApprovalIn(BaseModel):
     approved_at: datetime
     approval_reference: str = Field(min_length=3, max_length=120)
-    meeting_id: int | None = None
 
 
 class EqaIn(BaseModel):
@@ -167,16 +166,10 @@ def approve_charter(charter_id: int, payload: ApprovalIn, request: Request, db: 
     approved = payload.approved_at.replace(tzinfo=None)
     if approved > utcnow() or (c.submitted_at and approved < c.submitted_at - timedelta(days=1)):
         raise HTTPException(status_code=422, detail="The approval date must be after submission and not in the future")
-    if payload.meeting_id is not None:
-        from app.domains.assurance.committee.models import CommitteeMeeting
-
-        if db.get(CommitteeMeeting, payload.meeting_id) is None:
-            raise HTTPException(status_code=422, detail="Unknown Committee meeting")
     for old in db.execute(select(InternalAuditCharter).where(InternalAuditCharter.status == "Approved")).scalars():
         old.status = "Superseded"
     c.status, c.approved_at = "Approved", approved
-    c.approval_reference, c.meeting_id, c.approved_recorded_by = payload.approval_reference.strip(), \
-        payload.meeting_id, user.id
+    c.approval_reference, c.approved_recorded_by = payload.approval_reference.strip(), user.id
     months = int(cfg("charter_review_months"))
     c.next_review_due = approved + timedelta(days=round(months * 30.44))
     log_action(db, user_id=user.id, action=f"CHARTER_APPROVED v{c.version} ref={c.approval_reference}",

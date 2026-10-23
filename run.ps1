@@ -1,4 +1,4 @@
-# GPHA Internal Audit Workspace - start the development server.
+# GPHA INTERNAL AUDIT WORKSPACE - start the development server.
 # Usage:  .\run.ps1            (only this PC can open the app)
 #         .\run.ps1 -Lan       (team test: colleagues on the office network can open it;
 #                               same as .\run-lan.ps1)
@@ -92,7 +92,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not $Lan -and -not $External) {
-    Write-Host "==> Starting GPHA Internal Audit Workspace on http://127.0.0.1:$Port" -ForegroundColor Green
+    Write-Host "==> Starting GPHA INTERNAL AUDIT WORKSPACE on http://127.0.0.1:$Port" -ForegroundColor Green
     uv run uvicorn app.main:app --reload --host 127.0.0.1 --port $Port
     exit $LASTEXITCODE
 }
@@ -216,7 +216,7 @@ if ($External) {
 
     Write-Host ""
     Write-Host "==================================================================" -ForegroundColor Green
-    Write-Host "  GIAW is shared outside the office ($External)" -ForegroundColor Green
+    Write-Host "  GPHA INTERNAL AUDIT WORKSPACE is shared outside the office ($External)" -ForegroundColor Green
     Write-Host "  Testers open:   $url" -ForegroundColor Green
     if ($External -eq "Tailscale") {
         Write-Host "  Only people in your Tailscale network can open it. Invite testers at" -ForegroundColor Green
@@ -269,7 +269,7 @@ try {
 } catch { }
 
 Write-Host "==> Checking Windows Firewall for port $Port" -ForegroundColor Cyan
-$ruleName = "GIAW team test (TCP $Port)"
+$ruleName = "GPHA INTERNAL AUDIT WORKSPACE team test (TCP $Port)"
 if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
     $ruleCmd = "New-NetFirewallRule -DisplayName '$ruleName' -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile Domain,Private | Out-Null"
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -296,7 +296,7 @@ $env:GPHA_APP_BASE_URL = $url
 
 Write-Host ""
 Write-Host "==================================================================" -ForegroundColor Green
-Write-Host "  GIAW team test is starting" -ForegroundColor Green
+Write-Host "  GPHA INTERNAL AUDIT WORKSPACE team test is starting" -ForegroundColor Green
 Write-Host "  Colleagues open:   $url" -ForegroundColor Green
 Write-Host "  On this PC:        http://127.0.0.1:$Port" -ForegroundColor Green
 Write-Host "  Stop:              press Ctrl+C in this window" -ForegroundColor Green

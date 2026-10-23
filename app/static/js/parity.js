@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - Diligent One (HighBond) parity screens.
+// GPHA INTERNAL AUDIT WORKSPACE - Diligent One (HighBond) parity screens.
 //
 //   Sign-offs        Preparer, Detail / General / Supplemental / Specialty Reviewer; Next Reviewer; override; remove
 //   Narratives       Internal Control fieldwork: process narratives linked to controls

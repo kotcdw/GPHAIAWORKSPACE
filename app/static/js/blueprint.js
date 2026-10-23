@@ -4,12 +4,14 @@
 
 // ------------------------------------------------------------------ user groups (Users & access)
 
-async function groupsDialog() {
-  const body = el("div");
-  const dlg = modal({ title: "Groups", body, width: 720,
-    footer: el("div", { class: "actions" },
-      el("button", { class: "btn secondary", type: "button", onclick: () => dlg.close() }, "Close"),
-      el("button", { class: "btn", type: "button", onclick: () => groupForm(null, load) }, el("i", { class: "bi bi-plus" }), " New group")) });
+// Groups (Users & access > Groups): named sets of people used as a sharing audience and for access reviews.
+async function renderGroupsPage() {
+  clear(viewRoot);
+  const add = el("button", { class: "btn", type: "button", onclick: () => groupForm(null, load) }, el("i", { class: "bi bi-plus" }), " New group");
+  const role = el("button", { class: "btn secondary", type: "button", onclick: () => groupRoleDialog() }, "Manage group roles");
+  viewRoot.append(viewHeader("Groups", [role, add]));
+  const body = el("div", { class: "card" });
+  viewRoot.append(body);
   async function load() {
     clear(body);
     body.append(loadingState());
@@ -25,6 +27,26 @@ async function groupsDialog() {
         el("td", null, badge(g.is_active ? "Active" : "Inactive"))))))));
   }
   load();
+}
+
+// Give every member of a group the same role (each member's own role changes; the group itself holds nothing).
+async function groupRoleDialog() {
+  let groups;
+  try { [groups] = await Promise.all([API.get("/api/groups"), ensureRoleCatalogue()]); } catch (err) { toast(err.message, "error"); return; }
+  openForm({
+    title: "Manage group roles",
+    key: "group:role",
+    draftable: false,
+    width: 520,
+    fields: [
+      { name: "group_id", label: "Group", type: "select", required: true, options: groups.map((g) => ({ value: g.id, label: `${g.name} (${g.members})` })) },
+      { name: "job_role", label: "Role for every member", type: "select", required: true,
+        options: (JOB_ROLE_OPTIONS || []).filter((r) => r.assignable).map((r) => ({ value: r.code, label: r.name })) },
+    ],
+    submitLabel: "Apply to members",
+    onSubmit: (v) => API.post(`/api/groups/${v.group_id}/role`, { job_role: v.job_role }),
+    onDone: (r) => { toast(`${r.changed.length} member${r.changed.length === 1 ? "" : "s"} changed${r.unchanged.length ? ` · ${r.unchanged.length} unchanged` : ""}`); refreshUsers(); },
+  });
 }
 
 function groupForm(g, after) {

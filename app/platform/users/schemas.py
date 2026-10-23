@@ -26,6 +26,7 @@ class UserOut(ORMModel):
     review_level: ReviewLevel | None = None
     mfa_enabled: bool = False
     work_entity_id: int | None = None
+    locale: str | None = None
     job_role: str | None = None
     job_role_name: str | None = None
     created_at: datetime
@@ -37,6 +38,13 @@ class UserOut(ORMModel):
         self.job_role = job_role_of(self)
         self.job_role_name = JOB_ROLES_BY_CODE[self.job_role].name
         return self
+
+
+class InviteIn(BaseModel):
+    email: EmailStr
+    job_role: str = Field(min_length=2, max_length=40)
+    full_name: str = Field(default="", max_length=255)
+    group_ids: list[int] = Field(default_factory=list, max_length=100)
 
 
 class UserCreate(BaseModel):

@@ -9,6 +9,7 @@ Settings are stored as one JSON value (``app_customization``) in the configurati
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session as DBSession
@@ -93,12 +94,6 @@ APPS: list[App] = [
     # Analytics & reporting
     App("analytics", "Analytics", REPORTING, "graph-up-arrow", "KPIs, trends and heat maps.", ("analytics",),
         ("/api/analytics",)),
-    App("committee", "Audit Committee", REPORTING, "bar-chart-line",
-        "Committee packs, meetings, minutes and decisions.", ("committee",), ("/api/committee",)),
-    App("governance", "Governance portal", REPORTING, "bank", "Read-only view for governing bodies.",
-        ("governance",), ("/api/governance",)),
-    App("portfolio", "Port portfolio", REPORTING, "geo-alt", "Audit coverage and results by port.",
-        ("portfolio",), ("/api/portfolio",)),
     App("qaip", "Quality (QAIP)", REPORTING, "patch-check", "Quality assurance and improvement programme.",
         ("qaip",), ("/api/qaip",)),
     App("results", "Results", REPORTING, "table", "Collections of analytic tables with triage workflow and triggers.",
@@ -125,14 +120,15 @@ APPS: list[App] = [
 ]
 APPS_BY_KEY = {a.key: a for a in APPS}
 
-DEFAULT_BRANDING = {"name": "GPHA INTERNAL AUDIT", "sub": "WORKSPACE", "title": "GPHA Internal Audit Workspace"}
+DEFAULT_BRANDING = {"name": "GPHA INTERNAL AUDIT", "sub": "WORKSPACE", "title": "GPHA INTERNAL AUDIT WORKSPACE"}
 
 
 def settings() -> dict:
     raw = appconfig._load().get(KEY) or {}  # noqa: SLF001 - shared cached read of the configuration table
     apps = raw.get("apps", {}) if isinstance(raw, dict) else {}
     branding = {**DEFAULT_BRANDING, **(raw.get("branding", {}) if isinstance(raw, dict) else {})}
-    return {"apps": apps, "branding": branding}
+    home = raw.get("home") if isinstance(raw, dict) and isinstance(raw.get("home"), list) else None
+    return {"apps": apps, "branding": branding, "home": home}
 
 
 def enabled(key: str) -> bool:
@@ -153,13 +149,26 @@ def disabled_prefixes() -> list[tuple[str, str]]:
 
 def catalogue() -> dict:
     s = settings()
-    return {"branding": s["branding"], "apps": [
+    return {"branding": s["branding"], "home": s["home"], "apps": [
         {"key": a.key, "name": a.name, "label": s["apps"].get(a.key, {}).get("label") or a.name, "section": a.section,
          "icon": a.icon, "description": a.description, "views": list(a.views), "core": a.core,
          "enabled": a.core or bool(s["apps"].get(a.key, {}).get("enabled", True))} for a in APPS]}
 
 
-def save(db: DBSession, apps: dict[str, dict], branding: dict[str, str], user_id: int) -> None:
+HOME_TILE = re.compile(r"^[a-z][a-z0-9_-]{1,39}$")
+
+
+def clean_home(tiles: list[str] | None) -> list[str] | None:
+    """The tiles of a home pad, in order (screen keys); None means the built-in arrangement."""
+    if tiles is None:
+        return None
+    out = list(dict.fromkeys(t for t in tiles if isinstance(t, str) and HOME_TILE.match(t)))
+    return out[:60]
+
+
+def save(db: DBSession, apps: dict[str, dict], branding: dict[str, str], user_id: int,
+         home: list[str] | None | bool = False) -> None:
+    """Save apps and branding; ``home`` is the organisation's default home pad (False keeps the saved one)."""
     from app.core.appconfig import AppConfig
 
     clean = {}
@@ -172,7 +181,11 @@ def save(db: DBSession, apps: dict[str, dict], branding: dict[str, str], user_id
                       "label": "" if label == app.name else label}
     brand = {k: (branding.get(k) or DEFAULT_BRANDING[k]).strip()[:80] for k in DEFAULT_BRANDING}
     row = db.get(AppConfig, KEY)
-    value = json.dumps({"apps": clean, "branding": brand})
+    payload = {"apps": clean, "branding": brand}
+    keep = settings()["home"] if home is False else clean_home(home)
+    if keep:
+        payload["home"] = keep
+    value = json.dumps(payload)
     if row is None or row.value != value:  # keep the change in the settings history (append-only)
         from app.core.appconfig import AppConfigHistory
         from app.platform.users.models import User

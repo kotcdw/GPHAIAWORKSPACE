@@ -21,7 +21,7 @@ from app.core.crypto import decrypt
 from app.core.enums import Role
 from app.domains.audit.audits.models import WorkingPaper
 from app.platform.users.models import User
-from tests.conftest import csrf_headers, login, make_user
+from tests.conftest import csrf_headers, decide_topicals, login, make_user
 
 PASSWORD = "Passw0rd!"
 
@@ -64,6 +64,7 @@ def test_preparer_cannot_sign_off_own_audit(client, db):
     admin = login(client, "ctl_solo_admin")
     audit_id = _audit(client, admin)
     _to_review(client, admin, audit_id)
+    decide_topicals(client, audit_id, csrf_headers(admin))
     r = client.post(f"/api/audits/{audit_id}/close", json={"password": PASSWORD}, headers=csrf_headers(admin))
     assert r.status_code == 403
     assert "Segregation of duties" in r.json()["detail"]

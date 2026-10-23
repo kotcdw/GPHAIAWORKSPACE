@@ -93,6 +93,33 @@ def _migrate_database():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _engagement_lead_role():
+    _grant_engagement_lead_permissions()  # again before each test: some tests reset the Auditor role
+    yield
+
+
+# Most tests use an Auditor-tier account as the engagement lead who opens the audit. In the least-privilege role
+# design an Auditor does not create audits, review or export; the tests grant those back the way a Super
+# Administrator would (Roles & permissions), and switch off "Auditors work only on their assigned engagements" so
+# port-scope tests keep their meaning. tests/test_least_privilege.py restores the standard Auditor role.
+ENGAGEMENT_LEAD_GRANTS = ("audit.create", "review.workpapers", "review.notes", "data.export")
+
+
+def _grant_engagement_lead_permissions() -> None:
+    from app.core import appconfig
+    from app.core import permissions as perms
+    from app.platform.roles.models import RolePermission
+
+    with SessionLocal() as s:
+        for p in ENGAGEMENT_LEAD_GRANTS:
+            s.merge(RolePermission(job_role="auditor", permission=p, granted=True))
+        s.merge(appconfig.AppConfig(key="auditor_assigned_only", value="false"))
+        s.commit()
+    perms.invalidate()
+    appconfig.invalidate()
+
+
 @pytest.fixture
 def db():
     session = SessionLocal()
@@ -155,6 +182,16 @@ def csrf_headers(csrf_token: str) -> dict[str, str]:
 # ------------------------------------------------------------------ annual planning cycle helpers
 
 PREP_CHECKS = ["strategy", "prior_year", "stakeholders", "resources", "regulatory"]
+
+
+def decide_topicals(client: TestClient, audit_id: int, headers: dict) -> None:
+    """Record every IIA topical requirement as not in scope of the engagement (closing an assurance audit needs a
+    decision on each)."""
+    for r in client.get(f"/api/audits/{audit_id}/topical").json()["requirements"]:
+        res = client.put(f"/api/audits/{audit_id}/topical/{r['id']}",
+                         json={"in_scope": False, "rationale": "Topic not in the scope of this engagement"},
+                         headers=headers)
+        assert res.status_code == 200, res.text
 
 
 def walk_plan_to_review(client: TestClient, plan_id: int, headers: dict) -> None:

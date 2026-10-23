@@ -233,8 +233,8 @@ class WithdrawalIn(BaseModel):
 @router.post("/api/capa/{capa_id}/propose-withdrawal", response_model=CapaOut)
 def propose_withdrawal(capa_id: int, payload: WithdrawalIn, request: Request, db: DBSession = Depends(get_db),
                        user: User = Depends(require_perm("followup.manage"))) -> Capa:
-    """Re-evaluation: a recommendation no longer relevant or feasible goes to the Audit Committee to withdraw
-    (MoF instructions s.6.1(8), s.7.7)."""
+    """Re-evaluation: a recommendation no longer relevant or feasible is proposed for withdrawal; the GM Audit
+    decides (MoF instructions s.6.1(8), s.7.7)."""
     capa = _load(db, capa_id)
     if capa.status == CapaStatus.Closed:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The action is already closed")
@@ -242,12 +242,59 @@ def propose_withdrawal(capa_id: int, payload: WithdrawalIn, request: Request, db
     capa.withdrawal_proposed_by = user.id
     capa.withdrawal_proposed_at = utcnow()
     add_event(db, capa, "withdrawal", user_id=user.id, request=request,
-              text=f"Withdrawal proposed to the Audit Committee: {capa.withdrawal_reason}")
+              text=f"Withdrawal proposed to the GM Audit: {capa.withdrawal_reason}")
     log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id,
-                       action="WITHDRAWAL PROPOSED to the Audit Committee", request=request)
+                       action="WITHDRAWAL PROPOSED to the GM Audit", request=request)
     log_action(db, user_id=user.id, action=f"REMEDIATION_WITHDRAWAL_PROPOSED id={capa.id}", request=request)
     emit(db, "action.withdrawal_proposed", "capa", capa.id, capa_context(db, capa),
          period=f"wd{capa.withdrawal_proposed_at:%Y%m%d%H%M}")
+    db.commit()
+    db.refresh(capa)
+    return capa
+
+
+class WithdrawalDecisionIn(BaseModel):
+    decision: str = Field(pattern="^(Agree|Disagree)$")
+    comment: str = Field(min_length=10, max_length=5000)
+
+
+@router.post("/api/capa/{capa_id}/withdrawal/decision", response_model=CapaOut)
+def decide_withdrawal(capa_id: int, payload: WithdrawalDecisionIn, request: Request, db: DBSession = Depends(get_db),
+                      user: User = Depends(require_perm("followup.manage"))) -> Capa:
+    """The GM Audit agrees (the action closes as Withdrawn) or disagrees (it stays open) with a proposed withdrawal.
+    The person who proposed it cannot decide it."""
+    from app.core.permissions import is_cae
+    from app.domains.issues.capa.status import WITHDRAWN
+    from app.domains.issues.followup.actions import drop_pending_risk_acceptance
+
+    capa = _load(db, capa_id)
+    if not is_cae(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the GM Audit decides a withdrawal")
+    if capa.status == CapaStatus.Closed or not capa.withdrawal_proposed_at:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No withdrawal is awaiting your decision")
+    if user.id == capa.withdrawal_proposed_by:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Segregation of duties: the proposer cannot decide the withdrawal")
+    comment = payload.comment.strip()
+    if payload.decision == "Agree":
+        capa.status, capa.implementation_status = CapaStatus.Closed, WITHDRAWN
+        capa.closed_by, capa.closed_at = user.id, utcnow()
+        drop_pending_risk_acceptance(db, capa, user.id, request)
+        add_event(db, capa, "withdrawal", user_id=user.id, request=request,
+                  text=f"Withdrawn by the GM Audit. {comment}")
+        if capa.source_type == "finding":
+            from app.domains.issues.capa.closure import sync_finding
+
+            db.flush()
+            sync_finding(db, capa.source_id, user.id)
+    else:
+        capa.withdrawal_proposed_at = capa.withdrawal_proposed_by = None
+        add_event(db, capa, "withdrawal", user_id=user.id, request=request,
+                  text=f"Withdrawal not agreed by the GM Audit; the action stays open. {comment}")
+    log_record_history(db, record_type="capa", record_id=capa.id, user_id=user.id, request=request,
+                       action=f"WITHDRAWAL {payload.decision.upper()} by the GM Audit")
+    log_action(db, user_id=user.id, action=f"REMEDIATION_WITHDRAWAL_{payload.decision.upper()} id={capa.id}",
+               request=request)
     db.commit()
     db.refresh(capa)
     return capa

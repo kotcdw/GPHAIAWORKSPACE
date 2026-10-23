@@ -116,6 +116,11 @@ RULES: list[Rule] = [
     Rule("backup_include_attachments", "Include attachments", "Backups", "bool",
          "Working papers, evidence and other uploaded files. They stay encrypted in the backup.", default=True),
     # --- audit workflow
+    Rule("topical_requirements_to_close", "Require IIA topical requirements to be decided and assessed before an "
+         "assurance audit closes", "Audit workflow", "bool",
+         "IIA Topical Requirements (e.g. Cybersecurity) are mandatory for assurance engagements: each one is decided "
+         "for applicability and, where it applies, every requirement is assessed or excluded with a rationale.",
+         default=True),
     Rule("require_report_to_close", "Require an issued report before an audit can be closed", "Audit workflow", "bool",
          "IIA GIAS 15.1: every engagement ends with a final communication.", default_attr="require_report_to_close"),
     Rule("require_findings_actioned_to_close", "Require every finding to have a management response and, for High "
@@ -269,6 +274,12 @@ RULES: list[Rule] = [
     Rule("port_categories", "Entity types that count as a port or site", "Organizations", "list",
          "One per line. Users pick one of these as where they work; every entity is filed under the port it sits in.",
          default=["Port", "Head Office"]),
+    # --- users and licences
+    Rule("license_seats", "Licensed seats per role", "Users & licenses", "list",
+         "One per line, e.g. Auditor=12. A role that is not listed has no seat limit. Adding, inviting, "
+         "reactivating or moving a person into a full role is refused.", default=[], allow_empty=True),
+    Rule("invitation_valid_days", "Days an invitation link stays valid", "Users & licenses", "int",
+         "After this the person asks for a new invitation.", default=7, min=1, max=30),
     # --- security
     Rule("mfa_required_roles", "Roles that must use two-step verification", "Security", "roles",
          "Users in these roles are asked to set it up at their next sign-in.", default_attr="mfa_required_roles",
@@ -281,6 +292,10 @@ RULES: list[Rule] = [
          "One per line, from the entity types under Organizations. Staff based in one of these (or in a unit under "
          "it) see every port's audits; leave empty to limit HQ staff to their engagement teams too.",
          default=["Head Office"], allow_empty=True),
+    Rule("auditor_assigned_only", "Auditors work only on their assigned engagements", "Security", "bool",
+         "On: an Auditor sees and changes only the audits whose team they are on (with their findings, working "
+         "papers, report and actions). Work a reviewer has signed off, and a report that has left Draft, are "
+         "read-only to Auditors whatever this setting.", default=True),
     Rule("mfa_enforced", "Enforce two-step verification for the roles above", "Security", "bool",
          "Off during development: nobody is forced to set it up. Turn it on when the workspace is ready for use; "
          "users in the roles above are then asked to set it up at their next sign-in. Anyone can still turn it "
@@ -317,11 +332,6 @@ RULES: list[Rule] = [
     Rule("action_timeframes", "Implementation timeframes for management action plans", "Follow-up & reporting",
          "list", default=["Short term (within 3 months)", "Medium term (3 to 12 months)",
                           "Long term (over 12 months)"]),
-    Rule("committee_closes_recommendations", "Internal audit recommendations are closed by an Audit Committee "
-         "decision (not by e-signature alone)", "Follow-up & reporting", "bool",
-         "MoF instructions s.7.7: the Audit Committee closes internal audit recommendations once the evidence is "
-         "sufficient. Recommendations from external bodies always need the external body's closure reference.",
-         default=False),
     Rule("quarterly_report_recipients", "Recipients of the quarterly follow-up report", "Follow-up & reporting",
          "list", "Act 921 s.83(5)(e); MoF instructions s.6.1(3).",
          default=["Audit Committee", "Internal Audit Agency"]),
@@ -331,10 +341,6 @@ RULES: list[Rule] = [
                   "Internal Audit Agency"]),
     Rule("annual_statement_due", "Annual statement due date (MM-DD of the following year)", "Follow-up & reporting",
          "text", "Act 921 s.88(1)(b): not later than 30 June.", default="06-30"),
-    Rule("risk_acceptance_committee_severities", "Risk acceptances the Audit Committee decides",
-         "Follow-up & reporting", "list",
-         "IIA GIAS 11.5: after the GM Audit agrees, acceptances of these severities go to the Audit Committee before "
-         "the action closes.", default=["High"], options=["Low", "Medium", "High"], allow_empty=True),
     Rule("report_statutory_recipients", "Who must receive a copy of every issued audit report",
          "Follow-up & reporting", "list",
          "Internal Audit Agency Act, 2003 (Act 658) s.16(3)-(5). Adjust to GPHA's reporting route.",
@@ -421,6 +427,12 @@ RULES: list[Rule] = [
          default=["Mitigate", "Accept", "Transfer", "Avoid"]),
     Rule("erm_review_months", "Review each enterprise risk at least every (months)", "Risk & compliance", "int",
          "Risks not assessed within this period are flagged as overdue for review.", default=3, min=1, max=24),
+    Rule("erm_kri_auto_assess", "Reassess a risk automatically when a driving indicator turns Amber or Red",
+         "Risk & compliance", "bool", "When off, the risk owner or risk team applies the indicator-driven scores on "
+         "the risk's Assessment page.", default=False),
+    Rule("erm_segment_rollup", "How segment assessments roll up to the risk", "Risk & compliance", "text",
+         "Worst: the highest-scoring segment. Average: the mean of the latest segment scores.", default="Worst",
+         options=["Worst", "Average"]),
     Rule("regulation_types", "Kinds of obligation in Compliance Maps", "Risk & compliance", "list",
          default=["Law / Act", "Regulation / L.I.", "Directive / Instruction", "Standard", "Contract / Licence",
                   "GPHA policy"]),
@@ -500,6 +512,21 @@ def parse_sample_sizes(entries: list[str]) -> dict[str, int]:
     return sizes
 
 
+def parse_license_seats(entries: list[str]) -> dict[str, int]:
+    """Read "Role=Seats" lines (role name or code); raise ValueError naming the first bad line."""
+    from app.core.permissions import JOB_ROLES
+
+    names = {r.name.lower(): r.code for r in JOB_ROLES} | {r.code: r.code for r in JOB_ROLES}
+    seats: dict[str, int] = {}
+    for entry in entries:
+        name, sep, size = entry.partition("=")
+        code = names.get(name.strip().lower())
+        if not sep or code is None or not size.strip().isdigit() or not 0 <= int(size) <= 100000:
+            raise ValueError(f"'{entry}' must look like Auditor=12 (roles: {', '.join(r.name for r in JOB_ROLES)})")
+        seats[code] = int(size)
+    return seats
+
+
 def validate(rule: Rule, value: Any) -> Any:
     """Coerce and check a submitted value; raise ValueError with a plain message."""
     if rule.kind == "bool":
@@ -544,6 +571,8 @@ def validate(rule: Rule, value: Any) -> Any:
             clean = sorted((canon[c.lower()] for c in clean), key=rule.options.index)
         if rule.key == "sample_sizes_by_frequency":
             parse_sample_sizes(clean)
+        if rule.key == "license_seats":
+            parse_license_seats(clean)
         if len(clean) > 100:
             raise ValueError("enter at most 100 entries")
         return clean

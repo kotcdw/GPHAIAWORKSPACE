@@ -8,6 +8,7 @@ from collections import deque
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DBSession
 
@@ -70,9 +71,9 @@ def _throttle(request: Request, db: DBSession | None = None, username: str | Non
 
 
 def _regional() -> dict:
-    from app.platform.configuration.router import REGIONAL
+    from app.platform.configuration.router import regional_values
 
-    return {key: cfg(key) for key in REGIONAL}
+    return regional_values()
 
 
 def _me(user: User, csrf_token: str) -> MeOut:
@@ -139,6 +140,71 @@ def register(payload: RegisterRequest, request: Request, db: DBSession = Depends
     return MessageOut(
         message="Registration received. An administrator must approve your account before you can sign in."
     )
+
+
+def cfg_options(key: str) -> list[str]:
+    from app.core.appconfig import RULES_BY_KEY
+
+    return list(RULES_BY_KEY[key].options)
+
+
+# --- account activation from an invitation ---------------------------------------
+
+
+_INVITE_GONE = "This invitation link is not valid any more. Ask an administrator to send a new one."
+
+
+class ActivateIn(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+    full_name: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class InvitationLookup(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+
+
+@router.post("/invitation")
+def invitation_details(payload: InvitationLookup, request: Request, db: DBSession = Depends(get_db)) -> dict:
+    """What the activation page shows (the username and e-mail the invitation was sent to)."""
+    from app.platform.users.licenses import find_open_invitation
+
+    _throttle(request, db)
+    inv = find_open_invitation(db, payload.token)
+    if inv is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=_INVITE_GONE)
+    user = db.get(User, inv.user_id)
+    return {"username": user.username, "email": user.email, "full_name": user.full_name,
+            "expires_at": inv.expires_at.isoformat()}
+
+
+@router.post("/activate", response_model=MessageOut)
+def activate_account(payload: ActivateIn, request: Request, db: DBSession = Depends(get_db)) -> MessageOut:
+    """Set the password chosen by the invited person and switch the account on (the link then stops working)."""
+    from app.core.validators import password_problems
+    from app.platform.users.licenses import check_seat, find_open_invitation
+
+    _throttle(request, db)
+    inv = find_open_invitation(db, payload.token)
+    if inv is None:
+        log_action(db, user_id=None, action="ACTIVATION_FAILED invalid_or_expired_link", request=request, commit=True)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=_INVITE_GONE)
+    user = db.get(User, inv.user_id)
+    problem = password_problems(payload.password, user.username)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Password {problem}")
+    from app.core import permissions as perms
+
+    check_seat(db, perms.job_role_of(user), exclude_user_id=user.id)
+    user.full_name = payload.full_name.strip()
+    user.password_hash = hash_password(payload.password)
+    user.is_active = True
+    inv.accepted_at = utcnow()
+    log_action(db, user_id=user.id, action=f"ACCOUNT_ACTIVATED username={user.username}", request=request)
+    db.commit()
+    return MessageOut(message=f"Your account is active. Sign in as {user.username}.")
 
 
 @router.post("/login", response_model=MeOut)
@@ -305,6 +371,13 @@ def update_profile(
         user.email = str(payload.email)
     if payload.full_name is not None:
         user.full_name = payload.full_name
+    if "locale" in payload.model_fields_set:
+        lang = (payload.locale or "").strip() or None
+        if lang is not None and lang not in cfg_options("language"):
+            from app.core.errors import field_error
+
+            raise field_error("locale", f"must be one of: {', '.join(cfg_options('language'))}")
+        user.locale = lang
     if "work_entity_id" in payload.model_fields_set:
         from app.platform.organizations.models import Organization
 

@@ -1,4 +1,4 @@
-# GIAW on a Linux VPS: MySQL + the app + an HTTPS front door. Used by deploy/vps/install.sh.
+# GPHA INTERNAL AUDIT WORKSPACE on a Linux VPS: MySQL + the app + an HTTPS front door. Used by deploy/vps/install.sh.
 # Two ways to get HTTPS (the installer picks one):
 #   - Caddy (profile "caddy"): this file's caddy service publishes 80/443 and gets certificates itself;
 #   - an existing Traefik (Hostinger Docker Manager installs one): docker-compose.traefik.yml adds the

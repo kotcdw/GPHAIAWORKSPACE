@@ -1,4 +1,4 @@
-"""Integrated audit universe (Diligent One / HighBond Audit model).
+"""Integrated audit universe (GPHA INTERNAL AUDIT WORKSPACE / HighBond Audit model).
 
 Org Structure (``organizations``) and the Process library (``processes``, linked to org units) are the shared
 building blocks. An auditable entity (``entity_units``) is an org unit, or an org unit and one of its processes, or a
@@ -95,7 +95,8 @@ class AssessmentFactor(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # Scored automatically from GIAW records: "time_since_audit", "prior_results" or None (scored by the auditor).
+    # Scored automatically from GPHA INTERNAL AUDIT WORKSPACE records: "time_since_audit", "prior_results" or None
+    # (scored by the auditor).
     auto_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)

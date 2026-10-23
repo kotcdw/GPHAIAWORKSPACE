@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DBSession
 
+from app.core import appconfig
 from app.core import permissions as perms
 from app.core.audit import log_action
 from app.core.database import get_db
@@ -18,8 +19,9 @@ from app.core.security import hash_password
 from app.core.validators import password_problems
 from app.platform.auth.service import revoke_sessions
 from app.platform.roles import service as role_service
-from app.platform.users.models import User
-from app.platform.users.schemas import UserCreate, UserOut, UserUpdate
+from app.platform.users import licenses as lic
+from app.platform.users.models import User, UserInvitation
+from app.platform.users.schemas import InviteIn, UserCreate, UserOut, UserUpdate
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -157,6 +159,8 @@ def create_user(
     )
     code = role_service.normalise(payload.job_role) or role_service.TIER_DEFAULT_ROLE[payload.role]
     role_service.check_can_manage(admin, None, code)
+    if payload.is_active:
+        lic.check_seat(db, code)
     role_service.apply_role(user, code)
     db.add(user)
     db.flush()
@@ -169,6 +173,132 @@ def create_user(
     db.commit()
     db.refresh(user)
     return user
+
+
+# ------------------------------------------------------------------ licences and invitations
+
+
+@router.get("/licenses")
+def license_overview(db: DBSession = Depends(get_db), _: User = AdminUser) -> dict:
+    """Seats per role: active accounts, open invitations, the licensed limit (None = no limit) and what is left."""
+    return {"roles": lic.licenses(db), "configured": bool(lic.seat_limits())}
+
+
+def _username_from_email(db: DBSession, email: str) -> str:
+    import re
+
+    base = re.sub(r"[^A-Za-z0-9._-]", "", email.split("@", 1)[0])[:56] or "user"
+    if len(base) < 3:
+        base = f"{base}usr"
+    name, n = base, 1
+    while db.execute(select(User.id).where(func.lower(User.username) == name.lower())).first():
+        n += 1
+        name = f"{base}{n}"
+    return name
+
+
+def _send_invitation(db: DBSession, user: User, token: str, admin: User) -> bool:
+    from app.core.config import settings
+    from app.platform.notifications.service import email_enabled, queue_email
+
+    if not (email_enabled() and user.email):
+        return False
+    days = int(appconfig.cfg("invitation_valid_days"))
+    queue_email(db, user.email, "You are invited to the workspace",
+                f"{admin.full_name or admin.username} invited you to {settings.app_name}.\n\n"
+                f"Your username: {user.username}\n"
+                f"Activate your account (the link works once and expires in {days} days):\n{lic.invite_link(token)}")
+    return True
+
+
+def _invitation_out(db: DBSession, inv: UserInvitation) -> dict:
+    u = db.get(User, inv.user_id)
+    by = db.get(User, inv.invited_by) if inv.invited_by else None
+    now = utcnow()
+    state = ("accepted" if inv.accepted_at else "withdrawn" if inv.revoked_at
+             else "expired" if inv.expires_at <= now else "open")
+    return {"id": inv.id, "user_id": inv.user_id, "username": u.username if u else None,
+            "email": u.email if u else None, "name": (u.full_name or u.username) if u else None,
+            "job_role": perms.job_role_of(u) if u else None,
+            "invited_by": (by.full_name or by.username) if by else None, "sent_at": inv.created_at.isoformat(),
+            "expires_at": inv.expires_at.isoformat(), "state": state}
+
+
+@router.post("/invite", status_code=status.HTTP_201_CREATED)
+def invite_user(payload: InviteIn, request: Request, db: DBSession = Depends(get_db), admin: User = AdminUser) -> dict:
+    """Create an account that the person activates from an e-mailed link (they choose their own password)."""
+    from app.platform.groups.models import UserGroup, UserGroupMember
+
+    email = str(payload.email).strip()
+    if db.execute(select(User.id).where(func.lower(User.email) == email.lower())).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this e-mail already exists")
+    code = role_service.normalise(payload.job_role)
+    if code is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Choose a platform user type")
+    role_service.check_can_manage(admin, None, code)
+    lic.check_seat(db, code)
+    groups = []
+    for gid in dict.fromkeys(payload.group_ids):
+        g = db.get(UserGroup, gid)
+        if g is None or not g.is_active:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Groups: choose active groups")
+        groups.append(g)
+    user = User(username=_username_from_email(db, email), password_hash="", email=email,
+                full_name=payload.full_name.strip(), is_active=False)
+    role_service.apply_role(user, code)
+    db.add(user)
+    db.flush()
+    for g in groups:
+        db.add(UserGroupMember(group_id=g.id, user_id=user.id))
+    token = lic.new_invitation(db, user, admin.id)
+    emailed = _send_invitation(db, user, token, admin)
+    log_action(db, user_id=admin.id, request=request,
+               action=f"USER_INVITE username={user.username} job_role={code} groups={len(groups)} emailed={emailed}")
+    db.commit()
+    return {"user": UserOut.model_validate(user).model_dump(mode="json"), "emailed": emailed,
+            # Shown once to the administrator so the link can be passed on when e-mail is not set up.
+            "link": None if emailed else lic.invite_link(token)}
+
+
+@router.get("/invitations")
+def list_invitations(state: str = Query(default="open", pattern="^(open|all)$"), db: DBSession = Depends(get_db),
+                     _: User = AdminUser) -> list[dict]:
+    rows = db.execute(select(UserInvitation).order_by(UserInvitation.created_at.desc()).limit(500)).scalars()
+    out = [_invitation_out(db, r) for r in rows]
+    return [r for r in out if r["state"] == "open"] if state == "open" else out
+
+
+def _invitation(db: DBSession, inv_id: int, admin: User) -> tuple[UserInvitation, User]:
+    inv = db.get(UserInvitation, inv_id)
+    user = db.get(User, inv.user_id) if inv else None
+    if inv is None or user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+    role_service.check_can_manage(admin, user, None)
+    if user.is_active or inv.accepted_at:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The account is already activated")
+    return inv, user
+
+
+@router.post("/invitations/{inv_id}/resend")
+def resend_invitation(inv_id: int, request: Request, db: DBSession = Depends(get_db), admin: User = AdminUser) -> dict:
+    _, user = _invitation(db, inv_id, admin)
+    lic.check_seat(db, perms.job_role_of(user), exclude_user_id=user.id)
+    token = lic.new_invitation(db, user, admin.id)
+    emailed = _send_invitation(db, user, token, admin)
+    log_action(db, user_id=admin.id, request=request, action=f"USER_INVITE_RESEND username={user.username}")
+    db.commit()
+    return {"emailed": emailed, "link": None if emailed else lic.invite_link(token)}
+
+
+@router.delete("/invitations/{inv_id}", response_model=MessageOut)
+def revoke_invitation(inv_id: int, request: Request, db: DBSession = Depends(get_db),
+                      admin: User = AdminUser) -> MessageOut:
+    inv, user = _invitation(db, inv_id, admin)
+    if inv.revoked_at is None:
+        inv.revoked_at = utcnow()
+    log_action(db, user_id=admin.id, request=request, action=f"USER_INVITE_REVOKE username={user.username}")
+    db.commit()
+    return MessageOut(message="Invitation withdrawn; the link no longer works")
 
 
 @router.get("/{user_id}", response_model=UserOut)
@@ -235,6 +365,8 @@ def update_user(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail="Only a Manager holds an approval level (Unit Head, Audit Manager, PIA "
                                        "or GM Audit)")
+        if (user.is_active or payload.is_active) and target_code != _current_role(user):
+            lic.check_seat(db, target_code, exclude_user_id=user.id)
         tier_before = user.role
         role_service.apply_role(user, target_code, level or None)
         changes.append(f"job_role={user.job_role} level={user.review_level.value if user.review_level else '-'}")
@@ -249,6 +381,8 @@ def update_user(
         if payload.is_active is False:
             role_service.check_can_manage(admin, user, None)
             role_service.guard_last_super_admin(db, user, deactivating=True)
+        elif not user.is_active:
+            lic.check_seat(db, _current_role(user), exclude_user_id=user.id)
         user.is_active = payload.is_active
         changes.append(f"is_active={payload.is_active}")
     if "work_entity_id" in payload.model_fields_set:

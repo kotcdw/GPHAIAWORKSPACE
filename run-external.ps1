@@ -1,4 +1,4 @@
-# GPHA Internal Audit Workspace - share the app with testers outside the office.
+# GPHA INTERNAL AUDIT WORKSPACE - share the app with testers outside the office.
 #
 # Usage:
 #   .\run-external.ps1                       Cloudflare quick tunnel: a new https://....trycloudflare.com

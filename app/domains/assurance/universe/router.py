@@ -1,4 +1,5 @@
-"""Integrated audit universe (Diligent One / HighBond Audit): Org Structure, Process library, Define audit universe,
+"""Integrated audit universe (GPHA INTERNAL AUDIT WORKSPACE, HighBond Audit model): Org Structure, Process library,
+Define audit universe,
 auditable entities and audit risk assessments.
 
 Data flow: Org Structure + Process library -> Define audit universe (auditable entities, coverage) -> Audit risk
@@ -151,7 +152,7 @@ def org_structure(include_inactive: bool = False, db: DBSession = Depends(get_db
                      "processes": [{"id": p, "name": procs.get(p, "")} for p in pairs.get(oid, [])],
                      "entities": entities.get(oid, 0), "status": o.status.value, "is_active": o.is_active,
                      "head_user_id": o.head_user_id, "head_name": heads.get(o.head_user_id),
-                     "people": people.get(oid, 0)})
+                     "people": people.get(oid, 0), "notes": o.notes})
     inactive = sum(1 for o in tree.typed.values() if not o.is_active)
     return {"types": cfg("org_structure_categories"), "items": rows, "inactive_count": inactive}
 
@@ -1019,7 +1020,8 @@ def _auto_fraction(db: DBSession, e: EntityUnit, source: str) -> float:
 
 
 def _auto_score(db: DBSession, a: AuditRiskAssessment, user: User, overwrite: bool) -> int:
-    """Fill the cells of automatic factors from GIAW records (only empty cells unless ``overwrite``)."""
+    """Fill the cells of automatic factors from GPHA INTERNAL AUDIT WORKSPACE records (only empty cells unless
+    ``overwrite``)."""
     ents, facs = _members(db, a)
     autos = [f for f in facs if f.auto_source]
     if not autos:

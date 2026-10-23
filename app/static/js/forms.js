@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - data-entry framework.
+// GPHA INTERNAL AUDIT WORKSPACE - data-entry framework.
 //
 // Every form built with `openForm` / `mountForm`:
 //   * autosaves what the user types as a DRAFT - immediately on this device
@@ -102,6 +102,16 @@ function _makeInput(f) {
           el("input", { type: "checkbox", value: String(o.value), disabled: f.disabled ? "1" : null }), ` ${o.label}`)));
       if (!_options(f).length) node.append(el("span", { class: "muted" }, f.emptyLabel || "Nothing to choose yet."));
       break;
+    case "combo": {
+      // Type to search the options, or (allowNew) type a value that is not in the list yet.
+      const listId = `${attrs.id}-list`;
+      const list = el("datalist", { id: listId }, ..._options(f).map((o) => el("option", { value: o.label })));
+      document.body.append(list);
+      node = el("input", { ...attrs, type: "text", list: listId, autocomplete: "off",
+        placeholder: f.placeholder || (f.allowNew ? "Type or choose" : "Type to search") });
+      if (f.maxLength) node.maxLength = f.maxLength;
+      break;
+    }
     case "whys":
       node = el("div", { class: "whys", "data-name": f.name },
         ...[1, 2, 3, 4, 5].map((i) => el("input", { placeholder: `Why ${i}?`, maxlength: "1000", disabled: f.disabled ? "1" : null })));
@@ -118,6 +128,18 @@ function _makeInput(f) {
   return node;
 }
 
+// A combo's value: the option whose label (or value) was typed; otherwise the typed text when new values are
+// allowed, or COMBO_UNKNOWN so the form can say it is not in the list. Empty is null.
+const COMBO_UNKNOWN = Symbol("not in the list");
+function _comboValue(f, raw) {
+  const text = String(raw || "").trim().replace(/\s+/g, " ");
+  if (!text) return null;
+  const low = text.toLowerCase();
+  const opt = _options(f).find((o) => o.label.trim().toLowerCase() === low || String(o.value).toLowerCase() === low);
+  if (opt) return opt.value;
+  return f.allowNew ? text : COMBO_UNKNOWN;
+}
+
 function _getValue(f, node) {
   switch (f.type) {
     case "checkbox": return node.checked;
@@ -130,6 +152,7 @@ function _getValue(f, node) {
       return opt ? opt.value : node.value;
     }
     case "textarea": return node.value;
+    case "combo": return _comboValue(f, node.value);
     default: return node.value.trim() === "" ? (f.type === "date" ? null : "") : node.value.trim();
   }
 }
@@ -159,6 +182,11 @@ function _setValue(f, node, value) {
       break;
     }
     case "date": node.value = value ? String(value).slice(0, 10) : ""; break;
+    case "combo": {
+      const opt = _options(f).find((o) => String(o.value) === String(value));
+      node.value = opt ? opt.label : value === null || value === undefined ? "" : String(value);
+      break;
+    }
     default: node.value = value === null || value === undefined ? "" : String(value);
   }
 }
@@ -169,6 +197,7 @@ function _validateField(f, value) {
   const empty = value === null || value === "" || (Array.isArray(value) && !value.length);
   if (f.required && empty) return `${f.label} is required`;
   if (empty) return null;
+  if (value === COMBO_UNKNOWN) return `${f.label}: choose one from the list`;
   if (typeof value === "string") {
     if (f.maxLength && value.length > f.maxLength) return `${f.label} must be at most ${f.maxLength} characters`;
     if (f.minLength && value.length < f.minLength) return `${f.label} must be at least ${f.minLength} characters`;

@@ -69,7 +69,10 @@ def test_working_paper_template_form(client, client2, db):
     signed = client2.post(f"/api/working-papers/{wp['id']}/review", json={"password": DEFAULT_PASSWORD}, headers=rh)
     assert signed.status_code == 200, signed.text
     assert client.get(url).json()["signed"] is True
-    again = client.put(url, json={"values": {**values, "scope": "All Q3 vouchers above GHS 5,000"}}, headers=ph)
+    # Least privilege: the Auditor who prepared it cannot overwrite reviewed work; a reviewer's edit restarts review.
+    edit = {"values": {**values, "scope": "All Q3 vouchers above GHS 5,000"}}
+    assert client.put(url, json=edit, headers=ph).status_code == 409
+    again = client2.put(url, json=edit, headers=rh)
     assert again.status_code == 200 and again.json()["review_restarted"] is True
     assert again.json()["signed"] is False and again.json()["admin"]["reviewed_by"] == []
 

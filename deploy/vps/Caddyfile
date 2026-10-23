@@ -1,4 +1,4 @@
-# HTTPS front door for GIAW. Caddy gets and renews the certificate automatically
+# HTTPS front door for GPHA INTERNAL AUDIT WORKSPACE. Caddy gets and renews the certificate automatically
 # (the domain's A records must point at this server first).
 {
 	email {$GIAW_ACME_EMAIL}

@@ -5,7 +5,8 @@ where an engagement covers an entity. Filters: entity category (location), paren
 Overall progress is the average of the engagements' progress; planned hours are compared with the hours available
 (the plan's total budget): the bar is green up to the available hours and red above.
 
-Progress of an engagement is counted from its phases, the way Diligent counts project progress: each phase scores
+Progress of an engagement is counted from its phases, the way GPHA INTERNAL AUDIT WORKSPACE counts project
+progress: each phase scores
 Not started 0, In process 1, Completed 2, and progress = total / (2 x number of phases). The phases are the planning
 memo, each fieldwork step (process narratives, risk & control matrix, walkthroughs, test plan and testing; or work
 programme and execute procedures) and the report. A closed audit is 100 %; an engagement not yet started is 0 %.

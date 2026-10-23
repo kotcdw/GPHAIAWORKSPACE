@@ -1,4 +1,4 @@
-"""GPHA Audit Workspace - FastAPI application entry point."""
+"""GPHA INTERNAL AUDIT WORKSPACE - FastAPI application entry point."""
 
 from __future__ import annotations
 
@@ -139,7 +139,7 @@ _LAST_RESYNC: list[float] = [0.0]
 
 
 def _workflow_startup() -> None:
-    """Seed the SLA policies and rebuild the "My work" inbox from the records."""
+    """Seed the SLA policies and rebuild the "Projects" inbox from the records."""
     import time
 
     from app.platform.workflow.workitems import full_resync
@@ -201,6 +201,16 @@ async def _escalation_watcher() -> None:
             db.close()
         db = SessionLocal()
         try:
+            from app.services.reporting.broadcasts import run_broadcasts
+
+            run_broadcasts(db)
+        except Exception:  # noqa: BLE001 - one failed send must not stop the other timers
+            db.rollback()
+            logger.exception("Report broadcasts failed")
+        finally:
+            db.close()
+        db = SessionLocal()
+        try:
             from app.services.results.router import run_scheduled_robots
 
             run_scheduled_robots(db)
@@ -228,11 +238,15 @@ async def _schema_watcher() -> None:
 
 _PROD = settings.environment.lower() == "production"
 _DOCS = settings.api_docs and not _PROD
+from app.core.least_privilege import install as _install_least_privilege  # noqa: E402
+from app.platform.roles.matrix import module_access_guard as _module_access_guard  # noqa: E402
+
+_install_least_privilege()
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     lifespan=lifespan,
-    dependencies=[Depends(csrf_protect)],
+    dependencies=[Depends(csrf_protect), Depends(_module_access_guard)],
     # The API map is for developers: not published on a production server.
     docs_url="/docs" if _DOCS else None,
     redoc_url="/redoc" if _DOCS else None,

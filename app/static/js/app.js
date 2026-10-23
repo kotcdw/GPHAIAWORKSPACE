@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - single-page front end.
+// GPHA INTERNAL AUDIT WORKSPACE - single-page front end.
 
 const state = {
   user: null,
@@ -448,6 +448,8 @@ async function boot() {
     showApp();
   } catch {
     authView.classList.remove("hidden");
+    const inv = /^#activate\/([A-Za-z0-9_-]{10,200})$/.exec(window.location.hash);
+    if (inv) renderActivation(inv[1]);
   }
 }
 
@@ -506,8 +508,8 @@ function showApp() {
   // A refresh (or signing in again after an idle sign-out) reopens the page in the address bar.
   else routed = typeof restoreRoute === "function" && restoreRoute();
   if (!routed) {
-    const home = isCommittee() ? "governance" : state.user.role === "Auditee" ? "portal" : "dashboard";
-    routed = navigate(state.view && viewAllowed(state.view) && !(isCommittee() && state.view === "dashboard") ? state.view : home);
+    const home = state.user.role === "Auditee" ? "portal" : "dashboard";
+    routed = navigate(state.view && viewAllowed(state.view) ? state.view : home);
   }
   // ...and the form panels that were open in this tab, with their typed entries.
   Promise.resolve(routed).catch(() => {}).then(() => restoreFormPanels());
@@ -518,7 +520,7 @@ document.querySelectorAll("#sidebarNav button[data-view]").forEach((btn) => {
   btn.addEventListener("click", () => { navigate(btn.dataset.view); viewRoot.focus({ preventScroll: true }); });
 });
 const brandHome = qs("#brandHome");
-if (brandHome) brandHome.addEventListener("click", (e) => { e.preventDefault(); navigate(isCommittee() ? "governance" : state.user && state.user.role === "Auditee" ? "portal" : "dashboard"); });
+if (brandHome) brandHome.addEventListener("click", (e) => { e.preventDefault(); navigate(state.user && state.user.role === "Auditee" ? "portal" : "dashboard"); });
 
 function setActiveNav(view) {
   const g = hostGroup(view);
@@ -540,7 +542,7 @@ function navigate(view) {
     const first = hostTabsAllowed(merged)[0];
     if (first) view = first[0];
   }
-  if (state.user && !viewAllowed(view)) view = isCommittee() ? "governance" : "dashboard";
+  if (state.user && !viewAllowed(view)) view = "dashboard";
   state.view = view;
   if (typeof setRoute === "function") setRoute(`#/${view}`);
   setActiveNav(view);
@@ -552,28 +554,24 @@ function navigate(view) {
   if (view === "imports") return renderImports();
   if (view === "programs") return renderProgramsPage();
   if (view === "evidence") return renderEvidencePage();
-  if (view === "governance") return renderGovernance();
-  if (view === "portfolio") return renderPortfolio();
   if (view === "analytics") return renderAnalytics();
   if (view === "qaip") return renderQaipPage();
   if (view === "capacity") return renderCapacity();
   if (view === "mywork") return renderMyWork();
   if (view === "admin") return renderAdministration();
   if (view === "users") return renderUsersAdmin();
+  if (view === "licenses") return renderLicenses();
   if (view === "tasks") return renderTasks();
   if (view === "audits") return renderAudits();
   if (view === "issues") return renderIssueTracker();
   if (view === "statustracker") return renderStatusTracker();
   if (view === "results") return renderResults();
   if (view === "storyboards") return renderStoryboards();
-  if (view === "reports") return renderReportsApp();
-  if (view === "activity") return renderActivityCenter();
   if (view === "robots") return renderRobots();
   if (view === "audittypes") return renderAuditTypes();
   if (view === "orgstructure") return renderOrgStructure();
   if (view === "processes") return renderProcessLibrary();
   if (view === "riskassess") return renderRiskAssessments();
-  if (view === "committee") return renderCommittee();
   if (view === "configuration") return renderConfiguration();
   if (view === "plans") return renderPlans();
   if (view === "drafts") return renderDrafts();
@@ -856,39 +854,38 @@ async function openRecord(key, id) {
   const allowedActions = (canWrite ? m.actions.filter((act) => (!act.adminOnly || isAdmin()) && (!act.perm || hasPerm(act.perm))) : [])
     .filter((act) => !(key === "capa" && act.key === "close" && !(record.status === "Review" && record.validation_result === "Effective")));
 
-  const actions = [
-    ...allowedActions.map((act) => el("button", {
-      class: `btn small ${act.kind === "esign" ? "" : "secondary"}`.trim(),
-      onclick: () => runAction(key, id, act, openRecord) }, act.label)),
-    canWrite && record.status !== "Closed" ? el("button", { class: "btn small secondary", onclick: () => editRecordModal(key, record) },
-      el("i", { class: "bi bi-pencil" }), " Edit") : null,
-    iconBtn("printer", "Print", () => window.print()),
-  ].filter(Boolean);
-  // Remediation actions follow the Issue follow-up walkthrough: Information, Action Follow-Up, Complete Action.
-  const tabs = key === "capa" ? [
-    { key: "info", label: "Information" }, { key: "followup", label: "Action Follow-Up" }, { key: "complete", label: "Complete Action" },
-    { key: "tasks", label: "Tasks" }, { key: "history", label: "History" }, { key: "approvals", label: "Approval cycles" },
-  ] : [
-    { key: "info", label: "Information" }, { key: "tasks", label: "Tasks" }, { key: "history", label: "History" },
+  viewRoot.append(viewHeader(String(title),
+    [
+      ...allowedActions.map((act) => el("button", {
+        class: `btn small ${act.kind === "esign" ? "" : "secondary"}`.trim(),
+        onclick: () => runAction(key, id, act, openRecord) }, act.label)),
+      canWrite && record.status !== "Closed" ? el("button", { class: "btn small secondary", onclick: () => editRecordModal(key, record) },
+        el("i", { class: "bi bi-pencil" }), " Edit") : null,
+      iconBtn("printer", "Print", () => window.print()),
+    ],
+    { back: () => navigate(key), meta: [el("span", { class: "ref" }, record[m.refKey] || ""), record.status ? badge(record.status) : null] }));
+
+  const detail = el("div");
+  viewRoot.append(detail);
+  const tabs = [
+    { key: "info", label: "Information" },
+    { key: "tasks", label: "Tasks" },
+    { key: "history", label: "History" },
     { key: "approvals", label: "Approval cycles" },
   ];
-  clear(viewRoot);
-  const layout = recordLayout({
-    crumbs: recordCrumbs(key, record[m.refKey] || String(title)),
-    back: () => navigate(key), title: String(title), ref: record[m.refKey] || "", status: record.status || null,
-    actions, tabs, side: null,
-    onTab: (k, panel) => {
-      if (k === "info") renderInfoTab(panel, key, record, canWrite);
-      if (k === "followup") renderCapaFollowup(panel, record, () => openRecord("capa", record.id));
-      if (k === "complete") renderCapaComplete(panel, record, () => openRecord("capa", record.id));
-      if (k === "tasks") renderTasksTab(panel, m.recordType, id);
-      if (k === "history") renderHistoryTab(panel, m.recordType, id);
-      if (k === "approvals") renderApprovalsTab(panel, m.recordType, id);
-    },
-  });
-  viewRoot.append(msg, layout.root);
-  layout.select(state.recordTab && state.recordTab.key === key && state.recordTab.id === id ? state.recordTab.tab : "info");
-  state.recordTab = null;
+  let active = "info";
+
+  function paint() {
+    clear(detail);
+    detail.append(tabBar(tabs, active, (k) => { active = k; paint(); }));
+    const panel = el("div");
+    detail.append(panel);
+    if (active === "info") renderInfoTab(panel, key, record, canWrite);
+    if (active === "tasks") renderTasksTab(panel, m.recordType, id);
+    if (active === "history") renderHistoryTab(panel, m.recordType, id);
+    if (active === "approvals") renderApprovalsTab(panel, m.recordType, id);
+  }
+  paint();
 }
 
 function fieldValue(f, record) {
@@ -930,6 +927,7 @@ function renderInfoTab(panel, key, record, canWrite) {
       el("div", { class: `lf-value ${fieldValue(f, record) ? "" : "muted"}`.trim() }, fieldValue(f, record) || "Not recorded"))));
   panel.append(card);
   if (key === "organizations") renderEntityExtras(panel, record, canWrite);
+  if (key === "capa") renderCapaFollowup(panel, record, () => openRecord("capa", record.id));
 }
 
 async function renderTasksTab(panel, recordType, id) {
@@ -1049,7 +1047,7 @@ function panel(title, body, action = null) {
 function workspaceGroups() {
   return [
     { title: "Audit management", tiles: [
-      { view: "mywork", icon: "inbox", name: "My work", desc: "Everything waiting for you: prepare, review, respond, validate", count: "mywork" },
+      { view: "mywork", icon: "inbox", name: "Projects", desc: "Everything waiting for you: prepare, review, respond, validate", count: "mywork" },
       { view: "universe", icon: "bullseye", name: "Audit universe", desc: "Units, processes and auditable entities" },
       { view: "riskassess", icon: "clipboard-data", name: "Audit risk assessment", desc: "Score entities on assessment factors and prioritise them for the plan", staff: true },
       { view: "plans", icon: "calendar3", name: "Assurance Plans", desc: "Annual risk-based audit plan by fiscal year", count: "plans", staff: true },
@@ -1077,9 +1075,7 @@ function workspaceGroups() {
       { view: "analytics", icon: "graph-up-arrow", name: "Analytics", desc: "Headline indicators, heat map, trends and repeat findings", staff: true },
       { view: "results", icon: "table", name: "Results", desc: "Analytic tables with priority, status, assignee and triggers", staff: true },
       { view: "storyboards", icon: "easel", name: "Storyboards", desc: "Charts, metrics and text from Results, shared read-only", staff: true },
-      { view: "reports", icon: "file-earmark-bar-graph", name: "Reports", desc: "Reports, dashboards, presentations and AI Reporting", staff: true },
       { view: "robots", icon: "robot", name: "Robots", desc: "Scheduled analytic tasks and automation rules", staff: true },
-      { view: "committee", icon: "bar-chart-line", name: "Audit Committee", desc: "Committee pack, governance portal and port portfolio" },
       { view: "qaip", icon: "patch-check", name: "Quality (QAIP)", desc: "Quality reviews, professional practice and service feedback", staff: true },
     ] },
     { title: "Platform settings", tiles: [
@@ -1098,34 +1094,105 @@ function workspaceGroups() {
 // One launch page for every module, grouped the way the audit work flows,
 // with live counts and quick actions. Tiles follow the user's role.
 
+// Customize the home pad: choose installed apps, put them in order; reset to the default; the Super Administrator can
+// make the arrangement the default for everyone.
+function customizePad(pad, catalogue) {
+  const byView = Object.fromEntries(catalogue.map((t) => [t.view, t]));
+  let list = (pad.mine || pad.default || catalogue.map((t) => t.view)).filter((v) => byView[v]);
+  const chosenEl = el("ol", { class: "pad-chosen" });
+  const addEl = el("div", { class: "pad-add" });
+  const paint = () => {
+    clear(chosenEl); clear(addEl);
+    list.forEach((v, i) => {
+      const t = byView[v];
+      chosenEl.append(el("li", null, el("i", { class: `bi bi-${t.icon}`, "aria-hidden": "true" }), el("span", null, t.name),
+        el("span", { class: "pad-ctl" },
+          el("button", { class: "btn small secondary icon", type: "button", title: "Move up", "aria-label": `Move ${t.name} up`, disabled: i === 0 ? "1" : null,
+            onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; paint(); } }, el("i", { class: "bi bi-arrow-up" })),
+          el("button", { class: "btn small secondary icon", type: "button", title: "Move down", "aria-label": `Move ${t.name} down`, disabled: i === list.length - 1 ? "1" : null,
+            onclick: () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; paint(); } }, el("i", { class: "bi bi-arrow-down" })),
+          el("button", { class: "btn small secondary icon", type: "button", title: "Remove from my pad", "aria-label": `Remove ${t.name}`,
+            onclick: () => { list = list.filter((x) => x !== v); paint(); } }, el("i", { class: "bi bi-x-lg" })))));
+    });
+    [...new Set(catalogue.map((t) => t.group))].forEach((g) => {
+      const free = catalogue.filter((t) => t.group === g && !list.includes(t.view));
+      if (!free.length) return;
+      addEl.append(el("div", { class: "pad-group" }, el("div", { class: "muted small" }, g),
+        el("div", { class: "adm-chips" }, ...free.map((t) => el("button", { class: "ws-link", type: "button", onclick: () => { list.push(t.view); paint(); } }, `+ ${t.name}`)))));
+    });
+    if (!addEl.childNodes.length) addEl.append(el("p", { class: "muted small" }, "Every app you can open is on your pad."));
+  };
+  paint();
+  let dlg = null;
+  const done = () => { dlg.close(); renderWorkspace(); };
+  const save = async (tiles) => {
+    try { await API.put("/api/home/pad", { tiles }); toast(tiles ? "Home pad saved" : "Back to the default pad"); done(); } catch (err) { toast(err.message, "error"); }
+  };
+  const setDefault = async () => {
+    try {
+      const cat = await API.get("/api/apps");
+      await API.put("/api/apps", { apps: Object.fromEntries(cat.apps.map((a) => [a.key, { enabled: a.enabled, label: a.label === a.name ? "" : a.label }])),
+        branding: cat.branding, home: list });
+      toast("Default pad saved for everyone"); done();
+    } catch (err) { toast(err.message, "error"); }
+  };
+  dlg = modal({ title: "Customize Workspace Apps", width: 720,
+    body: el("div", { class: "pad-edit" }, el("h4", null, "On my pad"), chosenEl, el("h4", null, "Add apps"), addEl),
+    footer: el("div", { class: "actions" },
+      pad.can_set_default ? el("button", { class: "btn secondary", type: "button", onclick: setDefault }, "Set as default for everyone") : null,
+      el("button", { class: "btn secondary", type: "button", onclick: () => save(null) }, "Reset to default"),
+      el("button", { class: "btn", type: "button", onclick: () => save(list) }, "Save")) });
+}
+
+// Every tile the person may put on their home pad: the Workspace tiles they may open.
+function padCatalogue() {
+  const staff = isStaff();
+  const admin = isAdmin();
+  const out = [];
+  workspaceGroups().filter((g) => !g.staff || staff || isCommittee()).forEach((g) => g.tiles.forEach((t) => {
+    if ((t.staff && !staff && !isCommittee()) || (t.admin && !admin) || !viewAllowed(t.view)
+      || (typeof appEnabledForView === "function" && !appEnabledForView(t.view))) return;
+    if (!out.some((x) => x.view === t.view)) out.push({ ...t, group: g.title });
+  }));
+  return out;
+}
+
+function padTile(t, countEls) {
+  const badgeEl = el("span", { class: "ws-count hidden" });
+  if (t.count) countEls[t.count] = badgeEl;
+  return el("div", { class: "ws-cell", "data-app": `${t.name} ${t.desc} ${t.group}`.toLowerCase() },
+    el("button", { class: "ws-tile", type: "button", onclick: () => navigate(t.view) },
+      el("span", { class: "ws-icon" }, el("i", { class: `bi bi-${t.icon}` })),
+      el("span", { class: "ws-text" }, el("span", { class: "ws-name" }, t.name), el("span", { class: "ws-desc" }, t.desc), badgeEl)));
+}
+
 async function renderWorkspace() {
   clear(viewRoot);
   const staff = isStaff();
-  const admin = isAdmin();
-  viewRoot.append(viewHeader("Workspace Apps"));
+  const pad = await safeGet("/api/home/pad", { mine: null, default: null, can_set_default: false });
+  const catalogue = padCatalogue();
+  const homeHead = viewHeader("Workspace Apps", el("button", { class: "btn secondary", type: "button", onclick: () => customizePad(pad, catalogue) },
+    el("i", { class: "bi bi-grid-1x2" }), " Customize"));
+  homeHead.classList.add("ws-home-head");
+  viewRoot.append(homeHead);
 
   const groupsEl = el("div", { class: "ws-groups" });
   viewRoot.append(groupsEl);
-
-  const groups = workspaceGroups();
-
   const countEls = {};
-  groups.filter((g) => !g.staff || staff || isCommittee()).forEach((g) => {
-    const tiles = g.tiles.filter((t) => (!t.staff || staff || isCommittee()) && (!t.admin || admin) && viewAllowed(t.view)
-      && (typeof appEnabledForView !== "function" || appEnabledForView(t.view)));
-    if (!tiles.length) return;
-    groupsEl.append(el("section", { class: "ws-group" },
-      el("h3", { class: "ws-group-title" }, g.title),
-      el("div", { class: "ws-grid" }, ...tiles.map((t) => {
-        const badgeEl = el("span", { class: "ws-count hidden" });
-        if (t.count) countEls[t.count] = badgeEl;
-        return el("div", { class: "ws-cell", "data-app": `${t.name} ${t.desc} ${g.title}`.toLowerCase() },
-          el("button", { class: "ws-tile", type: "button", onclick: () => navigate(t.view) },
-            el("span", { class: "ws-icon" }, el("i", { class: `bi bi-${t.icon}` })),
-            el("span", { class: "ws-text" }, el("span", { class: "ws-name" }, t.name), el("span", { class: "ws-desc" }, t.desc), badgeEl)),
-          null);
-      }))));
-  });
+  const chosen = pad.mine || pad.default;
+  if (chosen && chosen.length) {
+    // The person's own arrangement (or the organisation's default): their tiles, in their order.
+    const byView = Object.fromEntries(catalogue.map((t) => [t.view, t]));
+    const tiles = chosen.map((v) => byView[v]).filter(Boolean);
+    groupsEl.append(el("section", { class: "ws-group" }, el("h3", { class: "ws-group-title" }, pad.mine ? "My apps" : "Apps"),
+      tiles.length ? el("div", { class: "ws-grid" }, ...tiles.map((t) => padTile(t, countEls)))
+        : el("p", { class: "muted" }, "None of your apps is available any more. Use Customize to choose others.")));
+  } else {
+    [...new Set(catalogue.map((t) => t.group))].forEach((g) => {
+      groupsEl.append(el("section", { class: "ws-group" }, el("h3", { class: "ws-group-title" }, g),
+        el("div", { class: "ws-grid" }, ...catalogue.filter((t) => t.group === g).map((t) => padTile(t, countEls)))));
+    });
+  }
 
   // Live counts (best effort: a tile without a count still works).
   const open = (rows) => (rows.items || rows).filter((x) => x.status !== "Closed").length;
@@ -1373,17 +1440,15 @@ async function openAudit(id, startTab = null) {
   const tabs = [
     { key: "dashboard", label: "Overview" },
     ...(canWrite ? [{ key: "memo", label: termOf(terms, "planning", "Planning") }, { key: "fieldwork", label: termOf(terms, "fieldwork", "Fieldwork") }] : []),
-    { key: "report", label: termOf(terms, "results", "Results") },
-    { key: "findings", label: `${termOf(terms, "issue", "Issue")}s` },
+    { key: "findings", label: `${termOf(terms, "issue", "Finding")}s` },
+    ...(isStaff() ? [{ key: "topical", label: "Topical requirements" }] : []),
+    { key: "report", label: termOf(terms, "results", "Report") },
     ...(canWrite ? [{ key: "quality", label: termOf(terms, "reviews", "Supervision & review") }] : []),
-    { key: "evidence", label: `${termOf(terms, "request", "Request")}s` },
+    { key: "evidence", label: `${termOf(terms, "request", "Evidence request")}s` },
     ...(canWrite ? [{ key: "progress", label: "Progress" }] : []),
     { key: "survey", label: "Feedback survey" },
-    ...(isStaff() ? [{ key: "settings", label: "Project settings" }] : []),
   ];
   const utility = [
-    { label: "Requests", icon: "envelope-paper", key: "evidence" },
-    ...(isStaff() ? [{ label: "Issues", icon: "flag", key: "@issues" }] : []),
     ...(canWrite ? [{ label: "Review notes", icon: "chat-square-text", key: "notes" }, { label: "Time entries", icon: "clock", key: "time" }] : []),
     { label: "To-dos", icon: "check2-square", key: "tasks" },
     { label: "History", icon: "clock-history", key: "history" },
@@ -1393,18 +1458,18 @@ async function openAudit(id, startTab = null) {
   const layout = recordLayout({
     crumbs: recordCrumbs("audits", ref),
     back: () => navigate("audits"),
-    title: audit.title, ref, status: audit.status,
+    title: audit.title, ref, status: audit.status, record: { type: "audit", id },
     meta: audit.approval_status ? [statusBadge(audit.approval_status)] : [],
     band: phaseTracker(audit, canWrite, (k) => layout.select(k)),
     actions,
-    utility: utility.map((u) => ({ ...u, onClick: () => (u.key === "@issues" ? issuesSidePanel(audit, canWrite) : layout.select(u.key)) })),
+    utility: utility.map((u) => ({ ...u, onClick: () => layout.select(u.key) })),
     tabs,
     side,
     onTab: (key, pane) => {
       state.lastAuditTab = { id, key };
       if (typeof setRoute === "function") setRoute(`#/audit/${id}/${key}`);
       // Work screens (HighBond execution views) use the full width; the summary panel shows on the others.
-      layout.root.querySelector(".rec-grid").classList.toggle("no-side", ["fieldwork", "findings", "evidence", "progress", "settings", "report"].includes(key));
+      layout.root.querySelector(".rec-grid").classList.toggle("no-side", ["fieldwork", "findings", "evidence", "progress", "topical"].includes(key));
       paintTab(key, pane);
     },
   });
@@ -1422,14 +1487,14 @@ async function openAudit(id, startTab = null) {
     if (key === "progress") renderProgressTab(pane, audit);
     if (key === "findings") renderAuditIssues(pane, audit, canWrite);
     if (key === "survey") renderSurveyTab(pane, audit);
+    if (key === "topical") renderTopicalTab(pane, audit, canWrite);
     if (key === "report") {
       // Results: the report, then the supporting workpapers (Diligent: Results > Supporting Workpapers).
       const rep = el("div"); const wp = el("div", { class: "supporting-wp" });
-      pane.append(resultsCards(audit, (k) => layout.select(k)), rep, wp);
+      pane.append(rep, wp);
       renderReportTab(rep, id, canWrite);
       renderPapers(wp, id, canWrite);
     }
-    if (key === "settings") renderProjectSettings(pane, audit, canWrite);
     if (key === "tasks") renderTasksTab(pane, "audit", id);
     if (key === "history") renderHistoryTab(pane, "audit", id);
     if (key === "approvals") renderApprovalsTab(pane, "audit", id);
@@ -1824,28 +1889,6 @@ async function renderProfile() {
 
 // ==================================================================== users (admin)
 
-function newUserForm() {
-  openForm({
-    title: "New user account",
-    key: "user:new",
-    meta: { title: "New user account" },
-    fields: [
-      { name: "full_name", label: "Full name", maxLength: 255, singleLine: true },
-      { name: "username", label: "Username", required: true, minLength: 3, maxLength: 64, pattern: "^[A-Za-z0-9._-]+$",
-        patternMessage: "Username may contain letters, digits, '.', '_' and '-' only" },
-      { name: "email", label: "Email", type: "email", required: true },
-      { name: "job_role", label: "Role", type: "select", required: true,
-        options: (JOB_ROLE_OPTIONS || []).filter((r) => r.assignable).map((r) => ({ value: r.code, label: r.name })) },
-      { name: "password", label: "Initial password", type: "password", required: true, minLength: 8, maxLength: 128,
-        help: "They change it after their first sign-in." },
-    ],
-    initial: { job_role: "auditor" },
-    submitLabel: "Create user",
-    onSubmit: (v) => API.post("/api/users", { ...v, role: ((JOB_ROLE_OPTIONS || []).find((r) => r.code === v.job_role) || {}).tier || "Auditor" }),
-    onDone: () => { toast("User created"); refreshUsers(); },
-  });
-}
-
 async function editUserForm(u) {
   // Workplace: active units only, plus the one already set (even if deactivated since) so the choice stays visible.
   let ents = [];
@@ -2019,31 +2062,18 @@ async function renderBackups() {
     hasPerm("system.technical") ? el("button", { class: "btn secondary", type: "button", onclick: () => { state.configSection = "Backups"; navigate("configuration"); } }, el("i", { class: "bi bi-gear" }), " Settings") : null,
     runBtn);
   viewRoot.append(viewHeader("Backups", actions), msg);
-  const tiles = el("div", { class: "stats" }, loadingState());
   const setsCard = el("div", { class: "card" });
   const checksCard = el("div", { class: "card" });
-  viewRoot.append(tiles, setsCard, checksCard);
-  let st, sets, checks;
+  viewRoot.append(setsCard, checksCard);
+  let sets, checks;
   try {
-    [st, sets, checks] = await Promise.all([API.get("/api/admin/backups/status"), API.get("/api/admin/backups"), API.get("/api/admin/backups/checks?limit=20")]);
-  } catch (err) { clear(tiles); notify(msg, err.message, "error"); return; }
+    [sets, checks] = await Promise.all([API.get("/api/admin/backups"), API.get("/api/admin/backups/checks?limit=20")]);
+  } catch (err) { notify(msg, err.message, "error"); return; }
 
   const size = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
-  const age = (h) => (h < 1 ? "Under 1 h" : h < 48 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`);
   const result = (c) => (!c ? el("span", { class: "chip-mini" }, "Not checked")
     : c.outcome === "passed" ? el("span", { class: "chip-mini ok" }, el("i", { class: "bi bi-check2" }), " Passed")
       : el("span", { class: "chip-mini danger" }, el("i", { class: "bi bi-x-lg" }), " Failed"));
-  clear(tiles);
-  tiles.append(
-    st.latest ? stat(age(st.latest.age_hours), "Last backup", fmtDate(st.latest.created_at), st.overdue ? "danger" : "ok") : stat("None", "Last backup", null, "danger"),
-    stat(!st.server_schedule ? "Off" : st.interval_hours ? `Every ${st.interval_hours} h` : "Paused", "Schedule",
-      !st.server_schedule ? "switched off on the server" : st.next_due ? `next ${fmtDate(st.next_due)}` : null, st.interval_hours ? "" : "warn"),
-    stat(`${st.count} / ${st.retention}`, "Kept", st.include_attachments ? "with attachments" : "database only"),
-    stat(st.verified ? (st.verified.outcome === "passed" ? "Passed" : "Failed") : "-", "Last check", st.verified ? fmtDate(st.verified.at) : null,
-      st.verified ? (st.verified.outcome === "passed" ? "ok" : "danger") : ""),
-    stat(st.restore_test ? (st.restore_test.outcome === "passed" ? "Passed" : "Failed") : "Never", "Restore test",
-      st.restore_test ? fmtDate(st.restore_test.at) : null, st.restore_test ? (st.restore_test.outcome === "passed" ? "ok" : "danger") : "warn"));
-
   setsCard.append(el("div", { class: "card-head" }, el("h3", null, "Backup sets")));
   if (!sets.length) setsCard.append(emptyState({ icon: "hdd-stack", title: "No backups yet" }));
   else {

@@ -55,11 +55,15 @@ def staff_audit_scope(db: DBSession, user: User) -> set[int] | None:
     """Audit ids an Auditor-tier user may work on; ``None`` means every audit."""
     from app.core.appconfig import cfg
     from app.core.enums import ReviewLevel
+    from app.core.least_privilege import is_field_auditor
     from app.domains.audit.audits.models import Audit
 
-    if user.role == Role.Admin or not cfg("port_scope_enforced"):
+    if user.role == Role.Admin:
         return None
-    if user.review_level == ReviewLevel.CAE:
+    if is_field_auditor(user) and cfg("auditor_assigned_only"):
+        # Least privilege: an Auditor sees the engagements they are assigned to, nothing port-wide.
+        return team_audit_ids(db, user) | set(db.execute(select(Audit.id).where(Audit.created_by == user.id)).scalars())
+    if not cfg("port_scope_enforced") or user.review_level == ReviewLevel.CAE:
         return None
     ids = team_audit_ids(db, user)
     ids |= set(db.execute(select(Audit.id).where(Audit.created_by == user.id)).scalars())

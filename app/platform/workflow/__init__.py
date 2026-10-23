@@ -1,4 +1,4 @@
-"""Workflow engine, work items (the "My work" inbox) and the SLA clock.
+"""Workflow engine, work items (the "Projects" inbox) and the SLA clock.
 
 * Every status change of a tracked record is recorded as a transition (``workflow_transitions``), checked against
   the record type's workflow definition. Definitions ship matching today's behaviour; admins customise them later.

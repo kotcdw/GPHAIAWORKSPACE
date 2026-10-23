@@ -100,6 +100,7 @@ class CapaOut(ORMModel):
     progress_note: str | None = None
     withdrawal_reason: str | None = None
     withdrawal_proposed_at: datetime | None = None
+    withdrawal_proposed_by: int | None = None
     external_closure_ref: str | None = None
     original_due_date: datetime | None = None
     extension_count: int = 0

@@ -1,4 +1,4 @@
-"""Audit plan Timeline view, Include audits and Exclude from audit plan (Diligent One Audit app).
+"""Audit plan Timeline view, Include audits and Exclude from audit plan (GPHA INTERNAL AUDIT WORKSPACE Audit app).
 
 * **Timeline**: one bar per engagement from its planned start to end (or its planned quarter), in colour-coded
   swimlanes by category (port / site), quarter or lead, with milestones (Audit Committee meetings, plan approval).
@@ -58,7 +58,6 @@ def _lane(db: DBSession, e: PlanEngagement, group: str, leads: dict[int, str], s
 @router.get("/api/assurance-plans/{plan_id}/timeline")
 def plan_timeline(plan_id: int, group: str = Query("category", pattern="^(category|quarter|lead|status)$"),
                   db: DBSession = Depends(get_db), _: User = Staff) -> dict:
-    from app.domains.assurance.committee.models import CommitteeMeeting
     from app.domains.assurance.planning.coverage import engagement_progress
     from app.platform.organizations.models import Organization
 
@@ -83,10 +82,7 @@ def plan_timeline(plan_id: int, group: str = Query("category", pattern="^(catego
             "audit_status": audit.status.value if audit else None, "budget_hours": e.budget_hours,
             "lead": leads.get(e.lead_auditor_id), "progress": engagement_progress(db, audit) if audit else 0,
             "dated": bool(e.planned_start and e.planned_end)})
-    milestones = [{"date": m.meeting_date.date().isoformat(), "label": f"Audit Committee ({m.meeting_type})",
-                   "kind": "committee"}
-                  for m in db.execute(select(CommitteeMeeting).where(
-                      CommitteeMeeting.meeting_date >= lo, CommitteeMeeting.meeting_date <= hi)).scalars()]
+    milestones = []
     if plan.approved_at:
         milestones.append({"date": plan.approved_at.date().isoformat(), "label": "Plan approved", "kind": "plan"})
     ordered = sorted(lanes.items(), key=lambda kv: (kv[0] in ("No category", "Unassigned", "Unscheduled"), kv[0]))

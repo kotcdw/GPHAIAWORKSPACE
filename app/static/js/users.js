@@ -29,8 +29,8 @@ async function renderUsersAdmin() {
   const f = state.usersFilter || (state.usersFilter = { q: "", status: "", job_role: "", mfa: "", workplace: "", sort: "name", desc: false, page: 1 });
   const cat = await ensureRoleCatalogue();
   const add = hasPerm("system.users") ? el("button", { class: "btn", type: "button", onclick: newUserForm }, el("i", { class: "bi bi-person-plus" }), " Add user") : null;
-  const groups = hasPerm("system.users") ? el("button", { class: "btn secondary", type: "button", onclick: groupsDialog }, el("i", { class: "bi bi-people" }), " Groups") : null;
-  viewRoot.append(viewHeader("Users & access", [groups, add].filter(Boolean)));
+  const lic = hasPerm("system.users") ? el("button", { class: "btn secondary", type: "button", onclick: () => navigate("licenses") }, el("i", { class: "bi bi-card-checklist" }), " Licenses") : null;
+  viewRoot.append(viewHeader("Users & access", [lic, add].filter(Boolean)));
 
   const tabs = el("div", { class: "tabs users-tabs", role: "tablist" });
   const search = el("input", { type: "search", class: "compact", placeholder: "Search name, username, e-mail or unit", "aria-label": "Search users", value: f.q });
@@ -41,7 +41,9 @@ async function renderUsersAdmin() {
   const placeSel = el("select", { class: "compact", "aria-label": "Workplace" },
     ...[["", "Workplace: any"], ["none", "No workplace"], ["inactive", "In a deactivated unit"]].map(([v, l]) => el("option", { value: v, selected: (f.workplace || "") === v ? "1" : null }, l)));
   const host = el("div", { class: "card users-card" });
-  viewRoot.append(tabs, el("div", { class: "toolbar users-toolbar" }, search, roleSel, mfaSel, placeSel), host);
+  const invites = el("div");
+  viewRoot.append(tabs, el("div", { class: "toolbar users-toolbar" }, search, roleSel, mfaSel, placeSel), host, invites);
+  if (hasPerm("system.users")) paintInvitations(invites);
 
   let timer = null;
   search.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { f.q = search.value.trim(); f.page = 1; load(); }, 300); });
@@ -195,4 +197,115 @@ async function openUserPanel(id) {
 
   if (canManage && !self) body.append(el("div", { class: "user-danger" },
     el("button", { class: "btn small danger-ghost", type: "button", title: "Only for accounts with no recorded work; otherwise deactivate", onclick: () => { panel.close(); deleteUser(u); } }, el("i", { class: "bi bi-trash" }), " Delete account")));
+}
+
+// ------------------------------------------------------------------ invitations and licences
+
+// + Add user: the person receives a link and chooses their own password (no password is typed for them).
+async function newUserForm() {
+  let groups = [];
+  try { [groups] = await Promise.all([API.get("/api/groups"), ensureRoleCatalogue()]); } catch { /* groups optional */ }
+  openForm({
+    title: "Add user",
+    key: "user:new",
+    meta: { title: "Add user" },
+    width: 560,
+    fields: [
+      { name: "email", label: "Email address", type: "email", required: true, placeholder: "Unique work email" },
+      { name: "job_role", label: "Platform user type", type: "select", required: true,
+        options: (JOB_ROLE_OPTIONS || []).filter((r) => r.assignable).map((r) => ({ value: r.code, label: r.name })) },
+      { name: "group_ids", label: "Groups", type: "checklist", options: groups.map((g) => ({ value: g.id, label: g.name })), emptyLabel: "No groups yet." },
+      { name: "full_name", label: "Name (optional)", maxLength: 255, singleLine: true },
+    ],
+    initial: { job_role: "auditor" },
+    submitLabel: "Send invitation",
+    onSubmit: (v) => API.post("/api/users/invite", { ...v, group_ids: v.group_ids || [], full_name: v.full_name || "" }),
+    onDone: (r) => { refreshUsers(); invitationSent(r.user.email, r); },
+  });
+}
+
+// E-mail sent, or (e-mail not set up) the one-time link to pass on.
+function invitationSent(email, r) {
+  if (r.emailed) { toast(`Invitation sent to ${email}`); return; }
+  const input = el("input", { type: "text", readonly: "1", value: r.link, "aria-label": "Activation link" });
+  const dlg = modal({ title: "Invitation ready", width: 560,
+    body: el("div", null, el("p", null, `E-mail is not set up, so give this link to ${email}. It works once.`),
+      el("div", { class: "inv-link" }, input, el("button", { class: "btn small secondary", type: "button", onclick: async () => {
+        try { await navigator.clipboard.writeText(r.link); toast("Link copied"); } catch { input.select(); }
+      } }, el("i", { class: "bi bi-clipboard" }), " Copy"))),
+    footer: el("div", { class: "actions" }, el("button", { class: "btn", type: "button", onclick: () => dlg.close() }, "Done")) });
+}
+
+async function paintInvitations(card) {
+  let rows;
+  try { rows = await API.get("/api/users/invitations"); } catch { return; }
+  clear(card);
+  if (!rows.length) return;
+  const cat = await ensureRoleCatalogue();
+  const roleName = (code) => (cat.roles.find((r) => r.code === code) || {}).name || code;
+  const act = async (fn, okText) => { try { const r = await fn(); if (r && r.link !== undefined) invitationSent("the person", r); else toast(okText); paintInvitations(card); } catch (err) { toast(err.message, "error"); } };
+  card.append(el("section", { class: "card", "aria-label": "Invitations" },
+    el("div", { class: "card-head" }, el("h3", null, `Invitations (${rows.length})`)),
+    el("div", { class: "table-wrap" }, el("table", { class: "compact-table" },
+      el("thead", null, el("tr", null, ...["Email", "Platform user type", "Sent", "Expires", ""].map((h) => el("th", null, h)))),
+      el("tbody", null, ...rows.map((i) => el("tr", { class: "no-click" },
+        el("td", null, i.email, el("div", { class: "muted small" }, i.username)), el("td", null, roleName(i.job_role)),
+        el("td", null, fmtDay(i.sent_at), i.invited_by ? el("div", { class: "muted small" }, i.invited_by) : null), el("td", null, fmtDay(i.expires_at)),
+        el("td", { class: "actions" },
+          el("button", { class: "btn small secondary", type: "button", onclick: () => act(() => API.post(`/api/users/invitations/${i.id}/resend`), "Invitation sent again") }, "Resend"),
+          el("button", { class: "btn small danger-ghost", type: "button", onclick: () => act(() => API.del(`/api/users/invitations/${i.id}`), "Invitation withdrawn") }, "Withdraw")))))))));
+}
+
+// Licenses: seats per role (limits are set under Configuration > Users & licenses).
+async function renderLicenses() {
+  clear(viewRoot);
+  const set = viewAllowed("configuration") ? el("button", { class: "btn secondary", type: "button", onclick: () => { state.configSection = "Users & licenses"; navigate("configuration"); } }, "Set seat limits") : null;
+  viewRoot.append(viewHeader("Licenses", set));
+  const card = el("div", { class: "card" }, loadingState());
+  viewRoot.append(card);
+  let d;
+  try { d = await API.get("/api/users/licenses"); } catch (err) { clear(card); card.append(errorState(err, renderLicenses)); return; }
+  clear(card);
+  if (!d.configured) card.append(el("p", { class: "muted small" }, "No seat limits are set: every role is unlimited."));
+  card.append(el("div", { class: "table-wrap" }, el("table", { class: "compact-table" },
+    el("thead", null, el("tr", null, el("th", null, "Role"), el("th", { class: "num" }, "Active"), el("th", { class: "num" }, "Invited"), el("th", { class: "num" }, "Seats"), el("th", { class: "num" }, "Available"))),
+    el("tbody", null, ...d.roles.map((r) => el("tr", { class: `no-click ${r.available === 0 ? "row-failure" : ""}` },
+      el("td", null, r.name), el("td", { class: "num" }, String(r.active)), el("td", { class: "num" }, String(r.invited)),
+      el("td", { class: "num" }, r.seats === null ? "Unlimited" : String(r.seats)),
+      el("td", { class: "num" }, r.available === null ? "-" : String(r.available))))))));
+}
+
+// ------------------------------------------------------------------ account activation (invitation link)
+// Shown on the sign-in screen for #activate/<token>: the invited person chooses their name and password.
+async function renderActivation(token) {
+  const login = qs("#loginForm");
+  history.replaceState(null, "", window.location.pathname);  // the link works once; keep it out of the address bar
+  const box = el("div", { class: "card-body" });
+  const card = el("form", { class: "login-div", autocomplete: "off" }, el("div", { class: "card blueBorder" },
+    el("div", { class: "auth-head" }, el("div", { class: "auth-head-text" }, el("span", { class: "auth-head-title" }, "ACTIVATE YOUR ACCOUNT"))), el("hr"), box));
+  login.classList.add("hidden");
+  login.after(card);
+  const back = (text, tone = "ok", username = "") => {
+    card.remove(); login.classList.remove("hidden");
+    if (username) qs("#loginUser").value = username;
+    notify(authMsg, text, tone);
+  };
+  let d;
+  try { d = await API.post("/api/auth/invitation", { token }); }
+  catch (err) { back(err.message, "error"); return; }
+  const name = el("input", { class: "ant-input ant-input-lg", required: "1", maxlength: "255", value: d.full_name || "", placeholder: "Your name", "aria-label": "Your name" });
+  const pw = el("input", { class: "ant-input ant-input-lg", type: "password", required: "1", minlength: "8", maxlength: "128", placeholder: "Choose a password", "aria-label": "Choose a password", autocomplete: "new-password" });
+  const pw2 = el("input", { class: "ant-input ant-input-lg", type: "password", required: "1", minlength: "8", maxlength: "128", placeholder: "Repeat the password", "aria-label": "Repeat the password", autocomplete: "new-password" });
+  const msg = el("div");
+  box.append(el("p", null, el("strong", null, d.username), el("span", { class: "muted" }, ` · ${d.email}`)), msg,
+    ...[name, pw, pw2].map((n) => el("div", { class: "ant-form-item" }, n)),
+    el("button", { type: "submit", class: "ant-btn ant-btn-primary ant-btn-lg ant-btn-block" }, el("span", null, "Activate account")));
+  card.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (pw.value !== pw2.value) { notify(msg, "The two passwords do not match", "error"); return; }
+    try {
+      const r = await API.post("/api/auth/activate", { token, full_name: name.value.trim(), password: pw.value });
+      back(r.message, "ok", d.username);
+    } catch (err) { notify(msg, err.message, "error"); }
+  });
 }

@@ -1,6 +1,7 @@
 """The workflow engine: records every status change and keeps work items in step with the records.
 
-It hooks the database session, so every status change made anywhere in GIAW (an endpoint, a background job, an
+It hooks the database session, so every status change made anywhere in GPHA INTERNAL AUDIT WORKSPACE (an endpoint,
+a background job, an
 automation) goes through the same place:
 
 * ``before_flush`` notes which tracked records changed status (old -> new) and which records may have changed who

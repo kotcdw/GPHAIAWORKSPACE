@@ -3,8 +3,8 @@
 A finding is closed by its remediation, not by editing it:
 
 * while any action raised from the finding is open, or was closed without Internal Audit validating it as
-  Effective (or without a recorded Committee / external-body decision), the finding cannot be set to Closed;
-* when the last action of a finding closes (e-signed close, Audit Committee close or withdrawal), the finding
+  Effective (or without a recorded external-body decision), the finding cannot be set to Closed;
+* when the last action of a finding closes (e-signed close, risk acceptance or withdrawal), the finding
   closes automatically, and a reopened action moves it back to Remediating;
 * a finding with no action can be closed by hand only when it is rated Low and the configuration allows it
   (Configuration > Audit workflow), with a recorded reason;

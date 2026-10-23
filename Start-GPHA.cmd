@@ -1,8 +1,8 @@
 @echo off
-title GPHA Internal Audit Workspace
+title GPHA INTERNAL AUDIT WORKSPACE
 cd /d "%~dp0"
 echo ============================================================
-echo  GPHA Internal Audit Workspace - (re)start
+echo  GPHA INTERNAL AUDIT WORKSPACE - (re)start
 echo ============================================================
 echo.
 echo Stopping any old copy of the app on port 8001...

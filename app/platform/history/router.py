@@ -23,6 +23,9 @@ from app.platform.history.schemas import ApprovalCycleOut, AuditLogOut, RecordHi
 from app.platform.users.models import User
 from app.services.documents.excel import safe_row
 
+# The most entries one activity-log download holds (newest first).
+EXPORT_MAX_ROWS = 100_000
+
 router = APIRouter(prefix="/api/audit-logs", tags=["audit-logs"])
 records_router = APIRouter(prefix="/api/records", tags=["record-history"])
 
@@ -239,7 +242,8 @@ def audit_log_export(
     from app.core.audit import log_action
 
     stmt = _filtered(user_id, date_from, date_to, category, outcome, entity_type, entity_id, (q or "").strip() or None)
-    entries = list(db.execute(stmt.order_by(AuditLog.timestamp.desc(), AuditLog.id.desc()).limit(100000)).scalars())
+    entries = list(db.execute(stmt.order_by(AuditLog.timestamp.desc(), AuditLog.id.desc())
+                                     .limit(EXPORT_MAX_ROWS)).scalars())
     out = io.StringIO()
     writer = csv.writer(out)
     from app.core.regional import fmt_datetime

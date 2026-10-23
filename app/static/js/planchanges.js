@@ -1,4 +1,4 @@
-// GPHA Audit Workspace - plan change requests: the only way to change an approved Assurance Plan.
+// GPHA INTERNAL AUDIT WORKSPACE - plan change requests: the only way to change an approved Assurance Plan.
 // Request (reason + affected items) -> impact (resources, coverage) -> independent review -> approval
 // (GM Audit e-signature) -> new version, re-distributed.
 
