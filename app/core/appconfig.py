@@ -346,45 +346,6 @@ RULES: list[Rule] = [
          "Internal Audit Agency Act, 2003 (Act 658) s.16(3)-(5). Adjust to GPHA's reporting route.",
          default=["Director-General (Management)", "Audit Committee", "Internal Audit Agency (Director-General)",
                   "Auditor-General"]),
-    # --- professional practice (IIA GIAS Domains II and III)
-    Rule("require_engagement_declaration", "Require independence / conflict-of-interest declarations before "
-         "fieldwork starts", "Professional practice", "bool",
-         "IIA GIAS 2.1-2.3 and 7.1: every member of the engagement team must hold a current annual declaration and "
-         "have declared for this engagement.", default_attr="require_engagement_declaration"),
-    Rule("auditor_rotation_years", "Lead auditor rotation (consecutive years on the same entity)",
-         "Professional practice", "int",
-         "IIA GIAS 2.2 (familiarity): after this many consecutive years leading audits of an entity, another lead is "
-         "needed unless the reviewer clears a declared conflict. 0 switches the check off.", default=3, min=0, max=10),
-    Rule("cooling_off_months", "Cooling-off after working in a unit (months)", "Professional practice", "int",
-         "IIA GIAS 2.2: an auditor does not audit a unit they worked in during this period unless the reviewer clears "
-         "a declared conflict. 0 switches the check off.", default=12, min=0, max=60),
-    Rule("declaration_text_annual", "Annual declaration text", "Professional practice", "longtext",
-         default=("I confirm that during this year I will comply with the IIA Code of Ethics and the Global Internal "
-                  "Audit Standards (integrity, objectivity, competency, due professional care and confidentiality), "
-                  "and with sections 18 to 20 of the Internal Audit Agency Act, 2003 (Act 658). I will keep "
-                  "information obtained in the course of my work confidential, and I will disclose promptly any "
-                  "relationship, interest or circumstance that could impair, or appear to impair, my objectivity.")),
-    Rule("declaration_text_engagement", "Engagement declaration text", "Professional practice", "longtext",
-         default=("For this engagement I confirm that I have no personal, financial or professional relationship "
-                  "with the area under review, I have not been responsible for the activities under review in the "
-                  "past 12 months, and I am not aware of anything that impairs my objectivity. Any conflict is "
-                  "disclosed below.")),
-    Rule("cpd_target_hours", "Continuing professional development hours expected per auditor per year",
-         "Professional practice", "int", "IIA GIAS 3.2.", default=40, min=0, max=200),
-    Rule("cpd_ethics_hours", "Of which ethics hours", "Professional practice", "int", default=2, min=0, max=40),
-    Rule("charter_review_months", "Review the internal audit charter every (months)", "Professional practice",
-         "int", "IIA GIAS 6.2: the charter is reviewed with the board periodically.", default=12, min=1, max=60),
-    Rule("eqa_interval_years", "External quality assessment at least every (years)", "Professional practice", "int",
-         "IIA GIAS 8.4.", default=5, min=1, max=5),
-    Rule("conformance_statement", "Conformance statement for Audit Committee reports", "Professional practice",
-         "longtext", "Shown in the Committee pack with the latest internal and external assessment results "
-         "(IIA GIAS 8.3, 15.1).",
-         default=("The Internal Audit Department conducts its work in conformance with the IIA Global Internal Audit "
-                  "Standards and the standards and procedures of the Internal Audit Agency, as confirmed by the "
-                  "results of the quality assurance and improvement programme summarised below.")),
-    Rule("retention_years", "Keep closed audit files for (years) before review for disposal", "Professional practice",
-         "int", "Set according to GPHA's records management policy. Nothing is deleted automatically; records past "
-         "this period are listed for review.", default=7, min=1, max=50),
     # --- AI service (pluggable, off by default)
     Rule("ai_enabled", "Allow AI drafting assistance", "AI", "bool",
          "Off by default. When on, users with the 'Use AI drafting assistance' permission can ask for drafts of "
