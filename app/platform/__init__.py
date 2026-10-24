@@ -17,7 +17,6 @@ MODULES = {
     "roles": "Roles & permissions matrix",
     "configuration": "Admin-configurable rules (no hard-coding)",
     "organizations": "Organization entities, ports, plan destinations",
-    "stakeholders": "Stakeholders and auditee contacts",
     "customfields": "Admin-defined custom fields",
     "approvals": "E-signatures and approval routing",
     "tasks": "Tasks and assignments",
@@ -60,12 +59,11 @@ def routers() -> list:
     from app.platform.organizations.router import router as organizations
     from app.platform.portal.router import router as portal
     from app.platform.roles.router import router as roles
-    from app.platform.stakeholders.router import router as stakeholders
     from app.platform.tasks.router import router as tasks
     from app.platform.users.router import router as users
     from app.platform.views.router import router as views
     from app.platform.workflow.router import router as workflow
 
-    return [auth, users, history, records_router, organizations, stakeholders, tasks, approvals, backups,
+    return [auth, users, history, records_router, organizations, tasks, approvals, backups,
             drafts, notifications, configuration, dataio, dataio_bulk, views, customfields, roles, architecture,
             automations, portal, apps, workflow, admin, groups, collaboration, home]

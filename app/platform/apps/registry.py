@@ -110,8 +110,6 @@ APPS: list[App] = [
     # Platform settings
     App("organizations", "Organizations", SETTINGS, "building", "GPHA ports, departments, units and parties.",
         ("organizations",), (), core=True),
-    App("stakeholders", "Stakeholders", SETTINGS, "people", "Stakeholder and auditee contacts.",
-        ("stakeholders",), ("/api/stakeholders",)),
     App("automations", "Automations", SETTINGS, "lightning-charge", "Reminders, routing and escalation rules.",
         ("automations",), ("/api/automations",)),
     # Services

@@ -86,7 +86,7 @@ PATHS: list[tuple[str, tuple[str, ...]]] = [
                                       r"/api/processes", r"/api/library", r"/api/object-library", r"/api/criteria",
                                       r"/api/audit-programs", r"/api/assurance-providers",
                                       r"/api/assurance-coverage", r"/api/assurance-map")),
-    ("Organisational structure", (r"/api/organizations", r"/api/org-structure", r"/api/stakeholders")),
+    ("Organisational structure", (r"/api/organizations", r"/api/org-structure")),
     ("Users, roles and access", (r"/api/users", r"/api/groups", r"/api/roles")),
     ("Application settings", (r"/api/config", r"/api/audit-types", r"/api/apps", r"/api/custom-fields",
                               r"/api/sla-policies", r"/api/workflows", r"/api/automations")),
